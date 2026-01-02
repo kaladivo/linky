@@ -1,7 +1,9 @@
 import react from "@vitejs/plugin-react-swc";
 import fs from "node:fs/promises";
+import type { ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Connect, Plugin, ViteDevServer } from "vite";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
@@ -9,28 +11,34 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const sqliteWasmPath = path.join(__dirname, "public/sqlite-wasm/sqlite3.wasm");
 
-const serveSqliteWasm = () => ({
+const serveSqliteWasm = (): Plugin => ({
   name: "serve-sqlite-wasm",
-  configureServer(server) {
-    server.middlewares.use(async (req, res, next) => {
-      const url = req.url ?? "";
-      if (!url.includes("sqlite3.wasm")) return next();
+  configureServer(server: ViteDevServer) {
+    server.middlewares.use(
+      async (
+        req: Connect.IncomingMessage,
+        res: ServerResponse,
+        next: Connect.NextFunction
+      ) => {
+        const url = req.url ?? "";
+        if (!url.includes("sqlite3.wasm")) return next();
 
-      try {
-        const wasm = await fs.readFile(sqliteWasmPath);
-        res.statusCode = 200;
-        res.setHeader("Content-Type", "application/wasm");
-        res.setHeader("Cache-Control", "no-store");
-        res.end(wasm);
-      } catch (error) {
-        server.config.logger.error(
-          `Failed to serve sqlite3.wasm from ${sqliteWasmPath}: ${String(
-            error
-          )}`
-        );
-        next();
+        try {
+          const wasm = await fs.readFile(sqliteWasmPath);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/wasm");
+          res.setHeader("Cache-Control", "no-store");
+          res.end(wasm);
+        } catch (error) {
+          server.config.logger.error(
+            `Failed to serve sqlite3.wasm from ${sqliteWasmPath}: ${String(
+              error
+            )}`
+          );
+          next();
+        }
       }
-    });
+    );
   },
 });
 

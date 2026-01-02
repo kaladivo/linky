@@ -4,6 +4,10 @@ import React, { useMemo, useState } from "react";
 import "./App.css";
 import type { ContactId } from "./evolu";
 import { evolu, useEvolu } from "./evolu";
+import {
+  generate12WordMnemonic,
+  INITIAL_MNEMONIC_STORAGE_KEY,
+} from "./mnemonic";
 
 type LnAddress = {
   address: string;
@@ -174,9 +178,17 @@ const App = () => {
     }
   };
 
-  const handleGenerateKeys = () => {
-    evolu.resetAppOwner();
-    setStatus("Vygenerovali jsme nové klíče. Uložte si je na bezpečném místě.");
+  const handleGenerateKeys = async () => {
+    const mnemonic = generate12WordMnemonic();
+    const words = mnemonic.trim().split(/\s+/).length;
+    setStatus(`Vygenerovali jsme nové klíče (${words} slov). Obnovujeme…`);
+    await evolu.restoreAppOwner(mnemonic, { reload: false });
+    try {
+      localStorage.setItem(INITIAL_MNEMONIC_STORAGE_KEY, mnemonic);
+    } catch {
+      // ignore
+    }
+    globalThis.location.reload();
   };
 
   const handleApplyKeys = async () => {
@@ -187,10 +199,24 @@ const App = () => {
     }
 
     try {
-      await evolu.restoreAppOwner(value as Evolu.Mnemonic);
-      setStatus(
-        "Klíče byly nastaveny. Vaše kontakty pro tohoto vlastníka se načetly."
-      );
+      const mnemonicResult = Evolu.Mnemonic.fromUnknown(value);
+      if (!mnemonicResult.ok) {
+        // Mnemonic.fromUnknown can return several underlying string errors.
+        setStatus(Evolu.createFormatTypeError()(mnemonicResult.error));
+        return;
+      }
+
+      const mnemonic = mnemonicResult.value;
+
+      setStatus("Klíče byly ověřeny. Obnovujeme…");
+      // Avoid automatic reload so we can surface errors without wiping the input.
+      await evolu.restoreAppOwner(mnemonic, { reload: false });
+      try {
+        localStorage.setItem(INITIAL_MNEMONIC_STORAGE_KEY, mnemonic);
+      } catch {
+        // ignore
+      }
+      globalThis.location.reload();
     } catch (error) {
       setStatus(`Chyba: ${String(error)}`);
     }

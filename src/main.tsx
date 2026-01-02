@@ -5,6 +5,24 @@ import App from "./App.tsx";
 import { evolu, EvoluProvider } from "./evolu.ts";
 import "./index.css";
 
+// Dev-only cleanup: if a Service Worker was registered earlier (e.g. from a
+// previous PROD preview), it can keep serving stale cached assets on localhost
+// and cause a blank screen until a hard refresh.
+if (import.meta.env.DEV && "serviceWorker" in navigator) {
+  void (async () => {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+      if ("caches" in globalThis) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch {
+      // ignore
+    }
+  })();
+}
+
 if (import.meta.env.PROD) {
   registerSW({ immediate: true });
 }
