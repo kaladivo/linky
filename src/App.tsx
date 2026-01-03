@@ -6,6 +6,14 @@ import type { ContactId } from "./evolu";
 import { evolu, useEvolu } from "./evolu";
 import { getInitialLang, persistLang, translations, type Lang } from "./i18n";
 import { INITIAL_MNEMONIC_STORAGE_KEY } from "./mnemonic";
+import {
+  fetchNostrProfileMetadata,
+  fetchNostrProfilePicture,
+  loadCachedProfileMetadata,
+  loadCachedProfilePicture,
+  saveCachedProfileMetadata,
+  saveCachedProfilePicture,
+} from "./nostrProfile";
 
 type ContactFormState = {
   name: string;
@@ -64,8 +72,36 @@ const App = () => {
     null
   );
 
+  const [nostrPictureByNpub, setNostrPictureByNpub] = useState<
+    Record<string, string | null>
+  >(() => ({}));
+
+  const nostrInFlight = React.useRef<Set<string>>(new Set());
+  const nostrMetadataInFlight = React.useRef<Set<string>>(new Set());
+
   const t = <K extends keyof typeof translations.cs>(key: K) =>
     translations[lang][key];
+
+  const getInitials = (name: string) => {
+    const normalized = name.trim();
+    if (!normalized) return "?";
+    const parts = normalized.split(/\s+/).filter(Boolean);
+    const letters = parts
+      .slice(0, 2)
+      .map((part) => part.slice(0, 1).toUpperCase());
+    return letters.join("") || "?";
+  };
+
+  const getBestNostrName = (metadata: {
+    displayName?: string;
+    name?: string;
+  }): string | null => {
+    const display = String(metadata.displayName ?? "").trim();
+    if (display) return display;
+    const name = String(metadata.name ?? "").trim();
+    if (name) return name;
+    return null;
+  };
 
   const contactNameCollator = useMemo(
     () =>
@@ -150,6 +186,151 @@ const App = () => {
   );
 
   const contacts = useQuery(contactsQuery);
+
+  React.useEffect(() => {
+    // Fill missing name / lightning address from Nostr on list page only,
+    // so we don't overwrite user's in-progress edits.
+    if (route.kind !== "contacts") return;
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const run = async () => {
+      for (const contact of contacts) {
+        const npub = String(contact.npub ?? "").trim();
+        if (!npub) continue;
+
+        const currentName = String(contact.name ?? "").trim();
+        const currentLn = String(contact.lnAddress ?? "").trim();
+
+        const needsName = !currentName;
+        const needsLn = !currentLn;
+        if (!needsName && !needsLn) continue;
+
+        // Try cached metadata first.
+        const cached = loadCachedProfileMetadata(npub);
+        if (cached?.metadata) {
+          const bestName = getBestNostrName(cached.metadata);
+          const lud16 = String(cached.metadata.lud16 ?? "").trim();
+          const patch: Partial<{
+            name: typeof Evolu.NonEmptyString1000.Type;
+            lnAddress: typeof Evolu.NonEmptyString1000.Type;
+          }> = {};
+
+          if (needsName && bestName) {
+            patch.name = bestName as typeof Evolu.NonEmptyString1000.Type;
+          }
+          if (needsLn && lud16) {
+            patch.lnAddress = lud16 as typeof Evolu.NonEmptyString1000.Type;
+          }
+
+          if (Object.keys(patch).length > 0) {
+            update("contact", { id: contact.id, ...patch });
+          }
+          continue;
+        }
+
+        if (nostrMetadataInFlight.current.has(npub)) continue;
+        nostrMetadataInFlight.current.add(npub);
+
+        try {
+          const metadata = await fetchNostrProfileMetadata(npub, {
+            signal: controller.signal,
+          });
+
+          saveCachedProfileMetadata(npub, metadata);
+          if (cancelled) return;
+          if (!metadata) continue;
+
+          const bestName = getBestNostrName(metadata);
+          const lud16 = String(metadata.lud16 ?? "").trim();
+
+          const patch: Partial<{
+            name: typeof Evolu.NonEmptyString1000.Type;
+            lnAddress: typeof Evolu.NonEmptyString1000.Type;
+          }> = {};
+
+          if (needsName && bestName) {
+            patch.name = bestName as typeof Evolu.NonEmptyString1000.Type;
+          }
+          if (needsLn && lud16) {
+            patch.lnAddress = lud16 as typeof Evolu.NonEmptyString1000.Type;
+          }
+
+          if (Object.keys(patch).length > 0) {
+            update("contact", { id: contact.id, ...patch });
+          }
+        } catch {
+          saveCachedProfileMetadata(npub, null);
+          if (cancelled) return;
+        } finally {
+          nostrMetadataInFlight.current.delete(npub);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [contacts, route.kind, update]);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const uniqueNpubs: string[] = [];
+    const seen = new Set<string>();
+    for (const contact of contacts) {
+      const raw = (contact.npub ?? null) as unknown as string | null;
+      const npub = (raw ?? "").trim();
+      if (!npub) continue;
+      if (seen.has(npub)) continue;
+      seen.add(npub);
+      uniqueNpubs.push(npub);
+    }
+
+    const run = async () => {
+      for (const npub of uniqueNpubs) {
+        if (nostrPictureByNpub[npub] !== undefined) continue;
+
+        const cached = loadCachedProfilePicture(npub);
+        if (cached) {
+          setNostrPictureByNpub((prev) =>
+            prev[npub] !== undefined ? prev : { ...prev, [npub]: cached.url }
+          );
+          continue;
+        }
+
+        if (nostrInFlight.current.has(npub)) continue;
+        nostrInFlight.current.add(npub);
+
+        try {
+          const url = await fetchNostrProfilePicture(npub, {
+            signal: controller.signal,
+          });
+          saveCachedProfilePicture(npub, url);
+          if (cancelled) return;
+          setNostrPictureByNpub((prev) => ({ ...prev, [npub]: url }));
+        } catch {
+          saveCachedProfilePicture(npub, null);
+          if (cancelled) return;
+          setNostrPictureByNpub((prev) => ({ ...prev, [npub]: null }));
+        } finally {
+          nostrInFlight.current.delete(npub);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [contacts, nostrPictureByNpub]);
 
   const { groupNames, ungroupedCount } = useMemo(() => {
     const counts = new Map<string, number>();
@@ -499,6 +680,32 @@ const App = () => {
             <p className="muted">Kontakt nenalezen.</p>
           ) : null}
 
+          {selectedContact ? (
+            <div className="contact-header">
+              <div className="contact-avatar is-large" aria-hidden="true">
+                {(() => {
+                  const npub = String(selectedContact.npub ?? "").trim();
+                  const url = npub ? nostrPictureByNpub[npub] : null;
+                  return url ? (
+                    <img
+                      src={url}
+                      alt=""
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span className="contact-avatar-fallback">
+                      {getInitials(String(selectedContact.name ?? ""))}
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="contact-header-text">
+                {selectedContact.name ? <h3>{selectedContact.name}</h3> : null}
+              </div>
+            </div>
+          ) : null}
+
           <div className="form-grid">
             <div className="form-col">
               <label>Jméno</label>
@@ -638,6 +845,10 @@ const App = () => {
                 <p className="muted">{t("noContactsYet")}</p>
               )}
               {visibleContacts.map((contact) => {
+                const npub = String(contact.npub ?? "").trim();
+                const avatarUrl = npub ? nostrPictureByNpub[npub] : null;
+                const initials = getInitials(String(contact.name ?? ""));
+
                 return (
                   <article
                     key={contact.id}
@@ -653,6 +864,20 @@ const App = () => {
                     }}
                   >
                     <div className="card-header">
+                      <div className="contact-avatar" aria-hidden="true">
+                        {avatarUrl ? (
+                          <img
+                            src={avatarUrl}
+                            alt=""
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <span className="contact-avatar-fallback">
+                            {initials}
+                          </span>
+                        )}
+                      </div>
                       <div className="card-main">
                         <div className="card-title-row">
                           {contact.name ? <h4>{contact.name}</h4> : null}
