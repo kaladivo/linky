@@ -103,7 +103,15 @@ export default defineConfig({
           if (id.includes("@evolu")) return "evolu";
           if (id.includes("nostr-tools")) return "nostr";
           if (id.includes("@cashu")) return "cashu";
-          if (id.includes("buffer")) return "polyfills";
+          // Keep `buffer` and its deps together to avoid an ESM circular init:
+          // polyfills -> vendor (base64-js/ieee754) and vendor -> polyfills.
+          if (
+            id.includes("/node_modules/buffer/") ||
+            id.includes("/node_modules/base64-js/") ||
+            id.includes("/node_modules/ieee754/")
+          ) {
+            return "polyfills";
+          }
           return "vendor";
         },
       },
