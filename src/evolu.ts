@@ -18,6 +18,7 @@ export const Schema = {
     name: Evolu.nullOr(Evolu.NonEmptyString1000),
     npub: Evolu.nullOr(Evolu.NonEmptyString1000),
     lnAddress: Evolu.nullOr(Evolu.NonEmptyString1000),
+    groupName: Evolu.nullOr(Evolu.NonEmptyString1000),
   },
 };
 

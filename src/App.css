@@ -4,6 +4,10 @@
   padding: 56px 20px 72px;
 }
 
+.page.has-group-filter {
+  padding-bottom: 140px;
+}
+
 .hero {
   position: relative;
   display: flex;
@@ -323,6 +327,46 @@ button.icon {
   background: #0f172a;
   border-radius: 14px;
   padding: 14px;
+}
+
+.contact-card.is-clickable {
+  cursor: pointer;
+}
+
+.group-filter-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px 20px;
+  background: rgba(15, 23, 42, 0.9);
+  border-top: 1px solid #1f2937;
+  backdrop-filter: blur(8px);
+}
+
+.group-filter-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.group-filter-btn {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: #0b1222;
+  border: 1px solid #1f2937;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.group-filter-btn.is-active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #bfdbfe;
 }
 
 .card-header {

@@ -27,6 +27,10 @@ export const en = {
   name: "Name",
   npub: "npub",
   lightningAddress: "Lightning address",
+  group: "Group",
+
+  all: "All",
+  noGroup: "No group",
 
   saveChanges: "Save changes",
   saveContact: "Save contact",

@@ -27,6 +27,10 @@ export const cs = {
   name: "Jméno",
   npub: "npub",
   lightningAddress: "Lightning adresa",
+  group: "Skupina",
+
+  all: "Vše",
+  noGroup: "Bez skupiny",
 
   saveChanges: "Uložit změny",
   saveContact: "Uložit kontakt",
