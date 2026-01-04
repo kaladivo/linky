@@ -102,6 +102,8 @@ export const en = {
   cashuDeleted: "Token deleted.",
   cashuEmpty: "No Cashu tokens yet.",
   cashuToken: "Token",
+  cashuAddToken: "Add token",
+  coinsLabel: "coins:",
   cashuPasteManualHint: "Paste your Cashu token here",
   cashuSave: "Save token",
 

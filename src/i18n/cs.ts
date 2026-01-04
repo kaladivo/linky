@@ -103,6 +103,8 @@ export const cs = {
   cashuDeleted: "Token byl smazán.",
   cashuEmpty: "Zatím žádné Cashu tokeny.",
   cashuToken: "Token",
+  cashuAddToken: "Přidat token",
+  coinsLabel: "mince:",
   cashuPasteManualHint: "Vložte sem Cashu token",
   cashuSave: "Uložit token",
 

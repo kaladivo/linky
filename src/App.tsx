@@ -51,6 +51,8 @@ type Route =
   | { kind: "settings" }
   | { kind: "profile" }
   | { kind: "wallet" }
+  | { kind: "cashuTokenNew" }
+  | { kind: "cashuToken"; id: CashuTokenId }
   | { kind: "nostrRelays" }
   | { kind: "nostrRelay"; id: string }
   | { kind: "nostrRelayNew" }
@@ -66,6 +68,14 @@ const parseRouteFromHash = (): Route => {
   if (hash === "#settings") return { kind: "settings" };
   if (hash === "#profile") return { kind: "profile" };
   if (hash === "#wallet") return { kind: "wallet" };
+  if (hash === "#wallet/token/new") return { kind: "cashuTokenNew" };
+
+  const walletTokenPrefix = "#wallet/token/";
+  if (hash.startsWith(walletTokenPrefix)) {
+    const rest = hash.slice(walletTokenPrefix.length);
+    const id = decodeURIComponent(String(rest ?? "")).trim();
+    if (id) return { kind: "cashuToken", id: id as CashuTokenId };
+  }
   if (hash === "#nostr-relays") return { kind: "nostrRelays" };
   if (hash === "#nostr-relay/new") return { kind: "nostrRelayNew" };
 
@@ -205,6 +215,25 @@ const App = () => {
 
   const [chatDraft, setChatDraft] = useState<string>("");
   const chatSeenWrapIdsRef = React.useRef<Set<string>>(new Set());
+  const autoAcceptedChatMessageIdsRef = React.useRef<Set<string>>(new Set());
+
+  const [mintIconUrlByMint, setMintIconUrlByMint] = useState<
+    Record<string, string | null>
+  >(() => ({}));
+
+  const getMintOriginAndHost = React.useCallback(
+    (mint: unknown): { origin: string | null; host: string | null } => {
+      const raw = String(mint ?? "").trim();
+      if (!raw) return { origin: null, host: null };
+      try {
+        const u = new URL(raw);
+        return { origin: u.origin, host: u.host };
+      } catch {
+        return { origin: null, host: raw };
+      }
+    },
+    []
+  );
 
   const [myProfileName, setMyProfileName] = useState<string | null>(null);
   const [myProfilePicture, setMyProfilePicture] = useState<string | null>(null);
@@ -224,8 +253,10 @@ const App = () => {
   const nostrInFlight = React.useRef<Set<string>>(new Set());
   const nostrMetadataInFlight = React.useRef<Set<string>>(new Set());
 
-  const t = <K extends keyof typeof translations.cs>(key: K) =>
-    translations[lang][key];
+  const t = React.useCallback(
+    <K extends keyof typeof translations.cs>(key: K) => translations[lang][key],
+    [lang]
+  );
 
   const getInitials = (name: string) => {
     const normalized = name.trim();
@@ -313,6 +344,16 @@ const App = () => {
 
   const navigateToWallet = () => {
     window.location.assign("#wallet");
+  };
+
+  const navigateToCashuTokenNew = () => {
+    window.location.assign("#wallet/token/new");
+  };
+
+  const navigateToCashuToken = (id: CashuTokenId) => {
+    window.location.assign(
+      `#wallet/token/${encodeURIComponent(String(id as unknown as string))}`
+    );
   };
 
   const navigateToProfile = () => {
@@ -1693,71 +1734,74 @@ const App = () => {
     }
   };
 
-  const saveCashuFromText = async (tokenText: string) => {
-    const tokenRaw = tokenText.trim();
-    if (!tokenRaw) {
-      setStatus(t("pasteEmpty"));
-      return;
-    }
-
-    if (cashuIsBusy) return;
-    setCashuIsBusy(true);
-    setCashuDraft("");
-    setStatus(t("cashuAccepting"));
-
-    // Parse best-effort metadata for display / fallback.
-    const parsed = parseCashuToken(tokenRaw);
-    const parsedMint = parsed?.mint?.trim() ? parsed.mint.trim() : null;
-    const parsedAmount =
-      parsed?.amount && parsed.amount > 0 ? parsed.amount : null;
-
-    try {
-      const { acceptCashuToken } = await import("./cashuAccept");
-      const accepted = await acceptCashuToken(tokenRaw);
-      const result = insert("cashuToken", {
-        token: accepted.token as typeof Evolu.NonEmptyString.Type,
-        rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
-        mint: accepted.mint as typeof Evolu.NonEmptyString1000.Type,
-        unit: accepted.unit
-          ? (accepted.unit as typeof Evolu.NonEmptyString100.Type)
-          : null,
-        amount:
-          accepted.amount > 0
-            ? (accepted.amount as typeof Evolu.PositiveInt.Type)
-            : null,
-        state: "accepted" as typeof Evolu.NonEmptyString100.Type,
-        error: null,
-      });
-      if (result.ok) {
-        setStatus(t("cashuAccepted"));
-      } else {
-        setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
+  const saveCashuFromText = React.useCallback(
+    async (tokenText: string) => {
+      const tokenRaw = tokenText.trim();
+      if (!tokenRaw) {
+        setStatus(t("pasteEmpty"));
+        return;
       }
-    } catch (error) {
-      const message = String(error).trim() || "Accept failed";
-      const result = insert("cashuToken", {
-        token: tokenRaw as typeof Evolu.NonEmptyString.Type,
-        rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
-        mint: parsedMint
-          ? (parsedMint as typeof Evolu.NonEmptyString1000.Type)
-          : null,
-        unit: null,
-        amount:
-          typeof parsedAmount === "number"
-            ? (parsedAmount as typeof Evolu.PositiveInt.Type)
+
+      if (cashuIsBusy) return;
+      setCashuIsBusy(true);
+      setCashuDraft("");
+      setStatus(t("cashuAccepting"));
+
+      // Parse best-effort metadata for display / fallback.
+      const parsed = parseCashuToken(tokenRaw);
+      const parsedMint = parsed?.mint?.trim() ? parsed.mint.trim() : null;
+      const parsedAmount =
+        parsed?.amount && parsed.amount > 0 ? parsed.amount : null;
+
+      try {
+        const { acceptCashuToken } = await import("./cashuAccept");
+        const accepted = await acceptCashuToken(tokenRaw);
+        const result = insert("cashuToken", {
+          token: accepted.token as typeof Evolu.NonEmptyString.Type,
+          rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
+          mint: accepted.mint as typeof Evolu.NonEmptyString1000.Type,
+          unit: accepted.unit
+            ? (accepted.unit as typeof Evolu.NonEmptyString100.Type)
             : null,
-        state: "error" as typeof Evolu.NonEmptyString100.Type,
-        error: message.slice(0, 1000) as typeof Evolu.NonEmptyString1000.Type,
-      });
-      if (result.ok) {
-        setStatus(`${t("cashuAcceptFailed")}: ${message}`);
-      } else {
-        setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
+          amount:
+            accepted.amount > 0
+              ? (accepted.amount as typeof Evolu.PositiveInt.Type)
+              : null,
+          state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+          error: null,
+        });
+        if (result.ok) {
+          setStatus(t("cashuAccepted"));
+        } else {
+          setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
+        }
+      } catch (error) {
+        const message = String(error).trim() || "Accept failed";
+        const result = insert("cashuToken", {
+          token: tokenRaw as typeof Evolu.NonEmptyString.Type,
+          rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
+          mint: parsedMint
+            ? (parsedMint as typeof Evolu.NonEmptyString1000.Type)
+            : null,
+          unit: null,
+          amount:
+            typeof parsedAmount === "number"
+              ? (parsedAmount as typeof Evolu.PositiveInt.Type)
+              : null,
+          state: "error" as typeof Evolu.NonEmptyString100.Type,
+          error: message.slice(0, 1000) as typeof Evolu.NonEmptyString1000.Type,
+        });
+        if (result.ok) {
+          setStatus(`${t("cashuAcceptFailed")}: ${message}`);
+        } else {
+          setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
+        }
+      } finally {
+        setCashuIsBusy(false);
       }
-    } finally {
-      setCashuIsBusy(false);
-    }
-  };
+    },
+    [cashuIsBusy, insert, t]
+  );
 
   const handleDelete = (id: ContactId) => {
     const result = update("contact", { id, isDeleted: Evolu.sqliteTrue });
@@ -1774,6 +1818,9 @@ const App = () => {
     if (result.ok) {
       setStatus(t("cashuDeleted"));
       setPendingCashuDeleteId(null);
+      if (route.kind === "cashuToken") {
+        navigateToWallet();
+      }
       return;
     }
     setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
@@ -2296,6 +2343,14 @@ const App = () => {
       };
     }
 
+    if (route.kind === "cashuTokenNew" || route.kind === "cashuToken") {
+      return {
+        icon: "<",
+        label: t("close"),
+        onClick: navigateToWallet,
+      };
+    }
+
     if (route.kind === "nostrRelays") {
       return {
         icon: "<",
@@ -2376,6 +2431,14 @@ const App = () => {
       };
     }
 
+    if (route.kind === "wallet") {
+      return {
+        icon: "+",
+        label: t("cashuAddToken"),
+        onClick: navigateToCashuTokenNew,
+      };
+    }
+
     if (route.kind === "contact" && selectedContact) {
       return {
         icon: "✎",
@@ -2410,6 +2473,8 @@ const App = () => {
   const topbarTitle = (() => {
     if (route.kind === "contacts") return t("contactsTitle");
     if (route.kind === "wallet") return t("wallet");
+    if (route.kind === "cashuTokenNew") return t("cashuToken");
+    if (route.kind === "cashuToken") return t("cashuToken");
     if (route.kind === "settings") return t("menu");
     if (route.kind === "profile") return t("profile");
     if (route.kind === "nostrRelays") return t("nostrRelay");
@@ -2541,6 +2606,107 @@ const App = () => {
     navigateToNostrRelays();
   };
 
+  const getMintIconUrl = React.useCallback(
+    (
+      mint: unknown
+    ): { origin: string | null; url: string | null; host: string | null } => {
+      const { origin, host } = getMintOriginAndHost(mint);
+      if (!origin) return { origin: null, url: null, host };
+
+      if (Object.prototype.hasOwnProperty.call(mintIconUrlByMint, origin)) {
+        const stored = mintIconUrlByMint[origin];
+        return { origin, url: stored ?? null, host };
+      }
+
+      return { origin, url: `${origin}/favicon.ico`, host };
+    },
+    [getMintOriginAndHost, mintIconUrlByMint]
+  );
+
+  React.useEffect(() => {
+    // Resolve per-mint icon URLs for token pills (best-effort).
+    const mints = new Set<string>();
+    for (const token of cashuTokens) {
+      const mintValue = (token as unknown as { mint?: unknown } | null)?.mint;
+      const { origin } = getMintOriginAndHost(mintValue);
+      if (!origin) continue;
+      mints.add(origin);
+    }
+
+    const missing = Array.from(mints).filter((origin) => {
+      return !Object.prototype.hasOwnProperty.call(mintIconUrlByMint, origin);
+    });
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+
+    const resolveIconFromInfo = (
+      origin: string,
+      data: unknown
+    ): string | null => {
+      const obj =
+        data && typeof data === "object"
+          ? (data as Record<string, unknown>)
+          : null;
+
+      const candidateRaw =
+        (obj &&
+          (obj["icon_url"] ??
+            obj["iconUrl"] ??
+            obj["icon"] ??
+            obj["logo_url"] ??
+            obj["logoUrl"] ??
+            obj["logo"])) ??
+        null;
+      const candidate = String(candidateRaw ?? "").trim();
+      if (!candidate) return null;
+
+      try {
+        return new URL(candidate, origin).toString();
+      } catch {
+        return null;
+      }
+    };
+
+    const run = async () => {
+      const updates: Record<string, string | null> = {};
+
+      for (const origin of missing) {
+        let resolved: string | null = null;
+        try {
+          const infoUrls = [`${origin}/v1/info`, `${origin}/info`];
+          for (const url of infoUrls) {
+            try {
+              const res = await fetch(url, {
+                method: "GET",
+                headers: { Accept: "application/json" },
+              });
+              if (!res.ok) continue;
+              const data = (await res.json()) as unknown;
+              resolved = resolveIconFromInfo(origin, data);
+              if (resolved) break;
+            } catch {
+              // try next endpoint
+            }
+          }
+        } catch {
+          // ignore
+        }
+
+        // If we didn't find anything via /info, fall back to favicon.
+        updates[origin] = resolved ?? `${origin}/favicon.ico`;
+      }
+
+      if (cancelled) return;
+      setMintIconUrlByMint((prev) => ({ ...prev, ...updates }));
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [cashuTokens, getMintOriginAndHost, mintIconUrlByMint]);
+
   const requestDeleteSelectedRelay = () => {
     if (route.kind !== "nostrRelay") return;
     if (!selectedRelayUrl) return;
@@ -2568,6 +2734,159 @@ const App = () => {
 
   const displayUnit = useBitcoinSymbol ? "₿" : "sat";
 
+  const chatTopbarContact =
+    route.kind === "chat" && selectedContact ? selectedContact : null;
+
+  const formatChatDayLabel = (ms: number): string => {
+    const d = new Date(ms);
+    const now = new Date();
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    ).getTime();
+    const startOfThatDay = new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate()
+    ).getTime();
+
+    const diffDays = Math.round((startOfToday - startOfThatDay) / 86_400_000);
+    if (diffDays === 0) return lang === "cs" ? "Dnes" : "Today";
+    if (diffDays === 1) return lang === "cs" ? "Včera" : "Yesterday";
+
+    const locale = lang === "cs" ? "cs-CZ" : "en-US";
+    const weekday = new Intl.DateTimeFormat(locale, {
+      weekday: "short",
+    }).format(d);
+    const day = d.getDate();
+    const month = d.getMonth() + 1;
+    // Match desired style like "Pá 2. 1." (cs) / "Fri 1/2" (en-ish).
+    if (lang === "cs") return `${weekday} ${day}. ${month}.`;
+    return `${weekday} ${month}/${day}`;
+  };
+
+  const extractCashuTokenFromText = React.useCallback(
+    (text: string): string | null => {
+      const raw = text.trim();
+      if (!raw) return null;
+      if (parseCashuToken(raw)) return raw;
+
+      // Try to find token embedded in text.
+      for (const m of raw.matchAll(/cashu[0-9A-Za-z_-]+/g)) {
+        const candidate = String(m[0] ?? "").trim();
+        if (candidate && parseCashuToken(candidate)) return candidate;
+      }
+
+      // Some clients wrap long tokens by inserting whitespace/newlines.
+      const compact = raw.replace(/\s+/g, "");
+      if (compact && compact !== raw) {
+        if (parseCashuToken(compact)) return compact;
+        for (const m of compact.matchAll(/cashu[0-9A-Za-z_-]+/g)) {
+          const candidate = String(m[0] ?? "").trim();
+          if (candidate && parseCashuToken(candidate)) return candidate;
+        }
+      }
+
+      // Fallback: try JSON token embedded in text.
+      const firstBrace = raw.indexOf("{");
+      const lastBrace = raw.lastIndexOf("}");
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        const candidate = raw.slice(firstBrace, lastBrace + 1).trim();
+        if (candidate && parseCashuToken(candidate)) return candidate;
+      }
+
+      return null;
+    },
+    []
+  );
+
+  const getCashuTokenMessageInfo = React.useCallback(
+    (
+      text: string
+    ): {
+      tokenRaw: string;
+      mintDisplay: string | null;
+      amount: number | null;
+      isValid: boolean;
+    } | null => {
+      const tokenRaw = extractCashuTokenFromText(text);
+      if (!tokenRaw) return null;
+      const parsed = parseCashuToken(tokenRaw);
+      if (!parsed) return null;
+
+      const mintDisplay = (() => {
+        const mintText = String(parsed.mint ?? "").trim();
+        if (!mintText) return null;
+        try {
+          return new URL(mintText).host;
+        } catch {
+          return mintText;
+        }
+      })();
+
+      const known = cashuTokensAll.some((row) => {
+        const r = row as unknown as {
+          rawToken?: unknown;
+          token?: unknown;
+          isDeleted?: unknown;
+        };
+        if (r.isDeleted) return false;
+        const stored = String(r.rawToken ?? r.token ?? "").trim();
+        return stored && stored === tokenRaw;
+      });
+
+      return {
+        tokenRaw,
+        mintDisplay,
+        amount: Number.isFinite(parsed.amount) ? parsed.amount : null,
+        // Best-effort: "valid" means not yet imported into wallet.
+        isValid: !known,
+      };
+    },
+    [cashuTokensAll, extractCashuTokenFromText]
+  );
+
+  React.useEffect(() => {
+    // Auto-accept Cashu tokens received from others into the wallet.
+    if (route.kind !== "chat") return;
+    if (cashuIsBusy) return;
+
+    for (let i = chatMessages.length - 1; i >= 0; i -= 1) {
+      const m = chatMessages[i];
+      const id = String((m as unknown as { id?: unknown } | null)?.id ?? "");
+      if (!id) continue;
+      if (autoAcceptedChatMessageIdsRef.current.has(id)) continue;
+
+      const isOut =
+        String(
+          (m as unknown as { direction?: unknown } | null)?.direction ?? ""
+        ) === "out";
+      if (isOut) continue;
+
+      const content = String(
+        (m as unknown as { content?: unknown } | null)?.content ?? ""
+      );
+      const info = getCashuTokenMessageInfo(content);
+      if (!info) continue;
+
+      // Mark it as processed so we don't keep retrying every render.
+      autoAcceptedChatMessageIdsRef.current.add(id);
+
+      // Only accept if it's not already in our wallet.
+      if (!info.isValid) continue;
+
+      void saveCashuFromText(info.tokenRaw);
+      break;
+    }
+  }, [
+    cashuIsBusy,
+    chatMessages,
+    getCashuTokenMessageInfo,
+    route.kind,
+    saveCashuFromText,
+  ]);
+
   return (
     <div className={showGroupFilter ? "page has-group-filter" : "page"}>
       <header className="topbar">
@@ -2580,7 +2899,32 @@ const App = () => {
           <span aria-hidden="true">{topbar.icon}</span>
         </button>
 
-        {topbarTitle ? (
+        {chatTopbarContact ? (
+          <div className="topbar-chat" aria-label={t("messagesTitle")}>
+            <span className="topbar-chat-avatar" aria-hidden="true">
+              {(() => {
+                const npub = String(chatTopbarContact.npub ?? "").trim();
+                const url = npub ? nostrPictureByNpub[npub] : null;
+                return url ? (
+                  <img
+                    src={url}
+                    alt=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span className="topbar-chat-avatar-fallback">
+                    {getInitials(String(chatTopbarContact.name ?? ""))}
+                  </span>
+                );
+              })()}
+            </span>
+            <span className="topbar-chat-name">
+              {String(chatTopbarContact.name ?? "").trim() ||
+                t("messagesTitle")}
+            </span>
+          </div>
+        ) : topbarTitle ? (
           <div className="topbar-title" aria-label={topbarTitle}>
             {topbarTitle}
           </div>
@@ -2897,7 +3241,80 @@ const App = () => {
               </div>
             </div>
           </div>
+          <div className="ln-list">
+            {cashuTokens.length === 0 ? (
+              <p className="muted">{t("cashuEmpty")}</p>
+            ) : (
+              <div className="ln-tags">
+                {cashuTokens.map((token) => (
+                  <button
+                    key={token.id as unknown as CashuTokenId}
+                    className="pill"
+                    onClick={() =>
+                      navigateToCashuToken(token.id as unknown as CashuTokenId)
+                    }
+                    style={{ cursor: "pointer" }}
+                    aria-label={t("cashuToken")}
+                  >
+                    {(() => {
+                      const amount =
+                        Number((token.amount ?? 0) as unknown as number) || 0;
+                      const icon = getMintIconUrl(token.mint);
+                      const showMintFallback = !icon.url;
+                      return (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          {icon.url ? (
+                            <img
+                              src={icon.url}
+                              alt=""
+                              width={14}
+                              height={14}
+                              style={{ borderRadius: 9999, objectFit: "cover" }}
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                (
+                                  e.currentTarget as HTMLImageElement
+                                ).style.display = "none";
+                                if (icon.origin) {
+                                  setMintIconUrlByMint((prev) => ({
+                                    ...prev,
+                                    [icon.origin as string]: null,
+                                  }));
+                                }
+                              }}
+                            />
+                          ) : null}
+                          {showMintFallback && icon.host ? (
+                            <span
+                              className="muted"
+                              style={{ fontSize: 10, lineHeight: "14px" }}
+                            >
+                              {icon.host}
+                            </span>
+                          ) : null}
+                          <span>{formatInteger(amount)}</span>
+                        </span>
+                      );
+                    })()}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
+          {status && <p className="status">{status}</p>}
+        </section>
+      )}
+
+      {route.kind === "cashuTokenNew" && (
+        <section className="panel">
           <label>{t("cashuToken")}</label>
           <textarea
             ref={cashuDraftRef}
@@ -2913,60 +3330,82 @@ const App = () => {
             placeholder={t("cashuPasteManualHint")}
           />
 
-          <div className="ln-list">
-            {cashuTokens.length === 0 ? (
-              <p className="muted">{t("cashuEmpty")}</p>
-            ) : (
-              cashuTokens.map((token) => (
-                <div
-                  key={token.id as unknown as CashuTokenId}
-                  className="ln-row"
-                >
-                  <div className="card-main">
-                    <h4 className="cashu-mint">
-                      {token.mint ? String(token.mint) : t("cashuToken")}
-                    </h4>
-                    {token.error ? (
-                      <p className="muted">
-                        {t("errorPrefix")}: {String(token.error)}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="ln-actions">
-                    <span className="pill">
-                      {formatInteger(
-                        Number((token.amount ?? 0) as unknown as number) || 0
-                      )}
-                    </span>
-                    <button
-                      className="ghost"
-                      onClick={() => copyText(String(token.token ?? ""))}
-                      disabled={!String(token.token ?? "").trim()}
-                    >
-                      {t("copy")}
-                    </button>
-                    <button
-                      className={
-                        pendingCashuDeleteId ===
-                        (token.id as unknown as CashuTokenId)
-                          ? "danger"
-                          : "secondary"
-                      }
-                      onClick={() =>
-                        requestDeleteCashuToken(
-                          token.id as unknown as CashuTokenId
-                        )
-                      }
-                    >
-                      {t("delete")}
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
+          <div className="settings-row">
+            <button
+              className="btn-wide"
+              onClick={() => void saveCashuFromText(cashuDraft)}
+              disabled={!cashuDraft.trim() || cashuIsBusy}
+            >
+              {t("cashuSave")}
+            </button>
           </div>
 
           {status && <p className="status">{status}</p>}
+        </section>
+      )}
+
+      {route.kind === "cashuToken" && (
+        <section className="panel">
+          {(() => {
+            const row = cashuTokensAll.find(
+              (tkn) =>
+                String((tkn as any)?.id ?? "") ===
+                  String(route.id as unknown as string) &&
+                !(tkn as any)?.isDeleted
+            );
+
+            if (!row) {
+              return <p className="muted">{t("errorPrefix")}</p>;
+            }
+
+            const tokenText = String((row as any).rawToken ?? row.token ?? "");
+            const mintText = String((row as any).mint ?? "").trim();
+            const mintDisplay = (() => {
+              if (!mintText) return null;
+              try {
+                return new URL(mintText).host;
+              } catch {
+                return mintText;
+              }
+            })();
+
+            return (
+              <>
+                {mintDisplay ? (
+                  <p className="muted" style={{ margin: "0 0 10px" }}>
+                    {mintDisplay}
+                  </p>
+                ) : null}
+                <label>{t("cashuToken")}</label>
+                <textarea readOnly value={tokenText} />
+
+                <div className="settings-row">
+                  <button
+                    className="btn-wide secondary"
+                    onClick={() => void copyText(tokenText)}
+                    disabled={!tokenText.trim()}
+                  >
+                    {t("copy")}
+                  </button>
+                </div>
+
+                <div className="settings-row">
+                  <button
+                    className={
+                      pendingCashuDeleteId === (route.id as CashuTokenId)
+                        ? "btn-wide secondary danger-armed"
+                        : "btn-wide secondary"
+                    }
+                    onClick={() => requestDeleteCashuToken(route.id)}
+                  >
+                    {t("delete")}
+                  </button>
+                </div>
+
+                {status && <p className="status">{status}</p>}
+              </>
+            );
+          })()}
         </section>
       )}
 
@@ -3210,37 +3649,6 @@ const App = () => {
 
           {selectedContact ? (
             <>
-              <div className="contact-header">
-                <div className="contact-avatar is-large" aria-hidden="true">
-                  {(() => {
-                    const npub = String(selectedContact.npub ?? "").trim();
-                    const url = npub ? nostrPictureByNpub[npub] : null;
-                    return url ? (
-                      <img
-                        src={url}
-                        alt=""
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <span className="contact-avatar-fallback">
-                        {getInitials(String(selectedContact.name ?? ""))}
-                      </span>
-                    );
-                  })()}
-                </div>
-                <div className="contact-header-text">
-                  {selectedContact.name ? (
-                    <h3>{selectedContact.name}</h3>
-                  ) : null}
-                  {(() => {
-                    const npub = String(selectedContact.npub ?? "").trim();
-                    if (!npub) return null;
-                    return <p className="muted profile-npub">{npub}</p>;
-                  })()}
-                </div>
-              </div>
-
               {(() => {
                 const npub = String(selectedContact.npub ?? "").trim();
                 if (npub) return null;
@@ -3251,15 +3659,101 @@ const App = () => {
                 {chatMessages.length === 0 ? (
                   <p className="muted">{t("chatEmpty")}</p>
                 ) : (
-                  chatMessages.map((m) => {
+                  chatMessages.map((m, idx) => {
                     const isOut = String(m.direction ?? "") === "out";
+                    const content = String(m.content ?? "");
+                    const createdAtSec = Number(m.createdAtSec ?? 0) || 0;
+                    const ms = createdAtSec * 1000;
+                    const d = new Date(ms);
+                    const dayKey = `${d.getFullYear()}-${
+                      d.getMonth() + 1
+                    }-${d.getDate()}`;
+                    const minuteKey = Math.floor(createdAtSec / 60);
+
+                    const prev = idx > 0 ? chatMessages[idx - 1] : null;
+                    const prevSec = prev
+                      ? Number(prev.createdAtSec ?? 0) || 0
+                      : 0;
+                    const prevDate = prev ? new Date(prevSec * 1000) : null;
+                    const prevDayKey = prevDate
+                      ? `${prevDate.getFullYear()}-${
+                          prevDate.getMonth() + 1
+                        }-${prevDate.getDate()}`
+                      : null;
+
+                    const next =
+                      idx + 1 < chatMessages.length
+                        ? chatMessages[idx + 1]
+                        : null;
+                    const nextSec = next
+                      ? Number(next.createdAtSec ?? 0) || 0
+                      : 0;
+                    const nextMinuteKey = next
+                      ? Math.floor(nextSec / 60)
+                      : null;
+
+                    const showDaySeparator = prevDayKey !== dayKey;
+                    const showTime = nextMinuteKey !== minuteKey;
+
+                    const locale = lang === "cs" ? "cs-CZ" : "en-US";
+                    const timeLabel = new Intl.DateTimeFormat(locale, {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }).format(d);
+
+                    const tokenInfo = getCashuTokenMessageInfo(content);
+                    const tokenValidLabel =
+                      lang === "cs"
+                        ? tokenInfo?.isValid
+                          ? "Platný"
+                          : "Už přijatý"
+                        : tokenInfo?.isValid
+                        ? "Valid"
+                        : "Already accepted";
+
                     return (
-                      <div
-                        key={String(m.id)}
-                        className={isOut ? "chat-bubble out" : "chat-bubble in"}
-                      >
-                        {String(m.content ?? "")}
-                      </div>
+                      <React.Fragment key={String(m.id)}>
+                        {showDaySeparator ? (
+                          <div
+                            className="chat-day-separator"
+                            aria-hidden="true"
+                          >
+                            {formatChatDayLabel(ms)}
+                          </div>
+                        ) : null}
+
+                        <div
+                          className={
+                            isOut ? "chat-message out" : "chat-message in"
+                          }
+                        >
+                          <div
+                            className={
+                              isOut ? "chat-bubble out" : "chat-bubble in"
+                            }
+                          >
+                            {tokenInfo ? (
+                              <div className="chat-token">
+                                <div className="chat-token-title">
+                                  {tokenInfo.mintDisplay ?? "—"}
+                                </div>
+                                <div className="chat-token-amount">
+                                  {formatInteger(tokenInfo.amount ?? 0)} sat
+                                </div>
+                                <div className="chat-token-status">
+                                  {tokenValidLabel}
+                                </div>
+                              </div>
+                            ) : (
+                              content
+                            )}
+                          </div>
+
+                          {showTime ? (
+                            <div className="chat-time">{timeLabel}</div>
+                          ) : null}
+                        </div>
+                      </React.Fragment>
                     );
                   })
                 )}
