@@ -98,6 +98,7 @@ const externalAppOwner = initialMnemonic
 export const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   name: SimpleName.orThrow("linky"),
   // Použijeme default free sync server
+  enableLogging: import.meta.env.DEV,
   ...(externalAppOwner ? { externalAppOwner } : {}),
 });
 

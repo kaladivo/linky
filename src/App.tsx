@@ -1,5 +1,5 @@
 import * as Evolu from "@evolu/common";
-import { useQuery } from "@evolu/react";
+import { useOwner, useQuery } from "@evolu/react";
 import { entropyToMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
 import type { Event as NostrToolsEvent, UnsignedEvent } from "nostr-tools";
@@ -33,6 +33,13 @@ type ContactFormState = {
 
 const UNIT_TOGGLE_STORAGE_KEY = "linky_use_btc_symbol";
 const NOSTR_NSEC_STORAGE_KEY = "linky.nostr_nsec";
+
+const LazyLottie = React.lazy(async () => {
+  const mod = await import("./Lottie");
+  return {
+    default: (mod as unknown as { default: React.ComponentType<any> }).default,
+  };
+});
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object") return null;
@@ -133,7 +140,7 @@ const parseRouteFromHash = (): Route => {
 };
 
 const App = () => {
-  const { insert, update } = useEvolu();
+  const { insert, update, upsert } = useEvolu();
 
   const NO_GROUP_FILTER = "__linky_no_group__";
 
@@ -167,8 +174,54 @@ const App = () => {
   const [currentNsec] = useState<string | null>(() => getInitialNostrNsec());
   const [currentNpub, setCurrentNpub] = useState<string | null>(null);
 
-  const [onboardingNsec, setOnboardingNsec] = useState<string>("");
+  // Evolu is local-first; to get automatic cross-device/browser sync you must
+  // "use" an owner (which starts syncing over configured transports).
+  // We only enable it after the user has an nsec (our identity gate).
+  const [syncOwner, setSyncOwner] = useState<Evolu.SyncOwner | null>(null);
+  React.useEffect(() => {
+    if (!currentNsec) {
+      setSyncOwner(null);
+      return;
+    }
+
+    let cancelled = false;
+    void evolu.appOwner
+      .then((owner) => {
+        if (cancelled) return;
+        setSyncOwner(owner as unknown as Evolu.SyncOwner);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSyncOwner(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentNsec]);
+
+  useOwner(syncOwner);
+
+  const appOwnerId =
+    (syncOwner as unknown as { id?: Evolu.OwnerId } | null)?.id ?? null;
+
   const [onboardingIsBusy, setOnboardingIsBusy] = useState(false);
+
+  React.useEffect(() => {
+    // Surface Evolu sync/storage issues (network errors, protocol errors, etc.)
+    // so cross-browser sync debugging is straightforward.
+    const unsub = evolu.subscribeError(() => {
+      const err = evolu.getError();
+      if (err) console.log("[linky][evolu] error", err);
+    });
+    return () => {
+      try {
+        unsub();
+      } catch {
+        // ignore
+      }
+    };
+  }, []);
 
   const [nostrPictureByNpub, setNostrPictureByNpub] = useState<
     Record<string, string | null>
@@ -587,6 +640,71 @@ const App = () => {
   );
 
   const contacts = useQuery(contactsQuery);
+
+  React.useEffect(() => {
+    // One-time migration: if this device/browser previously created contacts
+    // under a different (random) owner, they will never sync to other browsers
+    // even after we restore the AppOwner.
+    // Re-emitting contacts via upsert with the correct ownerId makes them
+    // available to sync transports.
+    if (!currentNsec) return;
+    if (!appOwnerId) return;
+    if (contacts.length === 0) return;
+
+    const ownerKey = String(appOwnerId);
+    const migrationKey = `linky.contacts_owner_migrated_v1:${ownerKey}`;
+
+    try {
+      if (localStorage.getItem(migrationKey) === "1") return;
+    } catch {
+      // ignore
+    }
+
+    let okCount = 0;
+    let failCount = 0;
+
+    for (const c of contacts) {
+      const payload = {
+        id: c.id as ContactId,
+        name: String(c.name ?? "").trim()
+          ? (String(
+              c.name ?? ""
+            ).trim() as typeof Evolu.NonEmptyString1000.Type)
+          : null,
+        npub: String(c.npub ?? "").trim()
+          ? (String(
+              c.npub ?? ""
+            ).trim() as typeof Evolu.NonEmptyString1000.Type)
+          : null,
+        lnAddress: String(c.lnAddress ?? "").trim()
+          ? (String(
+              c.lnAddress ?? ""
+            ).trim() as typeof Evolu.NonEmptyString1000.Type)
+          : null,
+        groupName: String(c.groupName ?? "").trim()
+          ? (String(
+              c.groupName ?? ""
+            ).trim() as typeof Evolu.NonEmptyString1000.Type)
+          : null,
+      };
+
+      const r = upsert("contact", payload, { ownerId: appOwnerId });
+      if (r.ok) okCount += 1;
+      else failCount += 1;
+    }
+
+    try {
+      localStorage.setItem(migrationKey, "1");
+    } catch {
+      // ignore
+    }
+
+    console.log("[linky][evolu] migrated contacts to appOwner", {
+      ownerId: ownerKey.length > 10 ? `${ownerKey.slice(0, 10)}…` : ownerKey,
+      ok: okCount,
+      failed: failCount,
+    });
+  }, [appOwnerId, contacts, currentNsec, upsert]);
 
   React.useEffect(() => {
     const nsec = String(currentNsec ?? "").trim();
@@ -1909,7 +2027,13 @@ const App = () => {
   );
 
   const handleDelete = (id: ContactId) => {
-    const result = update("contact", { id, isDeleted: Evolu.sqliteTrue });
+    const result = appOwnerId
+      ? update(
+          "contact",
+          { id, isDeleted: Evolu.sqliteTrue },
+          { ownerId: appOwnerId }
+        )
+      : update("contact", { id, isDeleted: Evolu.sqliteTrue });
     if (result.ok) {
       setStatus(t("contactDeleted"));
       pushToast(t("contactDeleted"));
@@ -1992,6 +2116,105 @@ const App = () => {
     []
   );
 
+  React.useEffect(() => {
+    if (!currentNsec) return;
+    let cancelled = false;
+
+    (async () => {
+      const nsec = String(currentNsec).trim();
+      const storedMnemonic = (() => {
+        try {
+          return String(
+            localStorage.getItem(INITIAL_MNEMONIC_STORAGE_KEY) ?? ""
+          ).trim();
+        } catch {
+          return "";
+        }
+      })();
+
+      const derivedMnemonic = await deriveEvoluMnemonicFromNsec(nsec);
+      if (cancelled) return;
+
+      const ownerSecretPreview = (() => {
+        if (!derivedMnemonic) return null;
+        try {
+          const ownerSecret = Evolu.mnemonicToOwnerSecret(
+            derivedMnemonic as unknown as Evolu.Mnemonic
+          ) as unknown;
+
+          if (ownerSecret instanceof Uint8Array) {
+            const hex = Array.from(ownerSecret.slice(0, 8))
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join("");
+            return `${hex}…`;
+          }
+
+          const s = String(ownerSecret);
+          return s.length > 24 ? `${s.slice(0, 24)}…` : s;
+        } catch {
+          return null;
+        }
+      })();
+
+      const evoluOwnerInfo = await (async () => {
+        try {
+          const owner = await evolu.appOwner;
+          const ownerId = String((owner as unknown as { id?: unknown })?.id);
+          return ownerId ? ownerId : null;
+        } catch {
+          return null;
+        }
+      })();
+
+      const expectedOwnerId = (() => {
+        if (!derivedMnemonic) return null;
+        try {
+          const appOwner = Evolu.createAppOwner(
+            Evolu.mnemonicToOwnerSecret(
+              derivedMnemonic as unknown as Evolu.Mnemonic
+            ) as unknown as Evolu.OwnerSecret
+          ) as unknown as { id?: unknown };
+
+          const id = String(appOwner?.id ?? "").trim();
+          return id ? id : null;
+        } catch {
+          return null;
+        }
+      })();
+
+      const previewId = (id: string | null) =>
+        id ? (id.length > 10 ? `${id.slice(0, 10)}…` : id) : null;
+
+      console.log("[linky][debug] identity", {
+        origin: globalThis.location?.origin ?? null,
+        href: globalThis.location?.href ?? null,
+        npub: currentNpub,
+        hasNsec: Boolean(nsec),
+        contactsCount: contacts.length,
+        contactsIdPreview: contacts.slice(0, 5).map((c) => c.id),
+        evoluAppOwnerId: previewId(evoluOwnerInfo),
+        expectedAppOwnerId: previewId(expectedOwnerId),
+        appOwnerMatchesExpected: Boolean(
+          evoluOwnerInfo &&
+            expectedOwnerId &&
+            evoluOwnerInfo === expectedOwnerId
+        ),
+        storedMnemonic: storedMnemonic || null,
+        derivedMnemonic: derivedMnemonic ?? null,
+        mnemonicMatches: Boolean(
+          derivedMnemonic &&
+            storedMnemonic &&
+            derivedMnemonic === storedMnemonic
+        ),
+        ownerSecretPreview,
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contacts.length, currentNpub, currentNsec, deriveEvoluMnemonicFromNsec]);
+
   const setIdentityFromNsecAndReload = React.useCallback(
     async (nsec: string) => {
       const raw = String(nsec ?? "").trim();
@@ -2011,6 +2234,21 @@ const App = () => {
         localStorage.setItem(INITIAL_MNEMONIC_STORAGE_KEY, mnemonic);
       } catch {
         // ignore
+      }
+
+      // Important: a browser that opened Linky before setting the mnemonic
+      // will have a random persisted Evolu AppOwner in its local DB. If we just
+      // set localStorage and reload, Evolu may keep using that persisted owner,
+      // causing "same nsec, different contacts" across browsers.
+      // Restoring the AppOwner ensures the DB owner matches the mnemonic.
+      try {
+        await evolu.restoreAppOwner(mnemonic as unknown as Evolu.Mnemonic, {
+          reload: false,
+        });
+      } catch (e) {
+        console.log("[linky][evolu] restoreAppOwner failed", {
+          error: String(e ?? "unknown"),
+        });
       }
 
       try {
@@ -2058,15 +2296,27 @@ const App = () => {
     }
   }, [onboardingIsBusy, pushToast, setIdentityFromNsecAndReload, t]);
 
-  const useExistingNsec = React.useCallback(async () => {
+  const pasteExistingNsec = React.useCallback(async () => {
     if (onboardingIsBusy) return;
     setOnboardingIsBusy(true);
     try {
-      await setIdentityFromNsecAndReload(onboardingNsec);
+      if (!navigator.clipboard?.readText) {
+        pushToast(t("pasteNotAvailable"));
+        return;
+      }
+      const text = await navigator.clipboard.readText();
+      const raw = String(text ?? "").trim();
+      if (!raw) {
+        pushToast(t("pasteEmpty"));
+        return;
+      }
+      await setIdentityFromNsecAndReload(raw);
+    } catch {
+      pushToast(t("pasteNotAvailable"));
     } finally {
       setOnboardingIsBusy(false);
     }
-  }, [onboardingIsBusy, onboardingNsec, setIdentityFromNsecAndReload]);
+  }, [onboardingIsBusy, pushToast, setIdentityFromNsecAndReload, t]);
 
   const requestLogout = React.useCallback(() => {
     if (!logoutArmed) {
@@ -2142,7 +2392,13 @@ const App = () => {
     };
 
     if (editingId) {
-      const result = update("contact", { id: editingId, ...payload });
+      const result = appOwnerId
+        ? update(
+            "contact",
+            { id: editingId, ...payload },
+            { ownerId: appOwnerId }
+          )
+        : update("contact", { id: editingId, ...payload });
       if (result.ok) {
         setStatus(t("contactUpdated"));
         pushToast(t("contactUpdated"));
@@ -2150,7 +2406,9 @@ const App = () => {
         setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
       }
     } else {
-      const result = insert("contact", payload);
+      const result = appOwnerId
+        ? insert("contact", payload, { ownerId: appOwnerId })
+        : insert("contact", payload);
       if (result.ok) {
         setStatus(t("contactSaved"));
         pushToast(t("contactSaved"));
@@ -2346,10 +2604,14 @@ const App = () => {
                 : null),
           };
 
-          const r = update("contact", merged);
+          const r = appOwnerId
+            ? update("contact", merged, { ownerId: appOwnerId })
+            : update("contact", merged);
           if (r.ok) updatedContacts += 1;
         } else {
-          const r = insert("contact", payload);
+          const r = appOwnerId
+            ? insert("contact", payload, { ownerId: appOwnerId })
+            : insert("contact", payload);
           if (r.ok) addedContacts += 1;
         }
       }
@@ -2958,90 +3220,6 @@ const App = () => {
     [getMintOriginAndHost, mintIconUrlByMint]
   );
 
-  React.useEffect(() => {
-    // Resolve per-mint icon URLs for token pills (best-effort).
-    const mints = new Set<string>();
-    for (const token of cashuTokens) {
-      const mintValue = (token as unknown as { mint?: unknown } | null)?.mint;
-      const { origin } = getMintOriginAndHost(mintValue);
-      if (!origin) continue;
-      mints.add(origin);
-    }
-
-    const missing = Array.from(mints).filter((origin) => {
-      return !Object.prototype.hasOwnProperty.call(mintIconUrlByMint, origin);
-    });
-    if (missing.length === 0) return;
-
-    let cancelled = false;
-
-    const resolveIconFromInfo = (
-      origin: string,
-      data: unknown
-    ): string | null => {
-      const obj =
-        data && typeof data === "object"
-          ? (data as Record<string, unknown>)
-          : null;
-
-      const candidateRaw =
-        (obj &&
-          (obj["icon_url"] ??
-            obj["iconUrl"] ??
-            obj["icon"] ??
-            obj["logo_url"] ??
-            obj["logoUrl"] ??
-            obj["logo"])) ??
-        null;
-      const candidate = String(candidateRaw ?? "").trim();
-      if (!candidate) return null;
-
-      try {
-        return new URL(candidate, origin).toString();
-      } catch {
-        return null;
-      }
-    };
-
-    const run = async () => {
-      const updates: Record<string, string | null> = {};
-
-      for (const origin of missing) {
-        let resolved: string | null = null;
-        try {
-          const infoUrls = [`${origin}/v1/info`, `${origin}/info`];
-          for (const url of infoUrls) {
-            try {
-              const res = await fetch(url, {
-                method: "GET",
-                headers: { Accept: "application/json" },
-              });
-              if (!res.ok) continue;
-              const data = (await res.json()) as unknown;
-              resolved = resolveIconFromInfo(origin, data);
-              if (resolved) break;
-            } catch {
-              // try next endpoint
-            }
-          }
-        } catch {
-          // ignore
-        }
-
-        // If we didn't find anything via /info, fall back to favicon.
-        updates[origin] = resolved ?? `${origin}/favicon.ico`;
-      }
-
-      if (cancelled) return;
-      setMintIconUrlByMint((prev) => ({ ...prev, ...updates }));
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [cashuTokens, getMintOriginAndHost, mintIconUrlByMint]);
-
   const requestDeleteSelectedRelay = () => {
     if (route.kind !== "nostrRelay") return;
     if (!selectedRelayUrl) return;
@@ -3494,12 +3672,23 @@ const App = () => {
             return;
           }
 
-          const result = insert("contact", {
-            name: null,
-            npub: normalized as typeof Evolu.NonEmptyString1000.Type,
-            lnAddress: null,
-            groupName: null,
-          });
+          const result = appOwnerId
+            ? insert(
+                "contact",
+                {
+                  name: null,
+                  npub: normalized as typeof Evolu.NonEmptyString1000.Type,
+                  lnAddress: null,
+                  groupName: null,
+                },
+                { ownerId: appOwnerId }
+              )
+            : insert("contact", {
+                name: null,
+                npub: normalized as typeof Evolu.NonEmptyString1000.Type,
+                lnAddress: null,
+                groupName: null,
+              });
 
           if (result.ok) setStatus(t("contactSaved"));
           else setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
@@ -3833,6 +4022,14 @@ const App = () => {
 
       {!currentNsec ? (
         <section className="panel">
+          <div className="onboarding-logo" aria-hidden="true">
+            <React.Suspense fallback={null}>
+              <LazyLottie
+                src="linky-lottie.json"
+                className="onboarding-lottie"
+              />
+            </React.Suspense>
+          </div>
           <h1 className="page-title">{t("onboardingTitle")}</h1>
 
           <div className="settings-row">
@@ -3846,25 +4043,14 @@ const App = () => {
             </button>
           </div>
 
-          <label htmlFor="onboardingNsec">{t("onboardingNsec")}</label>
-          <input
-            id="onboardingNsec"
-            value={onboardingNsec}
-            onChange={(e) => setOnboardingNsec(e.target.value)}
-            placeholder={t("onboardingNsecPlaceholder")}
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-
           <div className="settings-row">
             <button
               type="button"
               className="btn-wide secondary"
-              onClick={() => void useExistingNsec()}
-              disabled={onboardingIsBusy || !onboardingNsec.trim()}
+              onClick={() => void pasteExistingNsec()}
+              disabled={onboardingIsBusy}
             >
-              {t("onboardingUseExisting")}
+              {t("onboardingPasteNsec")}
             </button>
           </div>
         </section>

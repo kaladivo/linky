@@ -20,9 +20,7 @@ export const en = {
 
   onboardingTitle: "Welcome",
   onboardingCreate: "Create account",
-  onboardingNsec: "Existing nsec",
-  onboardingNsecPlaceholder: "nsec…",
-  onboardingUseExisting: "Use existing nsec",
+  onboardingPasteNsec: "Paste nsec",
   onboardingInvalidNsec: "Invalid nsec.",
   onboardingCreateFailed: "Failed to create account.",
 

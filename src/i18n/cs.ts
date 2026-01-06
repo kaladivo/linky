@@ -20,9 +20,7 @@ export const cs = {
 
   onboardingTitle: "Vítejte",
   onboardingCreate: "Vytvořit účet",
-  onboardingNsec: "Existující nsec",
-  onboardingNsecPlaceholder: "nsec…",
-  onboardingUseExisting: "Použít existující nsec",
+  onboardingPasteNsec: "Vložit nsec",
   onboardingInvalidNsec: "Neplatný nsec.",
   onboardingCreateFailed: "Nepodařilo se vytvořit účet.",
 
