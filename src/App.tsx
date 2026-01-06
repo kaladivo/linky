@@ -9,6 +9,7 @@ import { parseCashuToken } from "./cashu";
 import type { CashuTokenId, ContactId } from "./evolu";
 import { evolu, useEvolu } from "./evolu";
 import { getInitialLang, persistLang, translations, type Lang } from "./i18n";
+import LinkyLogo from "./LinkyLogo.tsx";
 import { INITIAL_MNEMONIC_STORAGE_KEY } from "./mnemonic";
 import {
   cacheProfileAvatarFromUrl,
@@ -34,12 +35,8 @@ type ContactFormState = {
 const UNIT_TOGGLE_STORAGE_KEY = "linky_use_btc_symbol";
 const NOSTR_NSEC_STORAGE_KEY = "linky.nostr_nsec";
 
-const LazyLottie = React.lazy(async () => {
-  const mod = await import("./Lottie");
-  return {
-    default: (mod as unknown as { default: React.ComponentType<any> }).default,
-  };
-});
+const FEEDBACK_CONTACT_NPUB =
+  "npub1kkht6jvgr8mt4844saf80j5jjwyy6fdy90sxsuxt4hfv8pel499s96jvz8";
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object") return null;
@@ -302,7 +299,7 @@ const App = () => {
   >(() => ({}));
 
   const [scanIsOpen, setScanIsOpen] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanStream, setScanStream] = useState<MediaStream | null>(null);
   const scanVideoRef = React.useRef<HTMLVideoElement | null>(null);
 
   const chatMessagesRef = React.useRef<HTMLDivElement | null>(null);
@@ -337,6 +334,8 @@ const App = () => {
   const [isProfileEditing, setIsProfileEditing] = useState(false);
   const [profileEditName, setProfileEditName] = useState<string>("");
   const [profileEditLnAddress, setProfileEditLnAddress] = useState<string>("");
+  const [profileEditPicture, setProfileEditPicture] = useState<string>("");
+  const profilePhotoInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const npubCashClaimInFlightRef = React.useRef(false);
 
@@ -518,9 +517,9 @@ const App = () => {
     window.location.assign("#advanced");
   };
 
-  const navigateToContact = (id: ContactId) => {
+  const navigateToContact = React.useCallback((id: ContactId) => {
     window.location.assign(`#contact/${encodeURIComponent(String(id))}`);
-  };
+  }, []);
 
   const navigateToContactEdit = (id: ContactId) => {
     window.location.assign(`#contact/${encodeURIComponent(String(id))}/edit`);
@@ -2213,7 +2212,7 @@ const App = () => {
     return () => {
       cancelled = true;
     };
-  }, [contacts.length, currentNpub, currentNsec, deriveEvoluMnemonicFromNsec]);
+  }, [contacts, currentNpub, currentNsec, deriveEvoluMnemonicFromNsec]);
 
   const setIdentityFromNsecAndReload = React.useCallback(
     async (nsec: string) => {
@@ -2339,6 +2338,53 @@ const App = () => {
     }
     globalThis.location.reload();
   }, [logoutArmed, pushToast, t]);
+
+  const openFeedbackContactPendingRef = React.useRef(false);
+
+  const openFeedbackContact = React.useCallback(() => {
+    const targetNpub = FEEDBACK_CONTACT_NPUB;
+    const existing = contacts.find(
+      (c) => String(c.npub ?? "").trim() === targetNpub
+    );
+
+    if (existing?.id) {
+      if (String(existing.name ?? "") === "Feedback") {
+        update("contact", { id: existing.id, name: null });
+      }
+      openFeedbackContactPendingRef.current = false;
+      navigateToContact(existing.id);
+      return;
+    }
+
+    openFeedbackContactPendingRef.current = true;
+
+    const payload = {
+      name: null,
+      npub: targetNpub as typeof Evolu.NonEmptyString1000.Type,
+      lnAddress: null,
+      groupName: null,
+    };
+
+    const result = appOwnerId
+      ? insert("contact", payload, { ownerId: appOwnerId })
+      : insert("contact", payload);
+
+    if (!result.ok) {
+      openFeedbackContactPendingRef.current = false;
+      pushToast(`${t("errorPrefix")}: ${String(result.error)}`);
+    }
+  }, [appOwnerId, contacts, insert, navigateToContact, pushToast, t, update]);
+
+  React.useEffect(() => {
+    if (!openFeedbackContactPendingRef.current) return;
+    const targetNpub = FEEDBACK_CONTACT_NPUB;
+    const existing = contacts.find(
+      (c) => String(c.npub ?? "").trim() === targetNpub
+    );
+    if (!existing?.id) return;
+    openFeedbackContactPendingRef.current = false;
+    navigateToContact(existing.id);
+  }, [contacts, navigateToContact]);
 
   const openContactDetail = (contact: (typeof contacts)[number]) => {
     setPendingDeleteId(null);
@@ -2663,7 +2709,7 @@ const App = () => {
         )} (${addedContacts}/${updatedContacts}/${addedTokens})`
       );
     },
-    [cashuTokensAll, contacts, insert, pushToast, t, update]
+    [appOwnerId, cashuTokensAll, contacts, insert, pushToast, t, update]
   );
 
   const handleImportAppDataFilePicked = React.useCallback(
@@ -3058,6 +3104,15 @@ const App = () => {
             : null;
           setProfileEditName(bestName ?? myProfileName ?? "");
           setProfileEditLnAddress(myProfileLnAddress ?? "");
+
+          const metaPic = String(
+            myProfileMetadata?.picture ??
+              myProfileMetadata?.image ??
+              myProfilePicture ??
+              ""
+          ).trim();
+          setProfileEditPicture(metaPic);
+
           setIsProfileEditing(true);
         },
       };
@@ -3094,6 +3149,7 @@ const App = () => {
 
       const name = profileEditName.trim();
       const ln = profileEditLnAddress.trim();
+      const picture = profileEditPicture.trim();
 
       const { SimplePool, finalizeEvent, getPublicKey, nip19 } = await import(
         "nostr-tools"
@@ -3133,6 +3189,11 @@ const App = () => {
         contentObj.lud16 = ln;
       }
 
+      if (picture) {
+        contentObj.picture = picture;
+        contentObj.image = picture;
+      }
+
       const baseEvent = {
         kind: 0,
         created_at: Math.floor(Date.now() / 1000),
@@ -3166,17 +3227,84 @@ const App = () => {
         ...prev,
         ...(name ? { name, displayName: name } : {}),
         ...(ln ? { lud16: ln } : {}),
+        ...(picture ? { picture, image: picture } : {}),
       };
 
       saveCachedProfileMetadata(currentNpub, updatedMeta);
+      if (picture) saveCachedProfilePicture(currentNpub, picture);
       setMyProfileMetadata(updatedMeta);
       if (name) setMyProfileName(name);
       setMyProfileLnAddress(ln || null);
+      if (picture) setMyProfilePicture(picture);
       setIsProfileEditing(false);
     } catch (e) {
       setStatus(`${t("errorPrefix")}: ${String(e ?? "unknown")}`);
     }
   };
+
+  const createSquareAvatarDataUrl = React.useCallback(
+    async (file: File, sizePx: number): Promise<string> => {
+      if (!file.type.startsWith("image/")) {
+        throw new Error("Unsupported file");
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+      try {
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const el = new Image();
+          el.onload = () => resolve(el);
+          el.onerror = () => reject(new Error("Image load failed"));
+          el.src = objectUrl;
+        });
+
+        const sw = img.naturalWidth || img.width;
+        const sh = img.naturalHeight || img.height;
+        if (!sw || !sh) throw new Error("Invalid image");
+
+        const side = Math.min(sw, sh);
+        const sx = Math.floor((sw - side) / 2);
+        const sy = Math.floor((sh - side) / 2);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = sizePx;
+        canvas.height = sizePx;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas not available");
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, sizePx, sizePx);
+
+        return canvas.toDataURL("image/jpeg", 0.85);
+      } finally {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          // ignore
+        }
+      }
+    },
+    []
+  );
+
+  const onPickProfilePhoto = React.useCallback(async () => {
+    profilePhotoInputRef.current?.click();
+  }, []);
+
+  const onProfilePhotoSelected = React.useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0] ?? null;
+      e.target.value = "";
+      if (!file) return;
+      try {
+        const dataUrl = await createSquareAvatarDataUrl(file, 160);
+        setProfileEditPicture(dataUrl);
+      } catch (err) {
+        setStatus(`${t("errorPrefix")}: ${String(err ?? "unknown")}`);
+      }
+    },
+    [createSquareAvatarDataUrl, setStatus, t]
+  );
 
   const saveNewRelay = () => {
     const url = newRelayUrl.trim();
@@ -3639,6 +3767,43 @@ const App = () => {
     t,
   ]);
 
+  const closeScan = React.useCallback(() => {
+    setScanIsOpen(false);
+    setScanStream((prev) => {
+      if (prev) {
+        for (const track of prev.getTracks()) {
+          try {
+            track.stop();
+          } catch {
+            // ignore
+          }
+        }
+      }
+      return null;
+    });
+  }, []);
+
+  const openScan = React.useCallback(() => {
+    setScanIsOpen(true);
+
+    // On iOS/WebKit (incl. Brave), requesting camera access must happen in the
+    // click handler (user gesture). Doing it inside useEffect can prevent retry
+    // after denying permission.
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false,
+        });
+        setScanStream(stream);
+      } catch (e) {
+        const message = String(e ?? t("scanCameraError")).trim();
+        if (message) pushToast(message);
+        closeScan();
+      }
+    })();
+  }, [closeScan, pushToast, t]);
+
   const handleScannedText = React.useCallback(
     async (rawValue: string) => {
       const raw = String(rawValue ?? "").trim();
@@ -3653,8 +3818,7 @@ const App = () => {
       const cashu =
         extractCashuTokenFromText(normalized) ?? extractCashuTokenFromText(raw);
       if (cashu) {
-        setScanIsOpen(false);
-        setScanError(null);
+        closeScan();
         await saveCashuFromText(cashu, { navigateToWallet: true });
         return;
       }
@@ -3668,7 +3832,7 @@ const App = () => {
           );
           if (already) {
             setStatus(t("contactExists"));
-            setScanIsOpen(false);
+            closeScan();
             return;
           }
 
@@ -3694,7 +3858,7 @@ const App = () => {
           else setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
           if (result.ok) pushToast(t("contactSaved"));
 
-          setScanIsOpen(false);
+          closeScan();
           return;
         }
       } catch {
@@ -3702,16 +3866,17 @@ const App = () => {
       }
 
       if (/^(lnbc|lntb|lnbcrt)/i.test(normalized)) {
-        setScanIsOpen(false);
-        setScanError(null);
+        closeScan();
         await payLightningInvoiceWithCashu(normalized);
         return;
       }
 
       setStatus(`${t("errorPrefix")}: ${t("scanUnsupported")}`);
-      setScanIsOpen(false);
+      closeScan();
     },
     [
+      appOwnerId,
+      closeScan,
       contacts,
       extractCashuTokenFromText,
       insert,
@@ -3724,9 +3889,10 @@ const App = () => {
 
   React.useEffect(() => {
     if (!scanIsOpen) return;
+    if (!scanStream) return;
 
     let cancelled = false;
-    let stream: MediaStream | null = null;
+    let stream: MediaStream | null = scanStream;
     let rafId: number | null = null;
     let lastScanAt = 0;
     let handled = false;
@@ -3747,18 +3913,6 @@ const App = () => {
     };
 
     const run = async () => {
-      setScanError(null);
-
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false,
-        });
-      } catch (e) {
-        setScanError(String(e ?? t("scanCameraError")));
-        return;
-      }
-
       if (cancelled) {
         stop();
         return;
@@ -3869,7 +4023,7 @@ const App = () => {
       cancelled = true;
       stop();
     };
-  }, [handleScannedText, scanIsOpen, t]);
+  }, [handleScannedText, scanIsOpen, scanStream]);
 
   React.useEffect(() => {
     // Auto-accept Cashu tokens received from others into the wallet.
@@ -4021,14 +4175,9 @@ const App = () => {
       ) : null}
 
       {!currentNsec ? (
-        <section className="panel">
+        <section className="panel panel-plain onboarding-panel">
           <div className="onboarding-logo" aria-hidden="true">
-            <React.Suspense fallback={null}>
-              <LazyLottie
-                src="linky-lottie.json"
-                className="onboarding-lottie"
-              />
-            </React.Suspense>
+            <LinkyLogo className="onboarding-logo-svg" />
           </div>
           <h1 className="page-title">{t("onboardingTitle")}</h1>
 
@@ -4209,6 +4358,26 @@ const App = () => {
                 </div>
               </button>
 
+              <button
+                type="button"
+                className="settings-row settings-link"
+                onClick={openFeedbackContact}
+                aria-label={t("feedback")}
+                title={t("feedback")}
+              >
+                <div className="settings-left">
+                  <span className="settings-icon" aria-hidden="true">
+                    💬
+                  </span>
+                  <span className="settings-label">{t("feedback")}</span>
+                </div>
+                <div className="settings-right">
+                  <span className="settings-chevron" aria-hidden="true">
+                    &gt;
+                  </span>
+                </div>
+              </button>
+
               <div className="settings-row">
                 <button className="btn-wide" onClick={navigateToWallet}>
                   {t("walletOpen")}
@@ -4219,8 +4388,7 @@ const App = () => {
                 <button
                   className="btn-wide secondary"
                   onClick={() => {
-                    setScanError(null);
-                    setScanIsOpen(true);
+                    openScan();
                   }}
                 >
                   {t("scan")}
@@ -4660,6 +4828,9 @@ const App = () => {
                     {(() => {
                       const ln = String(selectedContact.lnAddress ?? "").trim();
                       if (!ln) return null;
+
+                      const npub = String(selectedContact.npub ?? "").trim();
+                      const isFeedbackContact = npub === FEEDBACK_CONTACT_NPUB;
                       return (
                         <button
                           className="btn-wide"
@@ -4671,7 +4842,7 @@ const App = () => {
                             !canPayWithCashu ? t("payInsufficient") : undefined
                           }
                         >
-                          {t("pay")}
+                          {isFeedbackContact ? "Donate" : t("pay")}
                         </button>
                       );
                     })()}
@@ -4679,12 +4850,13 @@ const App = () => {
                     {(() => {
                       const npub = String(selectedContact.npub ?? "").trim();
                       if (!npub) return null;
+                      const isFeedbackContact = npub === FEEDBACK_CONTACT_NPUB;
                       return (
                         <button
                           className="btn-wide secondary"
                           onClick={() => navigateToChat(selectedContact.id)}
                         >
-                          {t("sendMessage")}
+                          {isFeedbackContact ? "Feedback" : t("sendMessage")}
                         </button>
                       );
                     })()}
@@ -5311,6 +5483,54 @@ const App = () => {
                 <>
                   {isProfileEditing ? (
                     <>
+                      <div
+                        className="profile-detail"
+                        style={{ marginBottom: 10 }}
+                      >
+                        <div
+                          className="contact-avatar is-xl"
+                          aria-hidden="true"
+                        >
+                          {profileEditPicture ? (
+                            <img
+                              src={profileEditPicture}
+                              alt=""
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : myProfilePicture ? (
+                            <img
+                              src={myProfilePicture}
+                              alt=""
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <span className="contact-avatar-fallback">
+                              {getInitials(
+                                myProfileName ?? formatShortNpub(currentNpub)
+                              )}
+                            </span>
+                          )}
+                        </div>
+
+                        <input
+                          ref={profilePhotoInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => void onProfilePhotoSelected(e)}
+                          style={{ display: "none" }}
+                        />
+
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => void onPickProfilePhoto()}
+                        >
+                          {t("profileUploadPhoto")}
+                        </button>
+                      </div>
+
                       <label htmlFor="profileName">{t("name")}</label>
                       <input
                         id="profileName"
@@ -5384,6 +5604,10 @@ const App = () => {
                             {effectiveMyLightningAddress}
                           </p>
                         ) : null}
+
+                        <p className="muted profile-note">
+                          {t("profileMessagesHint")}
+                        </p>
                       </div>
                     </>
                   )}
@@ -5399,7 +5623,7 @@ const App = () => {
                   <div className="scan-title">{t("scan")}</div>
                   <button
                     className="topbar-btn"
-                    onClick={() => setScanIsOpen(false)}
+                    onClick={closeScan}
                     aria-label={t("close")}
                     title={t("close")}
                   >
@@ -5409,7 +5633,10 @@ const App = () => {
 
                 <video ref={scanVideoRef} className="scan-video" />
 
-                {scanError ? <p className="muted">{scanError}</p> : null}
+                <div className="scan-hints" aria-label={t("scan")}>
+                  {t("scanHintInvoice")}, {t("scanHintContact")},{" "}
+                  {t("scanHintWithdraw")}
+                </div>
               </div>
             </div>
           )}

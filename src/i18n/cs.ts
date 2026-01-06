@@ -5,6 +5,7 @@ export const cs = {
   settings: "Nastavení",
   menu: "Menu",
   advanced: "Pokročilé",
+  feedback: "Feedback",
   data: "Data",
   exportData: "Export",
   importData: "Import",
@@ -54,6 +55,8 @@ export const cs = {
   profileNoName: "Nostr profil",
   myNpubQr: "Tvůj kontakt",
   profileMissingNpub: "Chybí Nostr klíče.",
+  profileMessagesHint: "Uvidíš pouze zprávy od kontaktů, které si také přidáš.",
+  profileUploadPhoto: "Nahrát fotku",
 
   language: "Jazyk",
   czech: "Čeština",
@@ -113,6 +116,9 @@ export const cs = {
   scanUnsupported: "Nepodporovaný QR kód.",
   scanCameraError: "Kamera není dostupná.",
   contactExists: "Kontakt už existuje.",
+  scanHintInvoice: "Fakturu zaplatí",
+  scanHintContact: "Kontakt přidá",
+  scanHintWithdraw: "Peníze vybere",
 
   unit: "Jednotky",
   unitUseBitcoin: "Zobrazit ₿ místo sat",

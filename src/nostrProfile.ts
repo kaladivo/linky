@@ -40,7 +40,8 @@ const canUseCacheStorage = (): boolean => {
 
 const makeAvatarCacheRequest = (npub: string): Request | null => {
   try {
-    const origin = (globalThis as any)?.location?.origin as string | undefined;
+    const origin = (globalThis as unknown as { location?: { origin?: string } })
+      ?.location?.origin;
     if (!origin) return null;
     const url = new URL(
       `/__linky_cache/nostr_avatar/${encodeURIComponent(npub)}`,

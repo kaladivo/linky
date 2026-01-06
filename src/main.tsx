@@ -14,11 +14,14 @@ if (!("Buffer" in globalThis)) {
 // Some deps (e.g. Evolu) use it for compact URL-safe IDs.
 // Patch in minimal support to avoid boot crashes in the browser.
 (() => {
-  const B = (globalThis as any).Buffer as typeof Buffer | undefined;
+  const B = (globalThis as unknown as { Buffer?: typeof Buffer }).Buffer;
   if (!B) return;
 
-  const proto = (B as any).prototype;
-  if (proto && proto.__linkyBase64UrlPatched) return;
+  const proto = B.prototype as unknown as {
+    __linkyBase64UrlPatched?: boolean;
+    toString: (encoding?: string, start?: number, end?: number) => string;
+  };
+  if (proto.__linkyBase64UrlPatched) return;
 
   const toBase64Url = (base64: string) =>
     base64.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
@@ -37,8 +40,9 @@ if (!("Buffer" in globalThis)) {
     return origToString.call(this, encoding, start, end);
   };
 
-  const origFrom = (B as any).from;
-  (B as any).from = function (
+  const origFrom = (B as unknown as { from: (...args: unknown[]) => Buffer })
+    .from;
+  (B as unknown as { from: (...args: unknown[]) => Buffer }).from = function (
     value: unknown,
     encodingOrOffset?: unknown,
     length?: unknown
@@ -149,6 +153,86 @@ const escapeHtml = (value: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 
+const applyEvoluWebCompatPolyfills = () => {
+  // Some iOS/WebKit environments (notably private browsing) may lack
+  // `navigator.locks` and/or `BroadcastChannel`, which Evolu's shared worker
+  // implementation depends on. These lightweight polyfills make Evolu fall
+  // back to a single-tab worker model instead of crashing during boot.
+  if (typeof document === "undefined") return;
+
+  if (
+    typeof (globalThis as unknown as { BroadcastChannel?: unknown })
+      .BroadcastChannel === "undefined"
+  ) {
+    type Listener = ((event: MessageEvent<unknown>) => void) | null;
+    const channelsByName = new Map<string, Set<PolyBroadcastChannel>>();
+
+    class PolyBroadcastChannel {
+      readonly name: string;
+      onmessage: Listener = null;
+
+      constructor(name: string) {
+        this.name = String(name);
+        const set = channelsByName.get(this.name) ?? new Set();
+        set.add(this);
+        channelsByName.set(this.name, set);
+      }
+
+      postMessage(message: unknown) {
+        const set = channelsByName.get(this.name);
+        if (!set) return;
+        for (const ch of set) {
+          const handler = ch.onmessage;
+          if (!handler) continue;
+          try {
+            handler({ data: message } as MessageEvent<unknown>);
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      close() {
+        const set = channelsByName.get(this.name);
+        if (!set) return;
+        set.delete(this);
+        if (set.size === 0) channelsByName.delete(this.name);
+      }
+
+      addEventListener() {
+        // Not used by Evolu.
+      }
+
+      removeEventListener() {
+        // Not used by Evolu.
+      }
+
+      dispatchEvent() {
+        return false;
+      }
+    }
+
+    (globalThis as unknown as { BroadcastChannel: unknown }).BroadcastChannel =
+      PolyBroadcastChannel as unknown;
+  }
+
+  const nav = navigator as unknown as { locks?: unknown };
+  const locks = nav.locks as
+    | {
+        request?: (
+          name: string,
+          cb: () => Promise<unknown>
+        ) => Promise<unknown>;
+      }
+    | undefined;
+
+  if (!locks?.request) {
+    (navigator as unknown as { locks: unknown }).locks = {
+      request: async (_name: string, cb: () => Promise<unknown>) => cb(),
+    };
+  }
+};
+
 const renderBootError = (error: unknown) => {
   const root = document.getElementById("root");
   if (!root) return;
@@ -160,11 +244,34 @@ const renderBootError = (error: unknown) => {
       ? error
       : JSON.stringify(error, null, 2);
 
+  const diagnostics = {
+    href: globalThis.location?.href ?? null,
+    userAgent: globalThis.navigator?.userAgent ?? null,
+    isSecureContext:
+      typeof globalThis.isSecureContext === "boolean"
+        ? globalThis.isSecureContext
+        : null,
+    hasWorker: typeof globalThis.Worker !== "undefined",
+    hasBroadcastChannel:
+      typeof (globalThis as unknown as { BroadcastChannel?: unknown })
+        .BroadcastChannel !== "undefined",
+    hasLocks: Boolean(
+      (globalThis.navigator as unknown as { locks?: unknown })?.locks
+    ),
+    hasIndexedDB: typeof globalThis.indexedDB !== "undefined",
+    hasStorage:
+      typeof (globalThis.navigator as unknown as { storage?: unknown })
+        ?.storage !== "undefined",
+  };
+
   root.innerHTML = `
     <div style="padding: 40px; color: #ff6b6b; font-family: monospace;">
       <h2>Boot error</h2>
       <pre style="overflow: auto; background: #1a1a1a; padding: 10px; white-space: pre-wrap;">${escapeHtml(
         message
+      )}</pre>
+      <pre style="overflow: auto; background: #111827; padding: 10px; white-space: pre-wrap; margin-top: 12px;">${escapeHtml(
+        JSON.stringify(diagnostics, null, 2)
       )}</pre>
     </div>
   `;
@@ -172,12 +279,14 @@ const renderBootError = (error: unknown) => {
 
 const bootstrap = async () => {
   try {
-    const [{ default: App }, { ErrorBoundary }, { evolu, EvoluProvider }] =
-      await Promise.all([
-        import("./App.tsx"),
-        import("./ErrorBoundary.tsx"),
-        import("./evolu.ts"),
-      ]);
+    const [{ default: App }, { ErrorBoundary }] = await Promise.all([
+      import("./App.tsx"),
+      import("./ErrorBoundary.tsx"),
+    ]);
+
+    applyEvoluWebCompatPolyfills();
+
+    const { evolu, EvoluProvider } = await import("./evolu.ts");
 
     createRoot(document.getElementById("root")!).render(
       <StrictMode>

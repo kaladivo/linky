@@ -5,6 +5,7 @@ export const en = {
   settings: "Settings",
   menu: "Menu",
   advanced: "Advanced",
+  feedback: "Feedback",
   data: "Data",
   exportData: "Export",
   importData: "Import",
@@ -54,6 +55,8 @@ export const en = {
   profileNoName: "Nostr profile",
   myNpubQr: "Your contact",
   profileMissingNpub: "Missing Nostr keys.",
+  profileMessagesHint: "You only see messages from contacts you also add.",
+  profileUploadPhoto: "Upload photo",
 
   language: "Language",
   czech: "Czech",
@@ -112,6 +115,9 @@ export const en = {
   scanUnsupported: "Unsupported QR code.",
   scanCameraError: "Camera not available.",
   contactExists: "Contact already exists.",
+  scanHintInvoice: "Pays invoice",
+  scanHintContact: "Adds contact",
+  scanHintWithdraw: "Withdraws funds",
 
   unit: "Units",
   unitUseBitcoin: "Show ₿ instead of sat",
