@@ -9,6 +9,11 @@ export const cs = {
   data: "Data",
   exportData: "Export",
   importData: "Import",
+  dedupeContacts: "Deduplikovat kontakty",
+  dedupeContactsNone: "Žádné duplicity nenalezeny.",
+  dedupeContactsResult:
+    "Sloučeno {groups} skupin, odstraněno {removed} kontaktů, přesunuto {moved} zpráv.",
+  dedupeContactsFailed: "Deduplikace se nepovedla.",
   exportDone: "Export hotov.",
   exportFailed: "Export se nepovedl.",
   importDone: "Import hotov.",

@@ -162,6 +162,7 @@ const App = () => {
     string | null
   >(null);
   const [logoutArmed, setLogoutArmed] = useState(false);
+  const [dedupeContactsIsBusy, setDedupeContactsIsBusy] = useState(false);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [lang, setLang] = useState<Lang>(() => getInitialLang());
   const [useBitcoinSymbol, setUseBitcoinSymbol] = useState<boolean>(() =>
@@ -639,6 +640,225 @@ const App = () => {
   );
 
   const contacts = useQuery(contactsQuery);
+
+  const dedupeContacts = React.useCallback(async () => {
+    if (dedupeContactsIsBusy) return;
+    setDedupeContactsIsBusy(true);
+
+    const fmt = (template: string, vars: Record<string, string | number>) => {
+      return String(template ?? "").replace(/\{(\w+)\}/g, (_m, k: string) =>
+        String(vars[k] ?? "")
+      );
+    };
+
+    const normalize = (value: unknown): string => {
+      return String(value ?? "")
+        .trim()
+        .toLowerCase();
+    };
+
+    const fieldScore = (value: unknown): number => (normalize(value) ? 1 : 0);
+
+    try {
+      const n = contacts.length;
+      if (n === 0) {
+        pushToast(t("dedupeContactsNone"));
+        return;
+      }
+
+      const parent = Array.from({ length: n }, (_v, i) => i);
+      const find = (i: number): number => {
+        let x = i;
+        while (parent[x] !== x) {
+          parent[x] = parent[parent[x]];
+          x = parent[x];
+        }
+        return x;
+      };
+      const union = (a: number, b: number) => {
+        const ra = find(a);
+        const rb = find(b);
+        if (ra !== rb) parent[rb] = ra;
+      };
+
+      const keyToIndex = new Map<string, number>();
+      for (let i = 0; i < n; i += 1) {
+        const c = contacts[i];
+        const npub = normalize(c.npub);
+        const ln = normalize(c.lnAddress);
+        const keys: string[] = [];
+        if (npub) keys.push(`npub:${npub}`);
+        if (ln) keys.push(`ln:${ln}`);
+
+        for (const k of keys) {
+          const prev = keyToIndex.get(k);
+          if (prev == null) keyToIndex.set(k, i);
+          else union(i, prev);
+        }
+      }
+
+      const groups = new Map<number, number[]>();
+      for (let i = 0; i < n; i += 1) {
+        const root = find(i);
+        const arr = groups.get(root);
+        if (arr) arr.push(i);
+        else groups.set(root, [i]);
+      }
+
+      const dupGroups = [...groups.values()].filter((g) => g.length > 1);
+      if (dupGroups.length === 0) {
+        pushToast(t("dedupeContactsNone"));
+        return;
+      }
+
+      let removedContacts = 0;
+      let movedMessages = 0;
+
+      for (const idxs of dupGroups) {
+        const group = idxs.map((i) => contacts[i]);
+
+        // Keep the most complete contact (tie-breaker: newest).
+        let keep = group[0];
+        let keepScore =
+          fieldScore(keep.name) +
+          fieldScore(keep.npub) +
+          fieldScore(keep.lnAddress) +
+          fieldScore(keep.groupName);
+        let keepCreated = Number(keep.createdAt ?? 0);
+
+        for (const c of group.slice(1)) {
+          const score =
+            fieldScore(c.name) +
+            fieldScore(c.npub) +
+            fieldScore(c.lnAddress) +
+            fieldScore(c.groupName);
+          const created = Number(c.createdAt ?? 0);
+          if (
+            score > keepScore ||
+            (score === keepScore && created > keepCreated)
+          ) {
+            keep = c;
+            keepScore = score;
+            keepCreated = created;
+          }
+        }
+
+        const keepId = keep.id as ContactId;
+        let mergedName = normalize(keep.name) ? keep.name : null;
+        let mergedNpub = normalize(keep.npub) ? keep.npub : null;
+        let mergedLn = normalize(keep.lnAddress) ? keep.lnAddress : null;
+        let mergedGroup = normalize(keep.groupName) ? keep.groupName : null;
+
+        for (const c of group) {
+          if (!mergedName && normalize(c.name)) mergedName = c.name;
+          if (!mergedNpub && normalize(c.npub)) mergedNpub = c.npub;
+          if (!mergedLn && normalize(c.lnAddress)) mergedLn = c.lnAddress;
+          if (!mergedGroup && normalize(c.groupName)) mergedGroup = c.groupName;
+        }
+
+        const keepNeedsUpdate =
+          (keep.name ?? null) !== (mergedName ?? null) ||
+          (keep.npub ?? null) !== (mergedNpub ?? null) ||
+          (keep.lnAddress ?? null) !== (mergedLn ?? null) ||
+          (keep.groupName ?? null) !== (mergedGroup ?? null);
+
+        if (keepNeedsUpdate) {
+          const result = appOwnerId
+            ? update(
+                "contact",
+                {
+                  id: keepId,
+                  name: mergedName as
+                    | typeof Evolu.NonEmptyString1000.Type
+                    | null,
+                  npub: mergedNpub as
+                    | typeof Evolu.NonEmptyString1000.Type
+                    | null,
+                  lnAddress: mergedLn as
+                    | typeof Evolu.NonEmptyString1000.Type
+                    | null,
+                  groupName: mergedGroup as
+                    | typeof Evolu.NonEmptyString1000.Type
+                    | null,
+                },
+                { ownerId: appOwnerId }
+              )
+            : update("contact", {
+                id: keepId,
+                name: mergedName as typeof Evolu.NonEmptyString1000.Type | null,
+                npub: mergedNpub as typeof Evolu.NonEmptyString1000.Type | null,
+                lnAddress: mergedLn as
+                  | typeof Evolu.NonEmptyString1000.Type
+                  | null,
+                groupName: mergedGroup as
+                  | typeof Evolu.NonEmptyString1000.Type
+                  | null,
+              });
+          if (!result.ok) {
+            throw new Error(String(result.error ?? "contact update failed"));
+          }
+        }
+
+        for (const c of group) {
+          const dupId = c.id as ContactId;
+          if (dupId === keepId) continue;
+
+          // Move messages to the kept contact.
+          const msgIdsQuery = evolu.createQuery((db) =>
+            db
+              .selectFrom("nostrMessage")
+              .select(["id"])
+              .where("isDeleted", "is not", Evolu.sqliteTrue)
+              .where("contactId", "=", dupId)
+          );
+          const msgRows = await evolu.loadQuery(msgIdsQuery);
+          for (const row of msgRows) {
+            const msgId = String(
+              (row as unknown as { id?: unknown }).id ?? ""
+            ).trim();
+            if (!msgId) continue;
+
+            const r = appOwnerId
+              ? update(
+                  "nostrMessage",
+                  {
+                    id: msgId as unknown as typeof Evolu.NonEmptyString1000.Type,
+                    contactId: keepId,
+                  },
+                  { ownerId: appOwnerId }
+                )
+              : update("nostrMessage", {
+                  id: msgId as unknown as typeof Evolu.NonEmptyString1000.Type,
+                  contactId: keepId,
+                });
+            if (r.ok) movedMessages += 1;
+          }
+
+          const del = appOwnerId
+            ? update(
+                "contact",
+                { id: dupId, isDeleted: Evolu.sqliteTrue },
+                { ownerId: appOwnerId }
+              )
+            : update("contact", { id: dupId, isDeleted: Evolu.sqliteTrue });
+          if (del.ok) removedContacts += 1;
+        }
+      }
+
+      pushToast(
+        fmt(t("dedupeContactsResult"), {
+          groups: dupGroups.length,
+          removed: removedContacts,
+          moved: movedMessages,
+        })
+      );
+    } catch (e) {
+      console.log("[linky] dedupe contacts failed", e);
+      pushToast(t("dedupeContactsFailed"));
+    } finally {
+      setDedupeContactsIsBusy(false);
+    }
+  }, [appOwnerId, contacts, dedupeContactsIsBusy, pushToast, t, update]);
 
   React.useEffect(() => {
     // One-time migration: if this device/browser previously created contacts
@@ -4475,6 +4695,19 @@ const App = () => {
                     </button>
                   </div>
                 </div>
+              </div>
+
+              <div className="settings-row">
+                <button
+                  type="button"
+                  className="btn-wide secondary"
+                  onClick={() => {
+                    void dedupeContacts();
+                  }}
+                  disabled={dedupeContactsIsBusy}
+                >
+                  {t("dedupeContacts")}
+                </button>
               </div>
 
               <input

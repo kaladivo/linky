@@ -9,6 +9,11 @@ export const en = {
   data: "Data",
   exportData: "Export",
   importData: "Import",
+  dedupeContacts: "Deduplicate contacts",
+  dedupeContactsNone: "No duplicates found.",
+  dedupeContactsResult:
+    "Merged {groups} groups, removed {removed} contacts, moved {moved} messages.",
+  dedupeContactsFailed: "Deduplication failed.",
   exportDone: "Export complete.",
   exportFailed: "Export failed.",
   importDone: "Import complete.",

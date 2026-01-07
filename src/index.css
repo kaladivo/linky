@@ -20,21 +20,21 @@ body {
   min-height: 100vh;
   background: radial-gradient(
       circle at 20% 20%,
-      rgba(59, 130, 246, 0.15),
+      rgba(20, 184, 166, 0.16),
       transparent 25%
     ),
-    radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.1), transparent 30%),
+    radial-gradient(circle at 80% 0%, rgba(45, 212, 191, 0.1), transparent 30%),
     linear-gradient(135deg, #0b1222 0%, #0f172a 40%, #0b1222 100%);
   color: #e2e8f0;
 }
 
 a {
-  color: #8fb6ff;
+  color: #2dd4bf;
   text-decoration: none;
 }
 
 a:hover {
-  color: #b6ceff;
+  color: #5eead4;
 }
 
 button {

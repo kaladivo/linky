@@ -16,8 +16,8 @@ const LinkyLogo: React.FC<Props> = ({ className, title }) => {
     >
       <defs>
         <linearGradient id="linkyGradient" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#3b82f6" />
-          <stop offset="1" stopColor="#2563eb" />
+          <stop offset="0" stopColor="#14b8a6" />
+          <stop offset="1" stopColor="#0d9488" />
         </linearGradient>
       </defs>
 
