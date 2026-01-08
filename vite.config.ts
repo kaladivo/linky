@@ -84,8 +84,8 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: "linky",
-        short_name: "linky",
+        name: "Linky",
+        short_name: "Linky",
         start_url: "/",
         display: "standalone",
         background_color: "#ffffff",

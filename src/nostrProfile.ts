@@ -19,6 +19,23 @@ const getNostrTools = () => {
   return nostrToolsPromise;
 };
 
+type QuerySyncPool = {
+  querySync: (
+    relays: string[],
+    filter: Record<string, unknown>,
+    opts: { maxWait: number }
+  ) => Promise<unknown>;
+};
+
+let sharedPool: QuerySyncPool | null = null;
+const getSharedPool = async (): Promise<QuerySyncPool> => {
+  if (sharedPool) return sharedPool;
+  const { SimplePool } = await getNostrTools();
+  const pool = new SimplePool();
+  sharedPool = pool as unknown as QuerySyncPool;
+  return sharedPool;
+};
+
 export const NOSTR_RELAYS = [
   "wss://relay.damus.io",
   "wss://nos.lol",
@@ -83,6 +100,7 @@ export const cacheProfileAvatarFromUrl = async (
   const trimmed = String(npub ?? "").trim();
   if (!trimmed) return null;
   if (!isHttpUrl(avatarUrl)) return null;
+  if (!canFetchAvatarAsBlob(avatarUrl)) return null;
   if (!canUseCacheStorage()) return null;
   if (options?.signal?.aborted) return null;
 
@@ -150,7 +168,7 @@ const normalizeRelayUrls = (urls: string[]): string[] => {
   return out;
 };
 
-const isHttpUrl = (value: unknown): value is string => {
+function isHttpUrl(value: unknown): value is string {
   if (typeof value !== "string") return false;
   try {
     const url = new URL(value);
@@ -158,7 +176,27 @@ const isHttpUrl = (value: unknown): value is string => {
   } catch {
     return false;
   }
-};
+}
+
+function canFetchAvatarAsBlob(avatarUrl: string): boolean {
+  // Fetching cross-origin images as blobs requires permissive CORS headers.
+  // Many image hosts block this (and the browser logs a CORS error).
+  // We still show the image via <img src=...>; we only skip blob caching.
+  try {
+    const url = new URL(avatarUrl);
+    const origin = (globalThis as unknown as { location?: { origin?: string } })
+      ?.location?.origin;
+    if (origin && url.origin === origin) return true;
+
+    const host = url.hostname.toLowerCase();
+    // Used for deterministic defaults.
+    if (host === "api.dicebear.com") return true;
+
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export const loadCachedProfilePicture = (
   npub: string
@@ -261,7 +299,7 @@ export const fetchNostrProfileMetadata = async (
   );
   if (relays.length === 0) return null;
 
-  const { SimplePool, nip19 } = await getNostrTools();
+  const { nip19 } = await getNostrTools();
 
   let pubkey: string;
   try {
@@ -272,7 +310,7 @@ export const fetchNostrProfileMetadata = async (
     return null;
   }
 
-  const pool = new SimplePool();
+  const pool = await getSharedPool();
 
   try {
     let events: unknown = [];
@@ -328,7 +366,8 @@ export const fetchNostrProfileMetadata = async (
     if (Object.keys(metadata).length === 0) return null;
     return metadata;
   } finally {
-    pool.close(relays);
+    // Intentionally keep the shared pool open to reduce churn and
+    // avoid "WebSocket is already in CLOSING or CLOSED state" noise.
   }
 };
 

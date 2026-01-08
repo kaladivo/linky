@@ -29,6 +29,11 @@ export const cs = {
   onboardingPasteNsec: "Vložit nsec",
   onboardingInvalidNsec: "Neplatný nsec.",
   onboardingCreateFailed: "Nepodařilo se vytvořit účet.",
+  onboardingStep1: "Vymýšlím pro vás správné jméno… Budete {name}",
+  onboardingStep2: "Zkouším si představit jak vypadáte… Už to mám",
+  onboardingStep3:
+    "A ještě vám vytvářím lightning adresu - Nyní umíte přijímat bitcoin",
+  onboardingRetry: "Zkusit znovu",
 
   logout: "Odhlásit se",
   logoutArmedHint: "Pro odhlášení klikněte ještě jednou.",
@@ -62,6 +67,11 @@ export const cs = {
   profileMissingNpub: "Chybí Nostr klíče.",
   profileMessagesHint: "Uvidíš pouze zprávy od kontaktů, které si také přidáš.",
   profileUploadPhoto: "Nahrát fotku",
+  profileFetching: "Stahuju profil z Nostr…",
+  profileDerivedDefault: "Výchozí (derivované)",
+  profileManual: "Ručně",
+  profileUseDefault: "Použít výchozí",
+  profileClearField: "Smazat",
 
   language: "Jazyk",
   czech: "Čeština",
@@ -120,6 +130,10 @@ export const cs = {
   scan: "Skenovat",
   scanUnsupported: "Nepodporovaný QR kód.",
   scanCameraError: "Kamera není dostupná.",
+  scanRequiresHttps:
+    "Kamera vyžaduje bezpečné připojení (HTTPS). Otevřete Linky přes https nebo jako nainstalovanou PWA.",
+  scanPermissionDenied:
+    "Přístup ke kameře byl zamítnut. V Brave klikněte na zámek → Nastavení webu → Kamera → Povolit a stránku obnovte.",
   contactExists: "Kontakt už existuje.",
   scanHintInvoice: "Fakturu zaplatí",
   scanHintContact: "Kontakt přidá",

@@ -6,6 +6,7 @@ import type { Event as NostrToolsEvent, UnsignedEvent } from "nostr-tools";
 import React, { useMemo, useState } from "react";
 import "./App.css";
 import { parseCashuToken } from "./cashu";
+import { deriveDefaultProfile } from "./derivedProfile";
 import type { CashuTokenId, ContactId } from "./evolu";
 import { evolu, useEvolu } from "./evolu";
 import { getInitialLang, persistLang, translations, type Lang } from "./i18n";
@@ -24,6 +25,40 @@ import {
   saveCachedProfilePicture,
   type NostrProfileMetadata,
 } from "./nostrProfile";
+import { publishKind0ProfileMetadata } from "./nostrPublish";
+
+type AppNostrPool = {
+  publish: (
+    relays: string[],
+    event: NostrToolsEvent
+  ) => Array<Promise<unknown>>;
+  querySync: (
+    relays: string[],
+    filter: Record<string, unknown>,
+    opts: { maxWait: number }
+  ) => Promise<unknown>;
+  subscribe: (
+    relays: string[],
+    filter: Record<string, unknown>,
+    opts: { onevent: (event: NostrToolsEvent) => void }
+  ) => { close: (reason?: string) => Promise<void> | void };
+};
+
+let sharedAppNostrPoolPromise: Promise<AppNostrPool> | null = null;
+const getSharedAppNostrPool = async (): Promise<AppNostrPool> => {
+  if (sharedAppNostrPoolPromise) return sharedAppNostrPoolPromise;
+
+  sharedAppNostrPoolPromise = (async () => {
+    const { SimplePool } = await import("nostr-tools");
+    const pool = new SimplePool();
+    return pool as unknown as AppNostrPool;
+  })().catch((error) => {
+    sharedAppNostrPoolPromise = null;
+    throw error;
+  });
+
+  return sharedAppNostrPoolPromise;
+};
 
 type ContactFormState = {
   name: string;
@@ -204,6 +239,11 @@ const App = () => {
     (syncOwner as unknown as { id?: Evolu.OwnerId } | null)?.id ?? null;
 
   const [onboardingIsBusy, setOnboardingIsBusy] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState<null | {
+    step: 1 | 2 | 3;
+    derivedName: string | null;
+    error: string | null;
+  }>(null);
 
   React.useEffect(() => {
     // Surface Evolu sync/storage issues (network errors, protocol errors, etc.)
@@ -337,6 +377,22 @@ const App = () => {
   const [profileEditLnAddress, setProfileEditLnAddress] = useState<string>("");
   const [profileEditPicture, setProfileEditPicture] = useState<string>("");
   const profilePhotoInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const profileEditInitialRef = React.useRef<{
+    name: string;
+    lnAddress: string;
+    picture: string;
+  } | null>(null);
+
+  const profileFetchToastShownForNpubRef = React.useRef<string | null>(null);
+
+  const contactEditInitialRef = React.useRef<{
+    id: ContactId;
+    name: string;
+    npub: string;
+    lnAddress: string;
+    group: string;
+  } | null>(null);
 
   const npubCashClaimInFlightRef = React.useRef(false);
 
@@ -1066,7 +1122,7 @@ const App = () => {
     async (urls: string[]) => {
       if (!currentNsec) throw new Error("Missing nsec");
 
-      const { SimplePool, finalizeEvent, getPublicKey, nip19 } = await import(
+      const { finalizeEvent, getPublicKey, nip19 } = await import(
         "nostr-tools"
       );
 
@@ -1113,20 +1169,16 @@ const App = () => {
         return out;
       })();
 
-      const pool = new SimplePool();
-      try {
-        const publishResults = await Promise.allSettled(
-          pool.publish(relaysToUse, signed)
-        );
-        const anySuccess = publishResults.some((r) => r.status === "fulfilled");
-        if (!anySuccess) {
-          const firstError = publishResults.find(
-            (r): r is PromiseRejectedResult => r.status === "rejected"
-          )?.reason;
-          throw new Error(String(firstError ?? "publish failed"));
-        }
-      } finally {
-        pool.close(relaysToUse);
+      const pool = await getSharedAppNostrPool();
+      const publishResults = await Promise.allSettled(
+        pool.publish(relaysToUse, signed)
+      );
+      const anySuccess = publishResults.some((r) => r.status === "fulfilled");
+      if (!anySuccess) {
+        const firstError = publishResults.find(
+          (r): r is PromiseRejectedResult => r.status === "rejected"
+        )?.reason;
+        throw new Error(String(firstError ?? "publish failed"));
       }
     },
     [currentNsec]
@@ -1146,13 +1198,13 @@ const App = () => {
 
     const run = async () => {
       try {
-        const { SimplePool, nip19 } = await import("nostr-tools");
+        const { nip19 } = await import("nostr-tools");
 
         const decoded = nip19.decode(currentNpub);
         if (decoded.type !== "npub") return;
         const pubkey = decoded.data as string;
 
-        const pool = new SimplePool();
+        const pool = await getSharedAppNostrPool();
         const queryRelays = (() => {
           const combined = [...NOSTR_RELAYS, ...relayUrls];
           const out: string[] = [];
@@ -1167,60 +1219,56 @@ const App = () => {
           return out;
         })();
 
-        try {
-          const events = await pool.querySync(
-            queryRelays,
-            { kinds: [10002], authors: [pubkey], limit: 5 },
-            { maxWait: 5000 }
-          );
+        const events = await pool.querySync(
+          queryRelays,
+          { kinds: [10002], authors: [pubkey], limit: 5 },
+          { maxWait: 5000 }
+        );
 
-          const relayListEvents = Array.isArray(events)
-            ? (events as NostrToolsEvent[])
-            : [];
+        const relayListEvents = Array.isArray(events)
+          ? (events as NostrToolsEvent[])
+          : [];
 
-          const newest = relayListEvents
-            .slice()
-            .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))[0];
+        const newest = relayListEvents
+          .slice()
+          .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))[0];
 
-          const urls = (() => {
-            const tags = Array.isArray(newest?.tags) ? newest.tags : [];
-            const extracted: string[] = [];
-            for (const tag of tags) {
-              if (!Array.isArray(tag)) continue;
-              if (tag[0] !== "r") continue;
-              const url = String(tag[1] ?? "").trim();
-              if (!url) continue;
-              extracted.push(url);
-            }
-            const unique: string[] = [];
-            const seen = new Set<string>();
-            for (const u of extracted) {
-              if (seen.has(u)) continue;
-              seen.add(u);
-              unique.push(u);
-            }
-            return unique;
-          })();
-
-          console.log("[linky][nostr] relay list", {
-            eventId: String(newest?.id ?? ""),
-            createdAt: newest?.created_at ?? null,
-            urls,
-          });
-
-          if (cancelled) return;
-
-          if (urls.length > 0) {
-            setRelayUrls(urls);
-            return;
+        const urls = (() => {
+          const tags = Array.isArray(newest?.tags) ? newest.tags : [];
+          const extracted: string[] = [];
+          for (const tag of tags) {
+            if (!Array.isArray(tag)) continue;
+            if (tag[0] !== "r") continue;
+            const url = String(tag[1] ?? "").trim();
+            if (!url) continue;
+            extracted.push(url);
           }
+          const unique: string[] = [];
+          const seen = new Set<string>();
+          for (const u of extracted) {
+            if (seen.has(u)) continue;
+            seen.add(u);
+            unique.push(u);
+          }
+          return unique;
+        })();
 
-          setRelayUrls([...NOSTR_RELAYS]);
-          if (!currentNsec) return;
-          await publishNostrRelayList(NOSTR_RELAYS);
-        } finally {
-          pool.close(queryRelays);
+        console.log("[linky][nostr] relay list", {
+          eventId: String(newest?.id ?? ""),
+          createdAt: newest?.created_at ?? null,
+          urls,
+        });
+
+        if (cancelled) return;
+
+        if (urls.length > 0) {
+          setRelayUrls(urls);
+          return;
         }
+
+        setRelayUrls([...NOSTR_RELAYS]);
+        if (!currentNsec) return;
+        await publishNostrRelayList(NOSTR_RELAYS);
       } catch (e) {
         console.log("[linky][nostr] relay sync failed", {
           error: String(e ?? "unknown"),
@@ -1335,6 +1383,15 @@ const App = () => {
     return `${currentNpub}@npub.cash`;
   }, [currentNpub]);
 
+  const derivedProfile = useMemo(() => {
+    if (!currentNpub) return null;
+    return deriveDefaultProfile(currentNpub);
+  }, [currentNpub]);
+
+  const effectiveProfileName = myProfileName ?? derivedProfile?.name ?? null;
+  const effectiveProfilePicture =
+    myProfilePicture ?? derivedProfile?.pictureUrl ?? null;
+
   const effectiveMyLightningAddress =
     myProfileLnAddress ?? npubCashLightningAddress;
 
@@ -1421,6 +1478,12 @@ const App = () => {
   React.useEffect(() => {
     // Load current user's Nostr profile (name + picture) from relays.
     if (!currentNpub) return;
+
+    // One toast per npub so we don't spam when deps change.
+    if (profileFetchToastShownForNpubRef.current !== currentNpub) {
+      profileFetchToastShownForNpubRef.current = currentNpub;
+      pushToast(t("profileFetching"));
+    }
 
     const cachedBlobController = new AbortController();
     let cancelledBlob = false;
@@ -1531,7 +1594,7 @@ const App = () => {
       cancelledBlob = true;
       cachedBlobController.abort();
     };
-  }, [currentNpub, nostrFetchRelays, rememberBlobAvatarUrl]);
+  }, [currentNpub, nostrFetchRelays, pushToast, rememberBlobAvatarUrl, t]);
 
   React.useEffect(() => {
     // Leave edit mode when leaving the profile screen.
@@ -1578,15 +1641,10 @@ const App = () => {
     // npub.cash integration:
     // - read default mint (preferred mint) for the user
     // - auto-claim pending payments and store them as Cashu tokens
-    // Active whenever the effective Lightning address is @npub.cash.
+    // Always active when we have Nostr keys so payments to the derived
+    // `${npub}@npub.cash` keep working even if the user sets a custom address.
     if (!currentNpub) return;
     if (!currentNsec) return;
-
-    const activeLnAddress = String(
-      myProfileLnAddress ?? npubCashLightningAddress ?? ""
-    ).trim();
-    if (!activeLnAddress) return;
-    if (!activeLnAddress.endsWith("@npub.cash")) return;
 
     let cancelled = false;
     const baseUrl = "https://npub.cash";
@@ -1671,14 +1729,7 @@ const App = () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [
-    acceptAndStoreCashuToken,
-    currentNpub,
-    currentNsec,
-    makeNip98AuthHeader,
-    myProfileLnAddress,
-    npubCashLightningAddress,
-  ]);
+  }, [acceptAndStoreCashuToken, currentNpub, currentNsec, makeNip98AuthHeader]);
 
   // Intentionally no automatic publishing of kind-0 profile metadata.
   // We only publish profile changes when the user does so explicitly.
@@ -2210,7 +2261,6 @@ const App = () => {
         });
         if (result.ok) {
           setStatus(t("cashuAccepted"));
-          pushToast(t("cashuAccepted"));
           if (options?.navigateToWallet) {
             navigateToWallet();
           }
@@ -2242,7 +2292,7 @@ const App = () => {
         setCashuIsBusy(false);
       }
     },
-    [cashuIsBusy, insert, navigateToWallet, pushToast, t]
+    [cashuIsBusy, insert, navigateToWallet, t]
   );
 
   const handleDelete = (id: ContactId) => {
@@ -2255,7 +2305,6 @@ const App = () => {
       : update("contact", { id, isDeleted: Evolu.sqliteTrue });
     if (result.ok) {
       setStatus(t("contactDeleted"));
-      pushToast(t("contactDeleted"));
       closeContactDetail();
       return;
     }
@@ -2266,7 +2315,6 @@ const App = () => {
     const result = update("cashuToken", { id, isDeleted: Evolu.sqliteTrue });
     if (result.ok) {
       setStatus(t("cashuDeleted"));
-      pushToast(t("cashuDeleted"));
       setPendingCashuDeleteId(null);
       navigateToWallet();
       return;
@@ -2483,6 +2531,7 @@ const App = () => {
   const createNewAccount = React.useCallback(async () => {
     if (onboardingIsBusy) return;
     setOnboardingIsBusy(true);
+    setOnboardingStep({ step: 1, derivedName: null, error: null });
     try {
       const { nip19, getPublicKey } = await import("nostr-tools");
       const generateRandomSecretKey = (): Uint8Array => {
@@ -2505,6 +2554,59 @@ const App = () => {
 
       if (!privBytes) {
         pushToast(t("onboardingCreateFailed"));
+        setOnboardingStep({
+          step: 1,
+          derivedName: null,
+          error: t("onboardingCreateFailed"),
+        });
+        return;
+      }
+
+      const pubkeyHex = getPublicKey(privBytes);
+      const npub = nip19.npubEncode(pubkeyHex);
+
+      const defaults = deriveDefaultProfile(npub);
+      setOnboardingStep({ step: 1, derivedName: defaults.name, error: null });
+
+      // Step 2: deterministic avatar.
+      setOnboardingStep({ step: 2, derivedName: defaults.name, error: null });
+
+      // Step 3: lightning address + publish defaults to Nostr.
+      setOnboardingStep({ step: 3, derivedName: defaults.name, error: null });
+
+      try {
+        const content: Record<string, unknown> = {
+          name: defaults.name,
+          display_name: defaults.name,
+          picture: defaults.pictureUrl,
+          image: defaults.pictureUrl,
+          lud16: defaults.lnAddress,
+        };
+
+        const relaysToUse = NOSTR_RELAYS;
+        const result = await publishKind0ProfileMetadata({
+          privBytes,
+          relays: relaysToUse,
+          content,
+        });
+
+        if (!result.anySuccess) {
+          throw new Error("nostr publish failed");
+        }
+
+        // Cache locally so the profile looks correct immediately after reload.
+        saveCachedProfileMetadata(npub, {
+          name: defaults.name,
+          displayName: defaults.name,
+          lud16: defaults.lnAddress,
+          picture: defaults.pictureUrl,
+          image: defaults.pictureUrl,
+        });
+        saveCachedProfilePicture(npub, defaults.pictureUrl);
+      } catch (e) {
+        const msg = `${t("errorPrefix")}: ${String(e ?? "unknown")}`;
+        setOnboardingStep({ step: 3, derivedName: defaults.name, error: msg });
+        pushToast(msg);
         return;
       }
 
@@ -2560,6 +2662,8 @@ const App = () => {
   }, [logoutArmed, pushToast, t]);
 
   const openFeedbackContactPendingRef = React.useRef(false);
+
+  const openScannedContactPendingNpubRef = React.useRef<string | null>(null);
 
   const openFeedbackContact = React.useCallback(() => {
     const targetNpub = FEEDBACK_CONTACT_NPUB;
@@ -2629,6 +2733,15 @@ const App = () => {
     }
 
     setEditingId(selectedContact.id);
+    if (contactEditInitialRef.current?.id !== selectedContact.id) {
+      contactEditInitialRef.current = {
+        id: selectedContact.id as ContactId,
+        name: String(selectedContact.name ?? ""),
+        npub: String(selectedContact.npub ?? ""),
+        lnAddress: String(selectedContact.lnAddress ?? ""),
+        group: String(selectedContact.groupName ?? ""),
+      };
+    }
     setForm({
       name: (selectedContact.name ?? "") as string,
       npub: (selectedContact.npub ?? "") as string,
@@ -2667,7 +2780,6 @@ const App = () => {
         : update("contact", { id: editingId, ...payload });
       if (result.ok) {
         setStatus(t("contactUpdated"));
-        pushToast(t("contactUpdated"));
       } else {
         setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
       }
@@ -2677,7 +2789,6 @@ const App = () => {
         : insert("contact", payload);
       if (result.ok) {
         setStatus(t("contactSaved"));
-        pushToast(t("contactSaved"));
       } else {
         setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
       }
@@ -2690,6 +2801,113 @@ const App = () => {
 
     closeContactDetail();
   };
+
+  const refreshContactFromNostr = React.useCallback(
+    async (contactId: ContactId, npub: string) => {
+      const trimmed = String(npub ?? "").trim();
+      if (!trimmed) return;
+
+      try {
+        const metadata = await fetchNostrProfileMetadata(trimmed, {
+          relays: nostrFetchRelays,
+        });
+
+        saveCachedProfileMetadata(trimmed, metadata);
+        if (!metadata) return;
+
+        const bestName = getBestNostrName(metadata);
+        const ln =
+          String(metadata.lud16 ?? "").trim() ||
+          String(metadata.lud06 ?? "").trim();
+
+        const patch: Partial<{
+          name: typeof Evolu.NonEmptyString1000.Type;
+          lnAddress: typeof Evolu.NonEmptyString1000.Type;
+        }> = {};
+
+        if (bestName) {
+          patch.name = bestName as typeof Evolu.NonEmptyString1000.Type;
+        }
+        if (ln) {
+          patch.lnAddress = ln as typeof Evolu.NonEmptyString1000.Type;
+        }
+
+        if (Object.keys(patch).length > 0) {
+          update("contact", { id: contactId, ...patch });
+        }
+      } catch {
+        // ignore
+      }
+    },
+    [nostrFetchRelays, update]
+  );
+
+  React.useEffect(() => {
+    const targetNpub = openScannedContactPendingNpubRef.current;
+    if (!targetNpub) return;
+    const existing = contacts.find(
+      (c) => String(c.npub ?? "").trim() === targetNpub
+    );
+    if (!existing?.id) return;
+    openScannedContactPendingNpubRef.current = null;
+    navigateToContact(existing.id);
+    void refreshContactFromNostr(existing.id, targetNpub);
+  }, [contacts, navigateToContact, refreshContactFromNostr]);
+
+  const resetEditedContactFieldFromNostr = React.useCallback(
+    async (field: "name" | "lnAddress") => {
+      if (route.kind !== "contactEdit") return;
+      if (!editingId) return;
+
+      const npub = String(form.npub ?? "").trim();
+
+      // First clear the custom value.
+      if (field === "name") {
+        setForm((prev) => ({ ...prev, name: "" }));
+        update("contact", { id: editingId, name: null });
+      } else {
+        setForm((prev) => ({ ...prev, lnAddress: "" }));
+        update("contact", { id: editingId, lnAddress: null });
+      }
+
+      if (!npub) return;
+
+      // Then fetch Nostr metadata and repopulate.
+      try {
+        const metadata = await fetchNostrProfileMetadata(npub, {
+          relays: nostrFetchRelays,
+        });
+        saveCachedProfileMetadata(npub, metadata);
+        if (!metadata) return;
+
+        const bestName = getBestNostrName(metadata);
+        const ln =
+          String(metadata.lud16 ?? "").trim() ||
+          String(metadata.lud06 ?? "").trim();
+
+        if (bestName) {
+          setForm((prev) => ({ ...prev, name: bestName }));
+        }
+        if (ln) {
+          setForm((prev) => ({ ...prev, lnAddress: ln }));
+        }
+
+        const patch: Partial<{
+          name: typeof Evolu.NonEmptyString1000.Type;
+          lnAddress: typeof Evolu.NonEmptyString1000.Type;
+        }> = {};
+        if (bestName)
+          patch.name = bestName as typeof Evolu.NonEmptyString1000.Type;
+        if (ln) patch.lnAddress = ln as typeof Evolu.NonEmptyString1000.Type;
+        if (Object.keys(patch).length > 0) {
+          update("contact", { id: editingId, ...patch });
+        }
+      } catch {
+        // ignore
+      }
+    },
+    [editingId, form.npub, nostrFetchRelays, route.kind, update]
+  );
 
   const exportAppData = React.useCallback(() => {
     try {
@@ -2971,7 +3189,7 @@ const App = () => {
 
     const run = async () => {
       try {
-        const { nip19, getPublicKey, SimplePool } = await import("nostr-tools");
+        const { nip19, getPublicKey } = await import("nostr-tools");
         const { unwrapEvent } = await import("nostr-tools/nip17");
 
         const decodedMe = nip19.decode(currentNsec);
@@ -2983,7 +3201,7 @@ const App = () => {
         if (decodedContact.type !== "npub") return;
         const contactPubHex = decodedContact.data as string;
 
-        const pool = new SimplePool();
+        const pool = await getSharedAppNostrPool();
 
         const processWrap = (wrap: NostrToolsEvent) => {
           try {
@@ -3064,7 +3282,6 @@ const App = () => {
 
         return () => {
           void sub.close("chat closed");
-          pool.close(NOSTR_RELAYS);
         };
       } catch {
         return;
@@ -3097,7 +3314,7 @@ const App = () => {
     }
 
     try {
-      const { nip19, getPublicKey, SimplePool } = await import("nostr-tools");
+      const { nip19, getPublicKey } = await import("nostr-tools");
       const { wrapEvent } = await import("nostr-tools/nip59");
 
       const decodedMe = nip19.decode(currentNsec);
@@ -3133,24 +3350,20 @@ const App = () => {
 
       chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
 
-      const pool = new SimplePool();
-      try {
-        const publishResults = await Promise.allSettled([
-          ...pool.publish(NOSTR_RELAYS, wrapForMe),
-          ...pool.publish(NOSTR_RELAYS, wrapForContact),
-        ]);
+      const pool = await getSharedAppNostrPool();
+      const publishResults = await Promise.allSettled([
+        ...pool.publish(NOSTR_RELAYS, wrapForMe),
+        ...pool.publish(NOSTR_RELAYS, wrapForContact),
+      ]);
 
-        // Some relays may fail (websocket issues), while others succeed.
-        // Treat it as success if at least one relay accepted the event.
-        const anySuccess = publishResults.some((r) => r.status === "fulfilled");
-        if (!anySuccess) {
-          const firstError = publishResults.find(
-            (r): r is PromiseRejectedResult => r.status === "rejected"
-          )?.reason;
-          throw new Error(String(firstError ?? "publish failed"));
-        }
-      } finally {
-        pool.close(NOSTR_RELAYS);
+      // Some relays may fail (websocket issues), while others succeed.
+      // Treat it as success if at least one relay accepted the event.
+      const anySuccess = publishResults.some((r) => r.status === "fulfilled");
+      if (!anySuccess) {
+        const firstError = publishResults.find(
+          (r): r is PromiseRejectedResult => r.status === "rejected"
+        )?.reason;
+        throw new Error(String(firstError ?? "publish failed"));
       }
 
       insert("nostrMessage", {
@@ -3316,22 +3529,32 @@ const App = () => {
         onClick: () => {
           if (isProfileEditing) {
             setIsProfileEditing(false);
+            profileEditInitialRef.current = null;
             return;
           }
 
           const bestName = myProfileMetadata
             ? getBestNostrName(myProfileMetadata)
             : null;
-          setProfileEditName(bestName ?? myProfileName ?? "");
-          setProfileEditLnAddress(myProfileLnAddress ?? "");
+          const initialName = bestName ?? effectiveProfileName ?? "";
+          const initialLn = effectiveMyLightningAddress ?? "";
 
           const metaPic = String(
             myProfileMetadata?.picture ??
               myProfileMetadata?.image ??
-              myProfilePicture ??
+              effectiveProfilePicture ??
               ""
           ).trim();
+
+          setProfileEditName(initialName);
+          setProfileEditLnAddress(initialLn);
           setProfileEditPicture(metaPic);
+
+          profileEditInitialRef.current = {
+            name: initialName,
+            lnAddress: initialLn,
+            picture: metaPic,
+          };
 
           setIsProfileEditing(true);
         },
@@ -3360,6 +3583,48 @@ const App = () => {
     return null;
   })();
 
+  const canSaveNewRelay = Boolean(String(newRelayUrl ?? "").trim());
+
+  const profileEditsDirty = (() => {
+    if (!isProfileEditing) return false;
+    if (!profileEditInitialRef.current) return false;
+    const initial = profileEditInitialRef.current;
+    const name = profileEditName.trim();
+    const ln = profileEditLnAddress.trim();
+    const pic = profileEditPicture.trim();
+    return (
+      name !== initial.name.trim() ||
+      ln !== initial.lnAddress.trim() ||
+      pic !== initial.picture.trim()
+    );
+  })();
+
+  const profileEditsSavable =
+    profileEditsDirty && Boolean(currentNpub && currentNsec);
+
+  const contactEditsSavable = (() => {
+    if (!editingId) return false;
+    if (route.kind !== "contactEdit") return false;
+    const initial = contactEditInitialRef.current;
+    if (!initial || initial.id !== editingId) return false;
+
+    const name = form.name.trim();
+    const npub = form.npub.trim();
+    const lnAddress = form.lnAddress.trim();
+    const group = form.group.trim();
+
+    const hasRequired = Boolean(name || npub || lnAddress);
+    if (!hasRequired) return false;
+
+    const dirty =
+      name !== initial.name.trim() ||
+      npub !== initial.npub.trim() ||
+      lnAddress !== initial.lnAddress.trim() ||
+      group !== initial.group.trim();
+
+    return dirty;
+  })();
+
   const saveProfileEdits = async () => {
     try {
       if (!currentNpub || !currentNsec) {
@@ -3371,20 +3636,22 @@ const App = () => {
       const ln = profileEditLnAddress.trim();
       const picture = profileEditPicture.trim();
 
-      const { SimplePool, finalizeEvent, getPublicKey, nip19 } = await import(
-        "nostr-tools"
-      );
+      const { nip19 } = await import("nostr-tools");
 
       const decoded = nip19.decode(currentNsec);
       if (decoded.type !== "nsec") throw new Error("Invalid nsec");
       const privBytes = decoded.data as Uint8Array;
-      const pubkey = getPublicKey(privBytes);
 
       const cachedPrev =
         loadCachedProfileMetadata(currentNpub)?.metadata ?? null;
-      const livePrev = await fetchNostrProfileMetadata(currentNpub, {
-        relays: nostrFetchRelays,
-      }).catch(() => null);
+      const livePrev = await Promise.race([
+        fetchNostrProfileMetadata(currentNpub, {
+          relays: nostrFetchRelays,
+        }).catch(() => null),
+        new Promise<null>((resolve) =>
+          window.setTimeout(() => resolve(null), 2000)
+        ),
+      ]);
 
       const prev = (livePrev ??
         cachedPrev ??
@@ -3403,60 +3670,71 @@ const App = () => {
       if (name) {
         contentObj.name = name;
         contentObj.display_name = name;
+      } else {
+        delete contentObj.name;
+        delete contentObj.display_name;
       }
 
-      if (ln) {
-        contentObj.lud16 = ln;
+      if (ln) contentObj.lud16 = ln;
+      else {
+        delete contentObj.lud16;
+        delete contentObj.lud06;
       }
 
       if (picture) {
         contentObj.picture = picture;
         contentObj.image = picture;
+      } else {
+        delete contentObj.picture;
+        delete contentObj.image;
       }
-
-      const baseEvent = {
-        kind: 0,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: [] as string[][],
-        content: JSON.stringify(contentObj),
-        pubkey,
-      } satisfies UnsignedEvent;
-
-      const signed: NostrToolsEvent = finalizeEvent(baseEvent, privBytes);
 
       const relaysToUse =
         nostrFetchRelays.length > 0 ? nostrFetchRelays : NOSTR_RELAYS;
-      const pool = new SimplePool();
-      try {
-        const publishResults = await Promise.allSettled(
-          pool.publish(relaysToUse, signed)
-        );
 
-        const anySuccess = publishResults.some((r) => r.status === "fulfilled");
-        if (!anySuccess) {
-          const firstError = publishResults.find(
-            (r): r is PromiseRejectedResult => r.status === "rejected"
-          )?.reason;
-          throw new Error(String(firstError ?? "publish failed"));
-        }
-      } finally {
-        pool.close(relaysToUse);
+      const publish = await publishKind0ProfileMetadata({
+        privBytes,
+        relays: relaysToUse,
+        content: contentObj,
+      });
+      if (!publish.anySuccess) throw new Error("publish failed");
+
+      const updatedMeta: NostrProfileMetadata = { ...prev };
+      if (name) {
+        updatedMeta.name = name;
+        updatedMeta.displayName = name;
+      } else {
+        delete updatedMeta.name;
+        delete updatedMeta.displayName;
       }
 
-      const updatedMeta: NostrProfileMetadata = {
-        ...prev,
-        ...(name ? { name, displayName: name } : {}),
-        ...(ln ? { lud16: ln } : {}),
-        ...(picture ? { picture, image: picture } : {}),
-      };
+      if (ln) {
+        updatedMeta.lud16 = ln;
+      } else {
+        delete updatedMeta.lud16;
+        delete updatedMeta.lud06;
+      }
+
+      if (picture) {
+        updatedMeta.picture = picture;
+        updatedMeta.image = picture;
+      } else {
+        delete updatedMeta.picture;
+        delete updatedMeta.image;
+      }
 
       saveCachedProfileMetadata(currentNpub, updatedMeta);
-      if (picture) saveCachedProfilePicture(currentNpub, picture);
+      saveCachedProfilePicture(currentNpub, picture || null);
       setMyProfileMetadata(updatedMeta);
-      if (name) setMyProfileName(name);
+
+      setMyProfileName(name || null);
       setMyProfileLnAddress(ln || null);
-      if (picture) setMyProfilePicture(picture);
+      setMyProfilePicture(picture || null);
+      if (!picture) {
+        void deleteCachedProfileAvatar(currentNpub);
+      }
       setIsProfileEditing(false);
+      profileEditInitialRef.current = null;
     } catch (e) {
       setStatus(`${t("errorPrefix")}: ${String(e ?? "unknown")}`);
     }
@@ -3821,7 +4099,7 @@ const App = () => {
 
     const run = async () => {
       try {
-        const { nip19, getPublicKey, SimplePool } = await import("nostr-tools");
+        const { nip19, getPublicKey } = await import("nostr-tools");
         const { unwrapEvent } = await import("nostr-tools/nip17");
 
         const decodedMe = nip19.decode(currentNsec);
@@ -3849,7 +4127,7 @@ const App = () => {
           }
         }
 
-        const pool = new SimplePool();
+        const pool = await getSharedAppNostrPool();
 
         const processWrap = (wrap: NostrToolsEvent) => {
           try {
@@ -3959,7 +4237,6 @@ const App = () => {
 
         return () => {
           void sub.close("inbox sync closed");
-          pool.close(relays);
         };
       } catch {
         return;
@@ -4006,19 +4283,83 @@ const App = () => {
   const openScan = React.useCallback(() => {
     setScanIsOpen(true);
 
+    const media = navigator.mediaDevices as
+      | { getUserMedia?: (c: MediaStreamConstraints) => Promise<MediaStream> }
+      | undefined;
+    if (!media?.getUserMedia) {
+      pushToast(t("scanCameraError"));
+      closeScan();
+      return;
+    }
+
+    // Many browsers (esp. mobile/Brave) require a secure context for camera.
+    // When running over http (e.g. LAN IP), the error often looks like
+    // NotAllowedError / permission denied.
+    if (typeof globalThis.isSecureContext === "boolean" && !isSecureContext) {
+      pushToast(t("scanRequiresHttps"));
+      closeScan();
+      return;
+    }
+
     // On iOS/WebKit (incl. Brave), requesting camera access must happen in the
     // click handler (user gesture). Doing it inside useEffect can prevent retry
     // after denying permission.
     void (async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
+        const tryGet = async (constraints: MediaStreamConstraints) => {
+          const stream = await media.getUserMedia!(constraints);
+          setScanStream(stream);
+          return true;
+        };
+
+        // Prefer back camera but keep it as an *ideal* constraint to avoid
+        // breaking on browsers/devices that don't support it.
+        const ok = await tryGet({
+          video: { facingMode: { ideal: "environment" } },
           audio: false,
-        });
-        setScanStream(stream);
+        }).catch(() => false);
+
+        if (!ok) {
+          await tryGet({ video: true, audio: false });
+        }
       } catch (e) {
-        const message = String(e ?? t("scanCameraError")).trim();
-        if (message) pushToast(message);
+        const err = e as unknown as { name?: unknown; message?: unknown };
+        const name = String(err?.name ?? "").trim();
+        const message = String(err?.message ?? e ?? "").trim();
+
+        let permissionState: string | null = null;
+        try {
+          const permissions = (
+            navigator as unknown as {
+              permissions?: {
+                query?: (desc: unknown) => Promise<{ state?: unknown }>;
+              };
+            }
+          ).permissions;
+          const res = await permissions?.query?.({ name: "camera" });
+          permissionState = String(res?.state ?? "").trim() || null;
+        } catch {
+          // ignore
+        }
+
+        console.log("[linky][scan] getUserMedia failed", {
+          name,
+          message,
+          permissionState,
+          href: globalThis.location?.href ?? null,
+          isSecureContext:
+            typeof globalThis.isSecureContext === "boolean"
+              ? globalThis.isSecureContext
+              : null,
+        });
+
+        const isPermissionDenied =
+          name === "NotAllowedError" ||
+          /permission/i.test(message) ||
+          /denied/i.test(message);
+
+        if (isPermissionDenied) pushToast(t("scanPermissionDenied"));
+        else pushToast(t("scanCameraError"));
         closeScan();
       }
     })();
@@ -4052,7 +4393,14 @@ const App = () => {
           );
           if (already) {
             setStatus(t("contactExists"));
+            const existing = contacts.find(
+              (c) => String(c.npub ?? "").trim() === normalized
+            );
             closeScan();
+            if (existing?.id) {
+              navigateToContact(existing.id);
+              void refreshContactFromNostr(existing.id, normalized);
+            }
             return;
           }
 
@@ -4074,9 +4422,10 @@ const App = () => {
                 groupName: null,
               });
 
-          if (result.ok) setStatus(t("contactSaved"));
-          else setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
-          if (result.ok) pushToast(t("contactSaved"));
+          if (result.ok) {
+            setStatus(t("contactSaved"));
+            openScannedContactPendingNpubRef.current = normalized;
+          } else setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
 
           closeScan();
           return;
@@ -4100,8 +4449,9 @@ const App = () => {
       contacts,
       extractCashuTokenFromText,
       insert,
+      navigateToContact,
       payLightningInvoiceWithCashu,
-      pushToast,
+      refreshContactFromNostr,
       saveCashuFromText,
       t,
     ]
@@ -4401,27 +4751,72 @@ const App = () => {
           </div>
           <h1 className="page-title">{t("onboardingTitle")}</h1>
 
-          <div className="settings-row">
-            <button
-              type="button"
-              className="btn-wide"
-              onClick={() => void createNewAccount()}
-              disabled={onboardingIsBusy}
-            >
-              {t("onboardingCreate")}
-            </button>
-          </div>
+          {onboardingStep ? (
+            <>
+              <div className="settings-row">
+                <div className="muted" style={{ lineHeight: 1.4 }}>
+                  {(() => {
+                    const format = (
+                      template: string,
+                      vars: Record<string, string>
+                    ) =>
+                      template.replace(/\{(\w+)\}/g, (_m, k: string) =>
+                        String(vars[k] ?? "")
+                      );
 
-          <div className="settings-row">
-            <button
-              type="button"
-              className="btn-wide secondary"
-              onClick={() => void pasteExistingNsec()}
-              disabled={onboardingIsBusy}
-            >
-              {t("onboardingPasteNsec")}
-            </button>
-          </div>
+                    const name = onboardingStep.derivedName ?? "";
+                    if (onboardingStep.step === 1)
+                      return format(t("onboardingStep1"), { name });
+                    if (onboardingStep.step === 2) return t("onboardingStep2");
+                    return t("onboardingStep3");
+                  })()}
+                </div>
+              </div>
+
+              {onboardingStep.error ? (
+                <div className="settings-row">
+                  <div className="status" role="status">
+                    {onboardingStep.error}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="settings-row">
+                <button
+                  type="button"
+                  className="btn-wide secondary"
+                  onClick={() => setOnboardingStep(null)}
+                  disabled={onboardingIsBusy}
+                >
+                  {t("onboardingRetry")}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="settings-row">
+                <button
+                  type="button"
+                  className="btn-wide"
+                  onClick={() => void createNewAccount()}
+                  disabled={onboardingIsBusy}
+                >
+                  {t("onboardingCreate")}
+                </button>
+              </div>
+
+              <div className="settings-row">
+                <button
+                  type="button"
+                  className="btn-wide secondary"
+                  onClick={() => void pasteExistingNsec()}
+                  disabled={onboardingIsBusy}
+                >
+                  {t("onboardingPasteNsec")}
+                </button>
+              </div>
+            </>
+          )}
         </section>
       ) : null}
 
@@ -4789,7 +5184,9 @@ const App = () => {
               />
 
               <div className="panel-header" style={{ marginTop: 14 }}>
-                <button onClick={saveNewRelay}>{t("saveChanges")}</button>
+                {canSaveNewRelay ? (
+                  <button onClick={saveNewRelay}>{t("saveChanges")}</button>
+                ) : null}
               </div>
             </section>
           )}
@@ -5485,7 +5882,30 @@ const App = () => {
 
               <div className="form-grid">
                 <div className="form-col">
-                  <label>Jméno</label>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <label>Jméno</label>
+                    {String(form.npub ?? "").trim() &&
+                    String(form.name ?? "").trim() ? (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() =>
+                          void resetEditedContactFieldFromNostr("name")
+                        }
+                        title={lang === "cs" ? "Obnovit" : "Reset"}
+                        aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                        style={{ paddingInline: 10, minWidth: 40 }}
+                      >
+                        ↺
+                      </button>
+                    ) : null}
+                  </div>
                   <input
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -5499,7 +5919,30 @@ const App = () => {
                     placeholder="nostr veřejný klíč"
                   />
 
-                  <label>{t("lightningAddress")}</label>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <label>{t("lightningAddress")}</label>
+                    {String(form.npub ?? "").trim() &&
+                    String(form.lnAddress ?? "").trim() ? (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() =>
+                          void resetEditedContactFieldFromNostr("lnAddress")
+                        }
+                        title={lang === "cs" ? "Obnovit" : "Reset"}
+                        aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                        style={{ paddingInline: 10, minWidth: 40 }}
+                      >
+                        ↺
+                      </button>
+                    ) : null}
+                  </div>
                   <input
                     value={form.lnAddress}
                     onChange={(e) =>
@@ -5526,9 +5969,17 @@ const App = () => {
                   ) : null}
 
                   <div className="actions">
-                    <button onClick={handleSaveContact}>
-                      {editingId ? t("saveChanges") : t("saveContact")}
-                    </button>
+                    {editingId ? (
+                      contactEditsSavable ? (
+                        <button onClick={handleSaveContact}>
+                          {t("saveChanges")}
+                        </button>
+                      ) : null
+                    ) : (
+                      <button onClick={handleSaveContact}>
+                        {t("saveContact")}
+                      </button>
+                    )}
                     <button
                       className={
                         pendingDeleteId === editingId ? "danger" : "ghost"
@@ -5731,9 +6182,9 @@ const App = () => {
                               loading="lazy"
                               referrerPolicy="no-referrer"
                             />
-                          ) : myProfilePicture ? (
+                          ) : effectiveProfilePicture ? (
                             <img
-                              src={myProfilePicture}
+                              src={effectiveProfilePicture}
                               alt=""
                               loading="lazy"
                               referrerPolicy="no-referrer"
@@ -5741,7 +6192,8 @@ const App = () => {
                           ) : (
                             <span className="contact-avatar-fallback">
                               {getInitials(
-                                myProfileName ?? formatShortNpub(currentNpub)
+                                effectiveProfileName ??
+                                  formatShortNpub(currentNpub)
                               )}
                             </span>
                           )}
@@ -5755,16 +6207,58 @@ const App = () => {
                           style={{ display: "none" }}
                         />
 
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => void onPickProfilePhoto()}
-                        >
-                          {t("profileUploadPhoto")}
-                        </button>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => void onPickProfilePhoto()}
+                          >
+                            {t("profileUploadPhoto")}
+                          </button>
+
+                          {derivedProfile &&
+                          profileEditPicture.trim() !==
+                            derivedProfile.pictureUrl ? (
+                            <button
+                              type="button"
+                              className="secondary"
+                              onClick={() =>
+                                setProfileEditPicture(derivedProfile.pictureUrl)
+                              }
+                              title={lang === "cs" ? "Obnovit" : "Reset"}
+                              aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                              style={{ paddingInline: 10, minWidth: 40 }}
+                            >
+                              ↺
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
 
-                      <label htmlFor="profileName">{t("name")}</label>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <label htmlFor="profileName">{t("name")}</label>
+                        {derivedProfile &&
+                        profileEditName.trim() !== derivedProfile.name ? (
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() =>
+                              setProfileEditName(derivedProfile.name)
+                            }
+                            title={lang === "cs" ? "Obnovit" : "Reset"}
+                            aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                            style={{ paddingInline: 10, minWidth: 40 }}
+                          >
+                            ↺
+                          </button>
+                        ) : null}
+                      </div>
                       <input
                         id="profileName"
                         value={profileEditName}
@@ -5772,7 +6266,33 @@ const App = () => {
                         placeholder={t("name")}
                       />
 
-                      <label htmlFor="profileLn">{t("lightningAddress")}</label>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <label htmlFor="profileLn">
+                          {t("lightningAddress")}
+                        </label>
+                        {derivedProfile &&
+                        profileEditLnAddress.trim() !==
+                          derivedProfile.lnAddress ? (
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() =>
+                              setProfileEditLnAddress(derivedProfile.lnAddress)
+                            }
+                            title={lang === "cs" ? "Obnovit" : "Reset"}
+                            aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                            style={{ paddingInline: 10, minWidth: 40 }}
+                          >
+                            ↺
+                          </button>
+                        ) : null}
+                      </div>
                       <input
                         id="profileLn"
                         value={profileEditLnAddress}
@@ -5786,9 +6306,11 @@ const App = () => {
                       />
 
                       <div className="panel-header" style={{ marginTop: 14 }}>
-                        <button onClick={() => void saveProfileEdits()}>
-                          {t("saveChanges")}
-                        </button>
+                        {profileEditsSavable ? (
+                          <button onClick={() => void saveProfileEdits()}>
+                            {t("saveChanges")}
+                          </button>
+                        ) : null}
                       </div>
                     </>
                   ) : (
@@ -5798,9 +6320,9 @@ const App = () => {
                           className="contact-avatar is-xl"
                           aria-hidden="true"
                         >
-                          {myProfilePicture ? (
+                          {effectiveProfilePicture ? (
                             <img
-                              src={myProfilePicture}
+                              src={effectiveProfilePicture}
                               alt=""
                               loading="lazy"
                               referrerPolicy="no-referrer"
@@ -5808,7 +6330,8 @@ const App = () => {
                           ) : (
                             <span className="contact-avatar-fallback">
                               {getInitials(
-                                myProfileName ?? formatShortNpub(currentNpub)
+                                effectiveProfileName ??
+                                  formatShortNpub(currentNpub)
                               )}
                             </span>
                           )}
@@ -5829,7 +6352,7 @@ const App = () => {
                         )}
 
                         <h2 className="contact-detail-name">
-                          {myProfileName ?? formatShortNpub(currentNpub)}
+                          {effectiveProfileName ?? formatShortNpub(currentNpub)}
                         </h2>
 
                         {effectiveMyLightningAddress ? (

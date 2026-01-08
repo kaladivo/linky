@@ -24,10 +24,10 @@ if (!("Buffer" in globalThis)) {
   if (proto.__linkyBase64UrlPatched) return;
 
   const toBase64Url = (base64: string) =>
-    base64.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
+    base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 
   const fromBase64Url = (base64url: string) => {
-    const base64 = base64url.replaceAll("-", "+").replaceAll("_", "/");
+    const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
     const pad = base64.length % 4;
     return pad === 0 ? base64 : base64 + "=".repeat(4 - pad);
   };
@@ -147,11 +147,11 @@ if (import.meta.env.PROD) {
 
 const escapeHtml = (value: string) =>
   value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 
 const applyEvoluWebCompatPolyfills = () => {
   // Some iOS/WebKit environments (notably private browsing) may lack

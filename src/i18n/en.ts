@@ -29,6 +29,11 @@ export const en = {
   onboardingPasteNsec: "Paste nsec",
   onboardingInvalidNsec: "Invalid nsec.",
   onboardingCreateFailed: "Failed to create account.",
+  onboardingStep1: "Picking a name for you… You will be {name}",
+  onboardingStep2: "Imagining what you look like… Got it",
+  onboardingStep3:
+    "Creating your lightning address — you can now receive bitcoin",
+  onboardingRetry: "Try again",
 
   logout: "Log out",
   logoutArmedHint: "Click once more to log out.",
@@ -62,6 +67,11 @@ export const en = {
   profileMissingNpub: "Missing Nostr keys.",
   profileMessagesHint: "You only see messages from contacts you also add.",
   profileUploadPhoto: "Upload photo",
+  profileFetching: "Fetching profile from Nostr…",
+  profileDerivedDefault: "Default (derived)",
+  profileManual: "Manual",
+  profileUseDefault: "Use default",
+  profileClearField: "Clear",
 
   language: "Language",
   czech: "Czech",
@@ -119,6 +129,10 @@ export const en = {
   scan: "Scan",
   scanUnsupported: "Unsupported QR code.",
   scanCameraError: "Camera not available.",
+  scanRequiresHttps:
+    "Camera requires a secure context (HTTPS). Open Linky over https or install it as a PWA.",
+  scanPermissionDenied:
+    "Camera permission denied. In Brave: click the lock icon → Site settings → Camera → Allow, then reload.",
   contactExists: "Contact already exists.",
   scanHintInvoice: "Pays invoice",
   scanHintContact: "Adds contact",
