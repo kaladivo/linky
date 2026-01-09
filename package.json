@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "prev": "vite preview"
+    "prev": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@cashu/cashu-ts": "^2.5.3",
