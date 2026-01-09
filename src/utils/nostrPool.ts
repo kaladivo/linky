@@ -1,4 +1,4 @@
-import type { Event as NostrToolsEvent } from "nostr-tools";
+import type { Filter, Event as NostrToolsEvent } from "nostr-tools";
 
 type NostrPool = {
   publish: (
@@ -12,7 +12,7 @@ type NostrPool = {
   ) => Promise<unknown>;
   subscribe: (
     relays: string[],
-    filters: any[],
+    filters: Filter[],
     opts: { onevent: (event: NostrToolsEvent) => void }
   ) => { close: (reason?: string) => Promise<void> | void };
 };

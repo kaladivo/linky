@@ -9,6 +9,26 @@ import { parseCashuToken } from "./cashu";
 import { deriveDefaultProfile } from "./derivedProfile";
 import type { CashuTokenId, ContactId } from "./evolu";
 import { evolu, useEvolu } from "./evolu";
+import { useInit } from "./hooks/useInit";
+import {
+  navigateToAdvanced,
+  navigateToCashuToken,
+  navigateToCashuTokenNew,
+  navigateToChat,
+  navigateToContact,
+  navigateToContactEdit,
+  navigateToContactPay,
+  navigateToContacts,
+  navigateToNewContact,
+  navigateToNewRelay,
+  navigateToNostrRelay,
+  navigateToNostrRelays,
+  navigateToProfile,
+  navigateToSettings,
+  navigateToWallet,
+  useRouting,
+} from "./hooks/useRouting";
+import { useToasts } from "./hooks/useToasts";
 import { getInitialLang, persistLang, translations, type Lang } from "./i18n";
 import LinkyLogo from "./LinkyLogo.tsx";
 import { INITIAL_MNEMONIC_STORAGE_KEY } from "./mnemonic";
@@ -27,31 +47,11 @@ import {
 } from "./nostrProfile";
 import { publishKind0ProfileMetadata } from "./nostrPublish";
 import {
-  useRouting,
-  navigateToContacts,
-  navigateToSettings,
-  navigateToAdvanced,
-  navigateToContact,
-  navigateToContactEdit,
-  navigateToContactPay,
-  navigateToChat,
-  navigateToNewContact,
-  navigateToWallet,
-  navigateToCashuTokenNew,
-  navigateToCashuToken,
-  navigateToProfile,
-  navigateToNostrRelays,
-  navigateToNostrRelay,
-  navigateToNewRelay,
-} from "./hooks/useRouting";
-import {
-  NO_GROUP_FILTER,
-  UNIT_TOGGLE_STORAGE_KEY,
-  NOSTR_NSEC_STORAGE_KEY,
   FEEDBACK_CONTACT_NPUB,
+  NO_GROUP_FILTER,
+  NOSTR_NSEC_STORAGE_KEY,
+  UNIT_TOGGLE_STORAGE_KEY,
 } from "./utils/constants";
-import { useToasts } from "./hooks/useToasts";
-import { useInit } from "./hooks/useInit";
 
 type AppNostrPool = {
   publish: (
@@ -147,6 +147,13 @@ const App = () => {
   const [logoutArmed, setLogoutArmed] = useState(false);
   const [dedupeContactsIsBusy, setDedupeContactsIsBusy] = useState(false);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
+
+  // Ephemeral per-contact activity indicator.
+  // When a message/payment arrives, we show a dot and temporarily bump the
+  // contact to the top until the user opens it.
+  const [contactAttentionById, setContactAttentionById] = useState<
+    Record<string, number>
+  >(() => ({}));
   const [lang, setLang] = useState<Lang>(() => getInitialLang());
   const [useBitcoinSymbol, setUseBitcoinSymbol] = useState<boolean>(() =>
     getInitialUseBitcoinSymbol()
@@ -1310,6 +1317,12 @@ const App = () => {
           error: null,
         });
         setStatus(t("cashuAccepted"));
+
+        const body =
+          accepted.amount && accepted.amount > 0
+            ? `${accepted.amount} sat`
+            : t("cashuAccepted");
+        void maybeShowPwaNotification(t("mints"), body, "cashu_claim");
       } catch (error) {
         const message = String(error).trim() || "Accept failed";
         insert("cashuToken", {
@@ -1328,7 +1341,7 @@ const App = () => {
         });
       }
     },
-    [insert, t]
+    [insert, maybeShowPwaNotification, t]
   );
 
   React.useEffect(() => {
@@ -1810,10 +1823,18 @@ const App = () => {
       });
     })();
 
-    return [...filtered].sort((a, b) =>
-      contactNameCollator.compare(String(a.name ?? ""), String(b.name ?? ""))
-    );
-  }, [activeGroup, contactNameCollator, contacts]);
+    return [...filtered].sort((a, b) => {
+      const aKey = String(a.id ?? "");
+      const bKey = String(b.id ?? "");
+      const aAttention = aKey ? contactAttentionById[aKey] ?? 0 : 0;
+      const bAttention = bKey ? contactAttentionById[bKey] ?? 0 : 0;
+      if (aAttention !== bAttention) return bAttention - aAttention;
+      return contactNameCollator.compare(
+        String(a.name ?? ""),
+        String(b.name ?? "")
+      );
+    });
+  }, [activeGroup, contactAttentionById, contactNameCollator, contacts]);
 
   const selectedContact = useMemo(() => {
     const id =
@@ -2148,7 +2169,7 @@ const App = () => {
         setCashuIsBusy(false);
       }
     },
-    [cashuIsBusy, insert, navigateToWallet, t]
+    [cashuIsBusy, insert, t]
   );
 
   const handleDelete = (id: ContactId) => {
@@ -2553,7 +2574,7 @@ const App = () => {
       openFeedbackContactPendingRef.current = false;
       pushToast(`${t("errorPrefix")}: ${String(result.error)}`);
     }
-  }, [appOwnerId, contacts, insert, navigateToContact, pushToast, t, update]);
+  }, [appOwnerId, contacts, insert, pushToast, t, update]);
 
   React.useEffect(() => {
     if (!openFeedbackContactPendingRef.current) return;
@@ -2564,10 +2585,17 @@ const App = () => {
     if (!existing?.id) return;
     openFeedbackContactPendingRef.current = false;
     navigateToContact(existing.id);
-  }, [contacts, navigateToContact]);
+  }, [contacts]);
 
   const openContactDetail = (contact: (typeof contacts)[number]) => {
     setPendingDeleteId(null);
+    setContactAttentionById((prev) => {
+      const key = String(contact.id ?? "");
+      if (!key || prev[key] === undefined) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     navigateToContact(contact.id);
   };
 
@@ -2708,7 +2736,7 @@ const App = () => {
     openScannedContactPendingNpubRef.current = null;
     navigateToContact(existing.id);
     void refreshContactFromNostr(existing.id, targetNpub);
-  }, [contacts, navigateToContact, refreshContactFromNostr]);
+  }, [contacts, refreshContactFromNostr]);
 
   const resetEditedContactFieldFromNostr = React.useCallback(
     async (field: "name" | "lnAddress") => {
@@ -3940,8 +3968,9 @@ const App = () => {
   React.useEffect(() => {
     // Best-effort: keep syncing NIP-17 inbox when not inside a chat so we can
     // show PWA notifications for new messages / incoming Cashu tokens.
-    if (route.kind === "chat") return;
     if (!currentNsec) return;
+
+    const activeChatId = route.kind === "chat" ? String(route.id ?? "") : null;
 
     let cancelled = false;
 
@@ -4024,25 +4053,22 @@ const App = () => {
             const contact = contactByPubHex.get(otherPub);
             if (!contact) return;
 
+            const isActiveChatContact =
+              Boolean(activeChatId) &&
+              String(contact.id ?? "") === String(activeChatId);
+
             if (!content) return;
 
             if (cancelled) return;
 
-            insert("nostrMessage", {
-              contactId: contact.id,
-              direction: (isOutgoing
-                ? "out"
-                : "in") as typeof Evolu.NonEmptyString100.Type,
-              content: content as typeof Evolu.NonEmptyString.Type,
-              wrapId: wrapId as typeof Evolu.NonEmptyString1000.Type,
-              rumorId: inner.id
-                ? (String(inner.id) as typeof Evolu.NonEmptyString1000.Type)
-                : null,
-              pubkey: senderPub as typeof Evolu.NonEmptyString1000.Type,
-              createdAtSec: createdAtSec as typeof Evolu.PositiveInt.Type,
-            });
-
             if (!isOutgoing) {
+              if (!isActiveChatContact) {
+                setContactAttentionById((prev) => ({
+                  ...prev,
+                  [String(contact.id)]: Date.now(),
+                }));
+              }
+
               const title = contact.name ?? t("appTitle");
               void maybeShowPwaNotification(title, content, `msg_${otherPub}`);
 
@@ -4058,6 +4084,24 @@ const App = () => {
                 );
               }
             }
+
+            // Avoid duplicate inserts while the active chat subscription is
+            // handling messages for that contact.
+            if (isActiveChatContact) return;
+
+            insert("nostrMessage", {
+              contactId: contact.id,
+              direction: (isOutgoing
+                ? "out"
+                : "in") as typeof Evolu.NonEmptyString100.Type,
+              content: content as typeof Evolu.NonEmptyString.Type,
+              wrapId: wrapId as typeof Evolu.NonEmptyString1000.Type,
+              rumorId: inner.id
+                ? (String(inner.id) as typeof Evolu.NonEmptyString1000.Type)
+                : null,
+              pubkey: senderPub as typeof Evolu.NonEmptyString1000.Type,
+              createdAtSec: createdAtSec as typeof Evolu.PositiveInt.Type,
+            });
           } catch {
             // ignore individual events
           }
@@ -4116,7 +4160,7 @@ const App = () => {
     maybeShowPwaNotification,
     nostrFetchRelays,
     nostrMessagesRecent,
-    route.kind,
+    route,
     t,
   ]);
 
@@ -4305,7 +4349,6 @@ const App = () => {
       contacts,
       extractCashuTokenFromText,
       insert,
-      navigateToContact,
       payLightningInvoiceWithCashu,
       refreshContactFromNostr,
       saveCashuFromText,
@@ -5921,6 +5964,9 @@ const App = () => {
                     const npub = String(contact.npub ?? "").trim();
                     const avatarUrl = npub ? nostrPictureByNpub[npub] : null;
                     const initials = getInitials(String(contact.name ?? ""));
+                    const hasAttention = Boolean(
+                      contactAttentionById[String(contact.id ?? "")]
+                    );
 
                     return (
                       <article
@@ -5937,19 +5983,30 @@ const App = () => {
                         }}
                       >
                         <div className="card-header">
-                          <div className="contact-avatar" aria-hidden="true">
-                            {avatarUrl ? (
-                              <img
-                                src={avatarUrl}
-                                alt=""
-                                loading="lazy"
-                                referrerPolicy="no-referrer"
+                          <div
+                            className="contact-avatar with-badge"
+                            aria-hidden="true"
+                          >
+                            <span className="contact-avatar-inner">
+                              {avatarUrl ? (
+                                <img
+                                  src={avatarUrl}
+                                  alt=""
+                                  loading="lazy"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <span className="contact-avatar-fallback">
+                                  {initials}
+                                </span>
+                              )}
+                            </span>
+                            {hasAttention ? (
+                              <span
+                                className="contact-unread-dot"
+                                aria-hidden="true"
                               />
-                            ) : (
-                              <span className="contact-avatar-fallback">
-                                {initials}
-                              </span>
-                            )}
+                            ) : null}
                           </div>
                           <div className="card-main">
                             <div className="card-title-row">
