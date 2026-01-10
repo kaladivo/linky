@@ -11,6 +11,7 @@ export const cs = {
   exportData: "Export",
   importData: "Import",
   dedupeContacts: "Deduplikovat kontakty",
+  appVersionLabel: "Verze",
   dedupeContactsNone: "Žádné duplicity nenalezeny.",
   dedupeContactsResult:
     "Sloučeno {groups} skupin, odstraněno {removed} kontaktů, přesunuto {moved} zpráv.",
@@ -60,6 +61,16 @@ export const cs = {
   relayUrl: "Relay URL",
 
   mints: "Minty",
+
+  unknown: "Neznámé",
+  mintsEmpty: "Zatím žádné minty. Minty se objeví po přijetí tokenu.",
+  mintNotFound: "Mint nenalezen.",
+  mintUrl: "URL",
+  mintMpp: "Podpora MPP",
+  mintFees: "Poplatky",
+  mintRefresh: "Obnovit info",
+  mintDelete: "Odstranit mint",
+  mintLastChecked: "Naposledy ověřeno",
 
   chat: "Chat",
   sendMessage: "Zprávy",
@@ -186,11 +197,14 @@ export const cs = {
   walletEarlyWarningTitle: "Upozornění",
   walletEarlyWarningBody:
     "Linky je ve velmi rané fázi. Můžete ztratit přístup k prostředkům, které sem nahrajete. Používejte jen malé částky.",
+  storageNotPersistent:
+    "Úložiště není perzistentní (anonymní okno?). Peněženka může po obnovení zmizet. Pro nejlepší spolehlivost použijte běžné okno.",
 
   topup: "Dobít",
   topupTitle: "Dobít účet",
   topupShowInvoice: "Zobrazit fakturu pro dobití",
   topupInvoiceTitle: "Faktura pro dobití",
+  topupInvoiceAmount: "Dobíjíš {amount} {unit}.",
   topupFetchingInvoice: "Načítám fakturu…",
   topupInvoiceFailed: "Nepodařilo se načíst fakturu",
 
@@ -242,4 +256,15 @@ export const cs = {
   payPaying: "Platím…",
   paySuccess: "Zaplaceno.",
   payFailed: "Platba se nepovedla",
+
+  paidSent: "Odesláno {amount} {unit}.",
+  paidSentTo: "Odesláno {amount} {unit} → {name}.",
+  paidReceived: "Přijato {amount} {unit}.",
+  topupOverlay: "Dobito {amount} {unit}.",
+
+  saveContactPromptTitle: "Uložit jako kontakt?",
+  saveContactPromptBody:
+    "Zaplaceno {amount} {unit} na {lnAddress}. Chcete adresu uložit jako kontakt?",
+  saveContactPromptSave: "Uložit kontakt",
+  saveContactPromptSkip: "Teď ne",
 } as const;

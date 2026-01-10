@@ -1637,6 +1637,45 @@ button.tag-button {
   background: rgba(15, 23, 42, 0.78);
 }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.modal-sheet {
+  width: min(520px, calc(100vw - 48px));
+  border: 1px solid #1f2937;
+  background: #0b1222;
+  border-radius: 18px;
+  padding: 20px 18px;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #e2e8f0;
+  margin-bottom: 10px;
+}
+
+.modal-body {
+  font-size: 14px;
+  line-height: 1.35;
+  color: #cbd5e1;
+  margin-bottom: 14px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.modal-actions {
+  display: grid;
+  gap: 10px;
+}
+
 .paid-sheet {
   width: min(420px, calc(100vw - 48px));
   border: 1px solid #1f2937;
@@ -1664,6 +1703,8 @@ button.tag-button {
   font-size: 22px;
   font-weight: 800;
   color: #e2e8f0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 @media (max-width: 960px) {

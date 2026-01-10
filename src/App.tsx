@@ -7,7 +7,7 @@ import React, { useMemo, useState } from "react";
 import "./App.css";
 import { parseCashuToken } from "./cashu";
 import { deriveDefaultProfile } from "./derivedProfile";
-import type { CashuTokenId, ContactId } from "./evolu";
+import type { CashuTokenId, ContactId, MintId } from "./evolu";
 import { evolu, useEvolu } from "./evolu";
 import { useInit } from "./hooks/useInit";
 import {
@@ -19,6 +19,9 @@ import {
   navigateToContactEdit,
   navigateToContactPay,
   navigateToContacts,
+  navigateToLnAddressPay,
+  navigateToMint,
+  navigateToMints,
   navigateToNewContact,
   navigateToNewRelay,
   navigateToNostrRelay,
@@ -59,6 +62,8 @@ import {
   UNIT_TOGGLE_STORAGE_KEY,
 } from "./utils/constants";
 import { safeLocalStorageGet, safeLocalStorageSet } from "./utils/storage";
+
+const LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY = "linky.lastAcceptedCashuToken.v1";
 
 type AppNostrPool = {
   publish: (
@@ -164,7 +169,7 @@ const App = () => {
           ? (Math.floor(event.amount) as typeof Evolu.PositiveInt.Type)
           : null;
       const fee =
-        typeof event.fee === "number" && event.fee >= 0
+        typeof event.fee === "number" && event.fee > 0
           ? (Math.floor(event.fee) as typeof Evolu.PositiveInt.Type)
           : null;
 
@@ -198,6 +203,12 @@ const App = () => {
   const [status, setStatus] = useState<string | null>(null);
   const importDataFileInputRef = React.useRef<HTMLInputElement | null>(null);
 
+  const [recentlyReceivedToken, setRecentlyReceivedToken] = useState<null | {
+    token: string;
+    amount: number | null;
+  }>(null);
+  const recentlyReceivedTokenTimerRef = React.useRef<number | null>(null);
+
   const [paidOverlayIsOpen, setPaidOverlayIsOpen] = useState(false);
   const [paidOverlayTitle, setPaidOverlayTitle] = useState<string | null>(null);
   const paidOverlayTimerRef = React.useRef<number | null>(null);
@@ -210,6 +221,9 @@ const App = () => {
   const [pendingCashuDeleteId, setPendingCashuDeleteId] =
     useState<CashuTokenId | null>(null);
   const [pendingRelayDeleteUrl, setPendingRelayDeleteUrl] = useState<
+    string | null
+  >(null);
+  const [pendingMintDeleteUrl, setPendingMintDeleteUrl] = useState<
     string | null
   >(null);
   const [logoutArmed, setLogoutArmed] = useState(false);
@@ -236,6 +250,9 @@ const App = () => {
     step: number;
   }>(null);
 
+  const [contactsGuideTargetContactId, setContactsGuideTargetContactId] =
+    React.useState<ContactId | null>(null);
+
   const [contactsGuideHighlightRect, setContactsGuideHighlightRect] =
     useState<null | {
       top: number;
@@ -254,6 +271,8 @@ const App = () => {
   const [useBitcoinSymbol, setUseBitcoinSymbol] = useState<boolean>(() =>
     getInitialUseBitcoinSymbol()
   );
+
+  const displayUnit = useBitcoinSymbol ? "₿" : "sat";
 
   const [currentNsec] = useState<string | null>(() => getInitialNostrNsec());
   const [currentNpub, setCurrentNpub] = useState<string | null>(null);
@@ -373,6 +392,13 @@ const App = () => {
   const cashuDraftRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [cashuIsBusy, setCashuIsBusy] = useState(false);
 
+  const cashuOpQueueRef = React.useRef<Promise<void>>(Promise.resolve());
+  const enqueueCashuOp = React.useCallback((op: () => Promise<void>) => {
+    const next = cashuOpQueueRef.current.then(op, op);
+    cashuOpQueueRef.current = next.catch(() => {});
+    return next;
+  }, []);
+
   const [defaultMintUrl, setDefaultMintUrl] = useState<string | null>(null);
 
   const [newRelayUrl, setNewRelayUrl] = useState<string>("");
@@ -462,6 +488,42 @@ const App = () => {
     <K extends keyof typeof translations.cs>(key: K) => translations[lang][key],
     [lang]
   );
+
+  React.useEffect(() => {
+    const storage = (
+      navigator as unknown as {
+        storage?: {
+          persisted?: () => Promise<boolean>;
+          persist?: () => Promise<boolean>;
+        };
+      }
+    ).storage;
+    if (!storage?.persisted || !storage?.persist) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const persisted = await storage.persisted!();
+        if (cancelled) return;
+        if (persisted) return;
+
+        await storage.persist!();
+        if (cancelled) return;
+
+        await storage.persisted!();
+        if (cancelled) return;
+        // We still attempt to request persistent storage, but we no longer
+        // show a toast if it can't be obtained (private browsing, etc.).
+        // (Intentionally silent.)
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pushToast, t]);
 
   useInit(() => {
     const paidTimerRef = paidOverlayTimerRef;
@@ -682,7 +744,7 @@ const App = () => {
           );
         })();
 
-        const invoiceComment = `${displayName || t("appTitle")}, dobití`;
+        const invoiceComment = `${displayName || t("appTitle")}`;
 
         const invoice = await fetchLnurlInvoiceForLightningAddress(
           lnAddress,
@@ -1393,6 +1455,347 @@ const App = () => {
   );
   const cashuTokensAll = useQuery(cashuTokensAllQuery);
 
+  const cashuTokensAllRef = React.useRef(cashuTokensAll);
+  React.useEffect(() => {
+    cashuTokensAllRef.current = cashuTokensAll;
+  }, [cashuTokensAll]);
+
+  const ensuredTokenRef = React.useRef<Set<string>>(new Set());
+  const ensureCashuTokenPersisted = React.useCallback(
+    (token: string) => {
+      const remembered = String(token ?? "").trim();
+      if (!remembered) return;
+
+      // Delay to give Evolu time to reflect the insert in queries.
+      window.setTimeout(() => {
+        try {
+          const current = cashuTokensAllRef.current;
+          const exists = current.some((row) => {
+            const r = row as unknown as {
+              token?: unknown;
+              rawToken?: unknown;
+              isDeleted?: unknown;
+            };
+            if (r.isDeleted) return false;
+            const stored = String(r.token ?? r.rawToken ?? "").trim();
+            return stored && stored === remembered;
+          });
+          if (exists) {
+            safeLocalStorageSet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY, "");
+            return;
+          }
+
+          // Prevent repeated inserts for the same token string in one session.
+          if (ensuredTokenRef.current.has(remembered)) return;
+          ensuredTokenRef.current.add(remembered);
+
+          const parsed = parseCashuToken(remembered);
+          const mint = parsed?.mint?.trim() ? parsed.mint.trim() : null;
+          const amount =
+            parsed?.amount && parsed.amount > 0 ? parsed.amount : null;
+
+          const r = insert("cashuToken", {
+            token: remembered as typeof Evolu.NonEmptyString.Type,
+            rawToken: null,
+            mint: mint ? (mint as typeof Evolu.NonEmptyString1000.Type) : null,
+            unit: null,
+            amount:
+              typeof amount === "number" && amount > 0
+                ? (Math.floor(amount) as typeof Evolu.PositiveInt.Type)
+                : null,
+            state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+            error: null,
+          });
+
+          if (r.ok) {
+            logPaymentEvent({
+              direction: "in",
+              status: "ok",
+              amount: typeof amount === "number" ? amount : null,
+              fee: null,
+              mint,
+              unit: null,
+              error: null,
+              contactId: null,
+            });
+            safeLocalStorageSet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY, "");
+          }
+        } catch {
+          // ignore
+        }
+      }, 800);
+    },
+    [insert, logPaymentEvent]
+  );
+
+  React.useEffect(() => {
+    // If we have a remembered accepted token (from previous session) and it's
+    // missing in the DB, try to restore it automatically.
+    const remembered = String(
+      safeLocalStorageGet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY) ?? ""
+    ).trim();
+    if (!remembered) return;
+    ensureCashuTokenPersisted(remembered);
+  }, [cashuTokensAll, ensureCashuTokenPersisted]);
+
+  const autoRestoreLastAcceptedTokenAttemptedRef = React.useRef(false);
+  React.useEffect(() => {
+    // Best-effort recovery: if the app previously accepted a token but the
+    // local DB is empty/missing it (storage cleared, etc.), restore it
+    // automatically without showing UI.
+    if (autoRestoreLastAcceptedTokenAttemptedRef.current) return;
+    autoRestoreLastAcceptedTokenAttemptedRef.current = true;
+
+    const remembered = String(
+      safeLocalStorageGet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY) ?? ""
+    ).trim();
+    if (!remembered) return;
+
+    const exists = cashuTokensAll.some((row) => {
+      const r = row as unknown as {
+        token?: unknown;
+        rawToken?: unknown;
+        isDeleted?: unknown;
+      };
+      if (r.isDeleted) return false;
+      const stored = String(r.token ?? r.rawToken ?? "").trim();
+      return stored && stored === remembered;
+    });
+
+    if (exists) {
+      safeLocalStorageSet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY, "");
+      return;
+    }
+
+    const parsed = parseCashuToken(remembered);
+    const mint = parsed?.mint?.trim() ? parsed.mint.trim() : null;
+    const amount = parsed?.amount && parsed.amount > 0 ? parsed.amount : null;
+
+    const r = insert("cashuToken", {
+      token: remembered as typeof Evolu.NonEmptyString.Type,
+      rawToken: null,
+      mint: mint ? (mint as typeof Evolu.NonEmptyString1000.Type) : null,
+      unit: null,
+      amount:
+        typeof amount === "number" && amount > 0
+          ? (Math.floor(amount) as typeof Evolu.PositiveInt.Type)
+          : null,
+      state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+      error: null,
+    });
+
+    if (r.ok) {
+      logPaymentEvent({
+        direction: "in",
+        status: "ok",
+        amount: typeof amount === "number" ? amount : null,
+        fee: null,
+        mint,
+        unit: null,
+        error: null,
+        contactId: null,
+      });
+      safeLocalStorageSet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY, "");
+    }
+  }, [cashuTokensAll, insert, logPaymentEvent]);
+
+  const mintInfoAllQuery = useMemo(
+    () =>
+      evolu.createQuery((db) =>
+        db.selectFrom("mintInfo").selectAll().orderBy("lastSeenAtSec", "desc")
+      ),
+    []
+  );
+  const mintInfoAll = useQuery(mintInfoAllQuery);
+
+  const mintInfoQuery = useMemo(
+    () =>
+      evolu.createQuery((db) =>
+        db
+          .selectFrom("mintInfo")
+          .selectAll()
+          .where("isDeleted", "is not", Evolu.sqliteTrue)
+          .orderBy("lastSeenAtSec", "desc")
+      ),
+    []
+  );
+  const mintInfo = useQuery(mintInfoQuery);
+
+  const mintInfoByUrl = useMemo(() => {
+    const map = new Map<string, (typeof mintInfoAll)[number]>();
+    for (const row of mintInfoAll) {
+      const url = String((row as unknown as { url?: unknown }).url ?? "")
+        .trim()
+        .replace(/\/+$/, "");
+      if (!url) continue;
+      if (!map.has(url)) map.set(url, row);
+    }
+    return map;
+  }, [mintInfoAll]);
+
+  const encounteredMintUrls = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of cashuTokensAll) {
+      const state = String((row as unknown as { state?: unknown }).state ?? "");
+      if (state !== "accepted") continue;
+      const mint = String(
+        (row as unknown as { mint?: unknown }).mint ?? ""
+      ).trim();
+      if (mint) set.add(mint);
+    }
+    return Array.from(set.values()).sort();
+  }, [cashuTokensAll]);
+
+  const refreshMintInfo = React.useCallback(
+    async (mintUrl: string) => {
+      const cleaned = String(mintUrl ?? "")
+        .trim()
+        .replace(/\/+$/, "");
+      if (!cleaned) return;
+
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 8000);
+      try {
+        const tryUrls = [`${cleaned}/v1/info`, `${cleaned}/info`];
+        let info: unknown = null;
+        let lastErr: unknown = null;
+        for (const u of tryUrls) {
+          try {
+            const res = await fetch(u, {
+              method: "GET",
+              headers: { accept: "application/json" },
+              signal: controller.signal,
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            info = await res.json();
+            lastErr = null;
+            break;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        if (!info) throw lastErr ?? new Error("No info");
+
+        const nuts =
+          (info as unknown as { nuts?: unknown }).nuts ??
+          (info as unknown as { NUTS?: unknown }).NUTS ??
+          null;
+        const nut15 = (() => {
+          if (!nuts || typeof nuts !== "object") return null;
+          const rec = nuts as Record<string, unknown>;
+          return rec["15"] ?? rec["nut15"] ?? (rec["NUT15"] as unknown) ?? null;
+        })();
+        const supportsMpp = Boolean(nut15);
+
+        const fees =
+          (info as unknown as { fees?: unknown }).fees ??
+          (info as unknown as { fee?: unknown }).fee ??
+          null;
+
+        const nowSec = Math.floor(Date.now() / 1000);
+        const toJson = (value: unknown): string | null => {
+          try {
+            const s = JSON.stringify(value);
+            const trimmed = String(s ?? "").trim();
+            if (
+              !trimmed ||
+              trimmed === "null" ||
+              trimmed === "{}" ||
+              trimmed === "[]"
+            )
+              return null;
+            return trimmed.slice(0, 1000);
+          } catch {
+            return null;
+          }
+        };
+
+        update("mintInfo", {
+          id: cleaned as unknown as MintId,
+          supportsMpp: supportsMpp
+            ? ("1" as typeof Evolu.NonEmptyString100.Type)
+            : null,
+          feesJson: toJson(fees) as typeof Evolu.NonEmptyString1000.Type | null,
+          infoJson: toJson(info) as typeof Evolu.NonEmptyString1000.Type | null,
+          lastCheckedAtSec: nowSec as typeof Evolu.PositiveInt.Type,
+        });
+      } catch {
+        // ignore
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    },
+    [update]
+  );
+
+  React.useEffect(() => {
+    // Ensure every user has the default mint in their mint list.
+    const bootstrap = "https://mint.minibits.cash";
+    const cleaned = bootstrap.trim().replace(/\/+$/, "");
+    if (!cleaned) return;
+
+    const existing = mintInfoByUrl.get(cleaned) as
+      | (Record<string, unknown> & {
+          isDeleted?: unknown;
+          firstSeenAtSec?: unknown;
+          lastCheckedAtSec?: unknown;
+        })
+      | undefined;
+
+    // Respect user deletion.
+    if (String(existing?.isDeleted ?? "") === String(Evolu.sqliteTrue)) return;
+
+    if (!existing) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      upsert("mintInfo", {
+        id: cleaned as unknown as MintId,
+        url: cleaned as typeof Evolu.NonEmptyString1000.Type,
+        firstSeenAtSec: nowSec as typeof Evolu.PositiveInt.Type,
+        lastSeenAtSec: nowSec as typeof Evolu.PositiveInt.Type,
+      });
+      void refreshMintInfo(cleaned);
+    }
+  }, [mintInfoByUrl, refreshMintInfo, upsert]);
+
+  React.useEffect(() => {
+    if (encounteredMintUrls.length === 0) return;
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    for (const mintUrl of encounteredMintUrls) {
+      const cleaned = String(mintUrl ?? "")
+        .trim()
+        .replace(/\/+$/, "");
+      if (!cleaned) continue;
+
+      const existing = mintInfoByUrl.get(cleaned) as
+        | (Record<string, unknown> & {
+            isDeleted?: unknown;
+            firstSeenAtSec?: unknown;
+            lastCheckedAtSec?: unknown;
+          })
+        | undefined;
+
+      // Respect user deletion (don't auto-recreate).
+      if (String(existing?.isDeleted ?? "") === String(Evolu.sqliteTrue)) {
+        continue;
+      }
+
+      const firstSeen = Number(existing?.firstSeenAtSec ?? 0) || nowSec;
+      upsert("mintInfo", {
+        id: cleaned as unknown as MintId,
+        url: cleaned as typeof Evolu.NonEmptyString1000.Type,
+        firstSeenAtSec: firstSeen as typeof Evolu.PositiveInt.Type,
+        lastSeenAtSec: nowSec as typeof Evolu.PositiveInt.Type,
+      });
+
+      const lastChecked = Number(existing?.lastCheckedAtSec ?? 0) || 0;
+      const oneDay = 86_400;
+      if (lastChecked === 0 || nowSec - lastChecked > oneDay) {
+        void refreshMintInfo(cleaned);
+      }
+    }
+  }, [encounteredMintUrls, mintInfoByUrl, refreshMintInfo, upsert]);
+
   const paymentEventsQuery = useMemo(
     () =>
       evolu.createQuery((db) =>
@@ -1407,7 +1810,120 @@ const App = () => {
   );
   const paymentEvents = useQuery(paymentEventsQuery);
 
+  const appStateLatestQuery = useMemo(
+    () =>
+      evolu.createQuery((db) =>
+        db
+          .selectFrom("appState")
+          .selectAll()
+          .where("isDeleted", "is not", Evolu.sqliteTrue)
+          .orderBy("createdAt", "desc")
+          .limit(1)
+      ),
+    []
+  );
+  const appStateLatest = useQuery(appStateLatestQuery);
+
+  const skipPersistContactsTutorialRef = React.useRef(false);
+
   React.useEffect(() => {
+    const row = appStateLatest[0] as
+      | (Record<string, unknown> & {
+          contactsOnboardingDismissed?: unknown;
+          contactsOnboardingHasPaid?: unknown;
+          contactsGuideTask?: unknown;
+          contactsGuideStepPlusOne?: unknown;
+          contactsGuideTargetContactId?: unknown;
+        })
+      | undefined;
+
+    if (!row) return;
+
+    const dismissed = String(row.contactsOnboardingDismissed ?? "") === "1";
+    const hasPaid = String(row.contactsOnboardingHasPaid ?? "") === "1";
+
+    const task = String(row.contactsGuideTask ?? "").trim();
+    const stepPlusOne =
+      Number(row.contactsGuideStepPlusOne ?? 0) || (task ? 1 : 0);
+    const step = Math.max(stepPlusOne - 1, 0);
+
+    const targetContactId =
+      (row.contactsGuideTargetContactId as ContactId | null | undefined) ??
+      null;
+
+    skipPersistContactsTutorialRef.current = true;
+
+    setContactsOnboardingDismissed(dismissed);
+    setContactsOnboardingHasPaid(hasPaid);
+
+    // Restore guide only if it's currently closed.
+    if (!contactsGuide && task) {
+      setContactsGuide({ task: task as ContactsGuideKey, step });
+      setContactsGuideTargetContactId(targetContactId);
+    }
+  }, [appStateLatest, contactsGuide]);
+
+  const contactsTutorialSnapshotRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (skipPersistContactsTutorialRef.current) {
+      skipPersistContactsTutorialRef.current = false;
+      return;
+    }
+
+    const snapshot = JSON.stringify({
+      dismissed: contactsOnboardingDismissed,
+      hasPaid: contactsOnboardingHasPaid,
+      guide: contactsGuide
+        ? { task: contactsGuide.task, step: Math.max(contactsGuide.step, 0) }
+        : null,
+      target: contactsGuideTargetContactId
+        ? String(contactsGuideTargetContactId)
+        : null,
+    });
+
+    if (contactsTutorialSnapshotRef.current === snapshot) return;
+    contactsTutorialSnapshotRef.current = snapshot;
+
+    const dismissed = contactsOnboardingDismissed ? "1" : null;
+    const hasPaid = contactsOnboardingHasPaid ? "1" : null;
+    const guideTask = contactsGuide?.task ? String(contactsGuide.task) : null;
+    const stepPlusOneRaw =
+      contactsGuide && Number.isFinite(contactsGuide.step)
+        ? Math.floor(Math.max(contactsGuide.step, 0)) + 1
+        : null;
+
+    try {
+      insert("appState", {
+        contactsOnboardingDismissed: dismissed
+          ? (dismissed as typeof Evolu.NonEmptyString100.Type)
+          : null,
+        contactsOnboardingHasPaid: hasPaid
+          ? (hasPaid as typeof Evolu.NonEmptyString100.Type)
+          : null,
+        contactsGuideTask: guideTask
+          ? (guideTask as typeof Evolu.NonEmptyString100.Type)
+          : null,
+        contactsGuideStepPlusOne:
+          stepPlusOneRaw && stepPlusOneRaw > 0
+            ? (stepPlusOneRaw as typeof Evolu.PositiveInt.Type)
+            : null,
+        contactsGuideTargetContactId: (contactsGuideTargetContactId ??
+          null) as ContactId | null,
+      });
+    } catch {
+      // ignore
+    }
+  }, [
+    contactsGuide,
+    contactsGuideTargetContactId,
+    contactsOnboardingDismissed,
+    contactsOnboardingHasPaid,
+    insert,
+  ]);
+
+  React.useEffect(() => {
+    if (!import.meta.env.DEV) return;
+
     // Debug: log Evolu state without secrets.
     // NOTE: Relays and derived npub are Nostr/runtime state, not stored in Evolu.
     console.log("[linky][evolu] snapshot", {
@@ -1501,9 +2017,9 @@ const App = () => {
 
     topupInvoicePaidHandledRef.current = true;
     showPaidOverlay(
-      `${lang === "cs" ? "Dobito" : "Topped up"} ${formatInteger(
-        amountSat
-      )} sat`
+      t("topupOverlay")
+        .replace("{amount}", formatInteger(amountSat))
+        .replace("{unit}", displayUnit)
     );
 
     if (topupPaidNavTimerRef.current !== null) {
@@ -1519,15 +2035,35 @@ const App = () => {
     }, 1400);
   }, [
     cashuBalance,
+    displayUnit,
     formatInteger,
     lang,
     route.kind,
     showPaidOverlay,
+    t,
     topupAmount,
     topupInvoice,
     topupInvoiceIsBusy,
     topupInvoiceQr,
   ]);
+
+  const [lnAddressPayAmount, setLnAddressPayAmount] = useState<string>("");
+  React.useEffect(() => {
+    if (route.kind !== "lnAddressPay") {
+      setLnAddressPayAmount("");
+    }
+  }, [route.kind]);
+
+  const [contactNewPrefill, setContactNewPrefill] = React.useState<null | {
+    lnAddress: string;
+    npub: string | null;
+    suggestedName: string | null;
+  }>(null);
+
+  const [postPaySaveContact, setPostPaySaveContact] = React.useState<null | {
+    lnAddress: string;
+    amountSat: number;
+  }>(null);
 
   const npubCashLightningAddress = useMemo(() => {
     if (!currentNpub) return null;
@@ -1581,56 +2117,236 @@ const App = () => {
       const tokenRaw = tokenText.trim();
       if (!tokenRaw) return;
 
-      // Parse best-effort metadata for display / fallback.
-      const parsed = parseCashuToken(tokenRaw);
-      const parsedMint = parsed?.mint?.trim() ? parsed.mint.trim() : null;
-      const parsedAmount =
-        parsed?.amount && parsed.amount > 0 ? parsed.amount : null;
+      await enqueueCashuOp(async () => {
+        setCashuIsBusy(true);
 
-      try {
-        const { acceptCashuToken } = await import("./cashuAccept");
-        const accepted = await acceptCashuToken(tokenRaw);
-        insert("cashuToken", {
-          token: accepted.token as typeof Evolu.NonEmptyString.Type,
-          rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
-          mint: accepted.mint as typeof Evolu.NonEmptyString1000.Type,
-          unit: accepted.unit
-            ? (accepted.unit as typeof Evolu.NonEmptyString100.Type)
-            : null,
-          amount:
-            accepted.amount > 0
-              ? (accepted.amount as typeof Evolu.PositiveInt.Type)
-              : null,
-          state: "accepted" as typeof Evolu.NonEmptyString100.Type,
-          error: null,
-        });
-        setStatus(t("cashuAccepted"));
+        const parsed = parseCashuToken(tokenRaw);
+        const parsedMint = parsed?.mint?.trim() ? parsed.mint.trim() : null;
+        const parsedAmount =
+          parsed?.amount && parsed.amount > 0 ? parsed.amount : null;
 
-        const body =
-          accepted.amount && accepted.amount > 0
-            ? `${accepted.amount} sat`
-            : t("cashuAccepted");
-        void maybeShowPwaNotification(t("mints"), body, "cashu_claim");
-      } catch (error) {
-        const message = String(error).trim() || "Accept failed";
-        insert("cashuToken", {
-          token: tokenRaw as typeof Evolu.NonEmptyString.Type,
-          rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
-          mint: parsedMint
-            ? (parsedMint as typeof Evolu.NonEmptyString1000.Type)
-            : null,
-          unit: null,
-          amount:
-            typeof parsedAmount === "number"
-              ? (parsedAmount as typeof Evolu.PositiveInt.Type)
+        try {
+          // De-dupe: don't accept/store the same token twice.
+          const alreadyStored = cashuTokensAll.some((row) => {
+            const r = row as unknown as {
+              rawToken?: unknown;
+              token?: unknown;
+              isDeleted?: unknown;
+            };
+            if (r.isDeleted) return false;
+            const stored = String(r.rawToken ?? r.token ?? "").trim();
+            return stored && stored === tokenRaw;
+          });
+          if (alreadyStored) return;
+
+          const { acceptCashuToken } = await import("./cashuAccept");
+          const accepted = await acceptCashuToken(tokenRaw);
+
+          const result = insert("cashuToken", {
+            token: accepted.token as typeof Evolu.NonEmptyString.Type,
+            rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
+            mint: accepted.mint as typeof Evolu.NonEmptyString1000.Type,
+            unit: accepted.unit
+              ? (accepted.unit as typeof Evolu.NonEmptyString100.Type)
               : null,
-          state: "error" as typeof Evolu.NonEmptyString100.Type,
-          error: message.slice(0, 1000) as typeof Evolu.NonEmptyString1000.Type,
-        });
-      }
+            amount:
+              accepted.amount > 0
+                ? (accepted.amount as typeof Evolu.PositiveInt.Type)
+                : null,
+            state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+            error: null,
+          });
+          if (!result.ok) {
+            setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
+            return;
+          }
+
+          // Remember the last successfully accepted token so we can recover it
+          // if storage gets wiped (e.g., private browsing) or if persistence
+          // glitches.
+          safeLocalStorageSet(
+            LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY,
+            String(accepted.token ?? "")
+          );
+          ensureCashuTokenPersisted(String(accepted.token ?? ""));
+
+          // Minimal receive-only banner: click to copy token.
+          if (recentlyReceivedTokenTimerRef.current !== null) {
+            try {
+              window.clearTimeout(recentlyReceivedTokenTimerRef.current);
+            } catch {
+              // ignore
+            }
+          }
+          setRecentlyReceivedToken({
+            token: String(accepted.token ?? "").trim(),
+            amount:
+              typeof accepted.amount === "number" && accepted.amount > 0
+                ? accepted.amount
+                : null,
+          });
+          recentlyReceivedTokenTimerRef.current = window.setTimeout(() => {
+            setRecentlyReceivedToken(null);
+            recentlyReceivedTokenTimerRef.current = null;
+          }, 25_000);
+
+          const cleanedMint = String(accepted.mint ?? "")
+            .trim()
+            .replace(/\/+$/, "");
+          if (cleanedMint) {
+            const nowSec = Math.floor(Date.now() / 1000);
+            const existing = mintInfoByUrl.get(cleanedMint) as
+              | (Record<string, unknown> & {
+                  isDeleted?: unknown;
+                  firstSeenAtSec?: unknown;
+                  lastCheckedAtSec?: unknown;
+                })
+              | undefined;
+            if (
+              String(existing?.isDeleted ?? "") !== String(Evolu.sqliteTrue)
+            ) {
+              const firstSeen = Number(existing?.firstSeenAtSec ?? 0) || nowSec;
+              upsert("mintInfo", {
+                id: cleanedMint as unknown as MintId,
+                url: cleanedMint as typeof Evolu.NonEmptyString1000.Type,
+                firstSeenAtSec: firstSeen as typeof Evolu.PositiveInt.Type,
+                lastSeenAtSec: nowSec as typeof Evolu.PositiveInt.Type,
+              });
+
+              const lastChecked = Number(existing?.lastCheckedAtSec ?? 0) || 0;
+              if (!lastChecked) void refreshMintInfo(cleanedMint);
+            }
+          }
+
+          logPaymentEvent({
+            direction: "in",
+            status: "ok",
+            amount: accepted.amount,
+            fee: null,
+            mint: accepted.mint,
+            unit: accepted.unit,
+            error: null,
+            contactId: null,
+          });
+
+          if (route.kind !== "topupInvoice") {
+            const title =
+              accepted.amount && accepted.amount > 0
+                ? t("paidReceived")
+                    .replace("{amount}", formatInteger(accepted.amount))
+                    .replace("{unit}", displayUnit)
+                : t("cashuAccepted");
+            showPaidOverlay(title);
+          }
+
+          const body =
+            accepted.amount && accepted.amount > 0
+              ? `${accepted.amount} sat`
+              : t("cashuAccepted");
+          void maybeShowPwaNotification(t("mints"), body, "cashu_claim");
+        } catch (error) {
+          const message = String(error).trim() || "Accept failed";
+
+          logPaymentEvent({
+            direction: "in",
+            status: "error",
+            amount: parsedAmount,
+            fee: null,
+            mint: parsedMint,
+            unit: null,
+            error: message,
+            contactId: null,
+          });
+          insert("cashuToken", {
+            token: tokenRaw as typeof Evolu.NonEmptyString.Type,
+            rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
+            mint: parsedMint
+              ? (parsedMint as typeof Evolu.NonEmptyString1000.Type)
+              : null,
+            unit: null,
+            amount:
+              typeof parsedAmount === "number"
+                ? (parsedAmount as typeof Evolu.PositiveInt.Type)
+                : null,
+            state: "error" as typeof Evolu.NonEmptyString100.Type,
+            error: message.slice(
+              0,
+              1000
+            ) as typeof Evolu.NonEmptyString1000.Type,
+          });
+          setStatus(`${t("cashuAcceptFailed")}: ${message}`);
+        } finally {
+          setCashuIsBusy(false);
+        }
+      });
     },
-    [insert, maybeShowPwaNotification, t]
+    [
+      cashuTokensAll,
+      displayUnit,
+      enqueueCashuOp,
+      formatInteger,
+      insert,
+      logPaymentEvent,
+      mintInfoByUrl,
+      maybeShowPwaNotification,
+      route.kind,
+      refreshMintInfo,
+      showPaidOverlay,
+      t,
+      upsert,
+    ]
   );
+
+  const claimNpubCashOnce = React.useCallback(async () => {
+    // Don't claim while we are paying/accepting, otherwise we risk consuming
+    // the claim response and then skipping token processing.
+    if (cashuIsBusy) return;
+    if (!currentNpub) return;
+    if (!currentNsec) return;
+    if (npubCashClaimInFlightRef.current) return;
+
+    npubCashClaimInFlightRef.current = true;
+    const baseUrl = "https://npub.cash";
+    try {
+      const url = `${baseUrl}/api/v1/claim`;
+      const auth = await makeNip98AuthHeader(url, "GET");
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { Authorization: auth },
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as unknown;
+      const root = asRecord(json);
+      if (!root || root.error) return;
+
+      const tokens: string[] = [];
+      const data = asRecord(root.data);
+      const token = String(data?.token ?? root.token ?? "").trim();
+      if (token) tokens.push(token);
+      const dataTokens = data?.tokens;
+      if (Array.isArray(dataTokens)) {
+        for (const t of dataTokens) {
+          const txt = String(t ?? "").trim();
+          if (txt) tokens.push(txt);
+        }
+      }
+      if (tokens.length === 0) return;
+
+      for (const tkn of tokens) {
+        await acceptAndStoreCashuToken(tkn);
+      }
+    } catch {
+      // ignore
+    } finally {
+      npubCashClaimInFlightRef.current = false;
+    }
+  }, [
+    acceptAndStoreCashuToken,
+    cashuIsBusy,
+    currentNpub,
+    currentNsec,
+    makeNip98AuthHeader,
+  ]);
 
   React.useEffect(() => {
     // Load current user's Nostr profile (name + picture) from relays.
@@ -1835,44 +2551,8 @@ const App = () => {
     };
 
     const claimOnce = async () => {
-      if (npubCashClaimInFlightRef.current) return;
-      npubCashClaimInFlightRef.current = true;
-
-      try {
-        const url = `${baseUrl}/api/v1/claim`;
-        const auth = await makeNip98AuthHeader(url, "GET");
-        const res = await fetch(url, {
-          method: "GET",
-          headers: { Authorization: auth },
-        });
-        if (!res.ok) return;
-        const json = (await res.json()) as unknown;
-        const root = asRecord(json);
-        if (!root || root.error) return;
-        if (cancelled) return;
-
-        const tokens: string[] = [];
-        const data = asRecord(root.data);
-        const token = String(data?.token ?? root.token ?? "").trim();
-        if (token) tokens.push(token);
-        const dataTokens = data?.tokens;
-        if (Array.isArray(dataTokens)) {
-          for (const t of dataTokens) {
-            const txt = String(t ?? "").trim();
-            if (txt) tokens.push(txt);
-          }
-        }
-        if (tokens.length === 0) return;
-
-        for (const tkn of tokens) {
-          if (cancelled) return;
-          await acceptAndStoreCashuToken(tkn);
-        }
-      } catch {
-        // ignore
-      } finally {
-        npubCashClaimInFlightRef.current = false;
-      }
+      if (cancelled) return;
+      await claimNpubCashOnce();
     };
 
     void loadInfo();
@@ -1886,7 +2566,22 @@ const App = () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [acceptAndStoreCashuToken, currentNpub, currentNsec, makeNip98AuthHeader]);
+  }, [claimNpubCashOnce, currentNpub, currentNsec, makeNip98AuthHeader]);
+
+  React.useEffect(() => {
+    // While user is looking at the top-up invoice, poll more frequently so we
+    // detect the paid invoice quickly.
+    if (route.kind !== "topupInvoice") return;
+
+    void claimNpubCashOnce();
+    const intervalId = window.setInterval(() => {
+      void claimNpubCashOnce();
+    }, 5_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [claimNpubCashOnce, route.kind]);
 
   // Intentionally no automatic publishing of kind-0 profile metadata.
   // We only publish profile changes when the user does so explicitly.
@@ -2152,7 +2847,18 @@ const App = () => {
     setPendingDeleteId(null);
     setPayAmount("");
     setEditingId(null);
-    setForm(makeEmptyForm());
+    const prefill = contactNewPrefill;
+    setContactNewPrefill(null);
+    setForm(
+      prefill
+        ? {
+            name: String(prefill.suggestedName ?? ""),
+            npub: String(prefill.npub ?? ""),
+            lnAddress: String(prefill.lnAddress ?? ""),
+            group: "",
+          }
+        : makeEmptyForm()
+    );
     navigateToNewContact();
   };
 
@@ -2223,8 +2929,23 @@ const App = () => {
 
       const candidates = Array.from(mintGroups.entries())
         .map(([mint, info]) => ({ mint, ...info }))
-        .filter((c) => c.sum >= amountSat)
-        .sort((a, b) => b.sum - a.sum);
+        .sort((a, b) => {
+          const normalize = (u: string) =>
+            String(u ?? "")
+              .trim()
+              .replace(/\/+$/, "");
+          const mpp = (mint: string) => {
+            const row = mintInfoByUrl.get(normalize(mint));
+            return String(
+              (row as unknown as { supportsMpp?: unknown })?.supportsMpp ?? ""
+            ) === "1"
+              ? 1
+              : 0;
+          };
+          const dmpp = mpp(b.mint) - mpp(a.mint);
+          if (dmpp !== 0) return dmpp;
+          return b.sum - a.sum;
+        });
 
       if (candidates.length === 0) {
         setStatus(t("payInsufficient"));
@@ -2243,21 +2964,71 @@ const App = () => {
             unit: "sat",
           });
 
-          // Remove old rows for that mint and insert a single new holding (change).
-          for (const row of cashuTokens) {
-            if (
-              String(row.state ?? "") === "accepted" &&
-              String(row.mint ?? "").trim() === candidate.mint
-            ) {
-              update("cashuToken", {
-                id: row.id as CashuTokenId,
-                isDeleted: Evolu.sqliteTrue,
+          if (!result.ok) {
+            // Best-effort recovery: if we swapped, persist the recovery token
+            // and remove old rows so the wallet doesn't keep stale proofs.
+            if (result.remainingToken && result.remainingAmount > 0) {
+              const recoveryToken = result.remainingToken;
+              const inserted = insert("cashuToken", {
+                token: recoveryToken as typeof Evolu.NonEmptyString.Type,
+                rawToken: null,
+                mint: result.mint as typeof Evolu.NonEmptyString1000.Type,
+                unit: result.unit
+                  ? (result.unit as typeof Evolu.NonEmptyString100.Type)
+                  : null,
+                amount:
+                  result.remainingAmount > 0
+                    ? (result.remainingAmount as typeof Evolu.PositiveInt.Type)
+                    : null,
+                state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+                error: null,
               });
+
+              if (inserted.ok) {
+                for (const row of cashuTokens) {
+                  if (
+                    String(row.state ?? "") === "accepted" &&
+                    String(row.mint ?? "").trim() === candidate.mint
+                  ) {
+                    update("cashuToken", {
+                      id: row.id as CashuTokenId,
+                      isDeleted: Evolu.sqliteTrue,
+                    });
+                  }
+                }
+              }
             }
+
+            lastError = result.error;
+            lastMint = candidate.mint;
+
+            // If the mint didn't swap (no remainingToken), it's safe to try
+            // another mint (e.g. a larger token or higher fee reserve).
+            if (!result.remainingToken) {
+              continue;
+            }
+
+            logPaymentEvent({
+              direction: "out",
+              status: "error",
+              amount: amountSat,
+              fee: null,
+              mint: result.mint,
+              unit: result.unit,
+              error: String(result.error ?? "unknown"),
+              contactId: selectedContact.id,
+            });
+
+            // Stop here: at this point the mint may have swapped proofs.
+            setStatus(
+              `${t("payFailed")}: ${String(result.error ?? "unknown")}`
+            );
+            return;
           }
 
+          // Persist change first, then remove old rows for that mint.
           if (result.remainingToken && result.remainingAmount > 0) {
-            insert("cashuToken", {
+            const inserted = insert("cashuToken", {
               token: result.remainingToken as typeof Evolu.NonEmptyString.Type,
               rawToken: null,
               mint: result.mint as typeof Evolu.NonEmptyString1000.Type,
@@ -2271,23 +3042,52 @@ const App = () => {
               state: "accepted" as typeof Evolu.NonEmptyString100.Type,
               error: null,
             });
+            if (!inserted.ok) throw inserted.error;
+          }
+
+          for (const row of cashuTokens) {
+            if (
+              String(row.state ?? "") === "accepted" &&
+              String(row.mint ?? "").trim() === candidate.mint
+            ) {
+              update("cashuToken", {
+                id: row.id as CashuTokenId,
+                isDeleted: Evolu.sqliteTrue,
+              });
+            }
           }
 
           logPaymentEvent({
             direction: "out",
             status: "ok",
             amount: result.paidAmount,
-            fee: result.feeReserve,
+            fee: (() => {
+              const feePaid = Number(
+                (result as unknown as { feePaid?: unknown }).feePaid ?? 0
+              );
+              return Number.isFinite(feePaid) && feePaid > 0 ? feePaid : null;
+            })(),
             mint: result.mint,
             unit: result.unit,
             error: null,
             contactId: selectedContact.id,
           });
 
+          const displayName =
+            String(selectedContact.name ?? "").trim() ||
+            String(selectedContact.lnAddress ?? "").trim() ||
+            t("appTitle");
+
+          showPaidOverlay(
+            t("paidSentTo")
+              .replace("{amount}", formatInteger(result.paidAmount))
+              .replace("{unit}", displayUnit)
+              .replace("{name}", displayName)
+          );
+
           setStatus(t("paySuccess"));
           safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
           setContactsOnboardingHasPaid(true);
-          showPaidOverlay();
           navigateToContact(selectedContact.id);
           return;
         } catch (e) {
@@ -2344,7 +3144,23 @@ const App = () => {
 
         const candidates = Array.from(mintGroups.entries())
           .map(([mint, info]) => ({ mint, ...info }))
-          .sort((a, b) => b.sum - a.sum);
+          .sort((a, b) => {
+            const normalize = (u: string) =>
+              String(u ?? "")
+                .trim()
+                .replace(/\/+$/, "");
+            const mpp = (mint: string) => {
+              const row = mintInfoByUrl.get(normalize(mint));
+              return String(
+                (row as unknown as { supportsMpp?: unknown })?.supportsMpp ?? ""
+              ) === "1"
+                ? 1
+                : 0;
+            };
+            const dmpp = mpp(b.mint) - mpp(a.mint);
+            if (dmpp !== 0) return dmpp;
+            return b.sum - a.sum;
+          });
 
         if (candidates.length === 0) {
           setStatus(t("payInsufficient"));
@@ -2363,20 +3179,66 @@ const App = () => {
               unit: "sat",
             });
 
-            for (const row of cashuTokens) {
-              if (
-                String(row.state ?? "") === "accepted" &&
-                String(row.mint ?? "").trim() === candidate.mint
-              ) {
-                update("cashuToken", {
-                  id: row.id as CashuTokenId,
-                  isDeleted: Evolu.sqliteTrue,
+            if (!result.ok) {
+              if (result.remainingToken && result.remainingAmount > 0) {
+                const recoveryToken = result.remainingToken;
+                const inserted = insert("cashuToken", {
+                  token: recoveryToken as typeof Evolu.NonEmptyString.Type,
+                  rawToken: null,
+                  mint: result.mint as typeof Evolu.NonEmptyString1000.Type,
+                  unit: result.unit
+                    ? (result.unit as typeof Evolu.NonEmptyString100.Type)
+                    : null,
+                  amount:
+                    result.remainingAmount > 0
+                      ? (result.remainingAmount as typeof Evolu.PositiveInt.Type)
+                      : null,
+                  state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+                  error: null,
                 });
+
+                if (inserted.ok) {
+                  for (const row of cashuTokens) {
+                    if (
+                      String(row.state ?? "") === "accepted" &&
+                      String(row.mint ?? "").trim() === candidate.mint
+                    ) {
+                      update("cashuToken", {
+                        id: row.id as CashuTokenId,
+                        isDeleted: Evolu.sqliteTrue,
+                      });
+                    }
+                  }
+                }
               }
+
+              lastError = result.error;
+              lastMint = candidate.mint;
+
+              // If no swap happened, we can safely try other mints.
+              if (!result.remainingToken) {
+                continue;
+              }
+
+              logPaymentEvent({
+                direction: "out",
+                status: "error",
+                amount: null,
+                fee: null,
+                mint: result.mint,
+                unit: result.unit,
+                error: String(result.error ?? "unknown"),
+                contactId: null,
+              });
+
+              setStatus(
+                `${t("payFailed")}: ${String(result.error ?? "unknown")}`
+              );
+              return;
             }
 
             if (result.remainingToken && result.remainingAmount > 0) {
-              insert("cashuToken", {
+              const inserted = insert("cashuToken", {
                 token:
                   result.remainingToken as typeof Evolu.NonEmptyString.Type,
                 rawToken: null,
@@ -2391,23 +3253,46 @@ const App = () => {
                 state: "accepted" as typeof Evolu.NonEmptyString100.Type,
                 error: null,
               });
+              if (!inserted.ok) throw inserted.error;
+            }
+
+            for (const row of cashuTokens) {
+              if (
+                String(row.state ?? "") === "accepted" &&
+                String(row.mint ?? "").trim() === candidate.mint
+              ) {
+                update("cashuToken", {
+                  id: row.id as CashuTokenId,
+                  isDeleted: Evolu.sqliteTrue,
+                });
+              }
             }
 
             logPaymentEvent({
               direction: "out",
               status: "ok",
               amount: result.paidAmount,
-              fee: result.feeReserve,
+              fee: (() => {
+                const feePaid = Number(
+                  (result as unknown as { feePaid?: unknown }).feePaid ?? 0
+                );
+                return Number.isFinite(feePaid) && feePaid > 0 ? feePaid : null;
+              })(),
               mint: result.mint,
               unit: result.unit,
               error: null,
               contactId: null,
             });
 
+            showPaidOverlay(
+              t("paidSent")
+                .replace("{amount}", formatInteger(result.paidAmount))
+                .replace("{unit}", displayUnit)
+            );
+
             setStatus(t("paySuccess"));
             safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
             setContactsOnboardingHasPaid(true);
-            showPaidOverlay();
             return;
           } catch (e) {
             lastError = e;
@@ -2434,8 +3319,263 @@ const App = () => {
       cashuBalance,
       cashuIsBusy,
       cashuTokens,
+      displayUnit,
+      formatInteger,
       insert,
       logPaymentEvent,
+      mintInfoByUrl,
+      showPaidOverlay,
+      t,
+      update,
+    ]
+  );
+
+  const payLightningAddressWithCashu = React.useCallback(
+    async (lnAddress: string, amountSat: number) => {
+      const address = String(lnAddress ?? "").trim();
+      if (!address) return;
+      if (!Number.isFinite(amountSat) || amountSat <= 0) {
+        setStatus(`${t("errorPrefix")}: ${t("payInvalidAmount")}`);
+        return;
+      }
+      if (!canPayWithCashu) return;
+      if (cashuIsBusy) return;
+      setCashuIsBusy(true);
+
+      const knownContact = contacts.find(
+        (c) =>
+          String(c.lnAddress ?? "")
+            .trim()
+            .toLowerCase() === address.toLowerCase()
+      );
+      const shouldOfferSave = !knownContact?.id;
+
+      try {
+        setStatus(t("payFetchingInvoice"));
+        let invoice: string;
+        try {
+          const { fetchLnurlInvoiceForLightningAddress } = await import(
+            "./lnurlPay"
+          );
+          invoice = await fetchLnurlInvoiceForLightningAddress(
+            address,
+            amountSat
+          );
+        } catch (e) {
+          setStatus(`${t("payFailed")}: ${String(e)}`);
+          return;
+        }
+
+        setStatus(t("payPaying"));
+
+        const mintGroups = new Map<string, { tokens: string[]; sum: number }>();
+        for (const row of cashuTokens) {
+          if (String(row.state ?? "") !== "accepted") continue;
+          const mint = String(row.mint ?? "").trim();
+          if (!mint) continue;
+          const tokenText = String(row.token ?? "").trim();
+          if (!tokenText) continue;
+
+          const amount = Number((row.amount ?? 0) as unknown as number) || 0;
+          const entry = mintGroups.get(mint) ?? { tokens: [], sum: 0 };
+          entry.tokens.push(tokenText);
+          entry.sum += amount;
+          mintGroups.set(mint, entry);
+        }
+
+        const candidates = Array.from(mintGroups.entries())
+          .map(([mint, info]) => ({ mint, ...info }))
+          .sort((a, b) => {
+            const normalize = (u: string) =>
+              String(u ?? "")
+                .trim()
+                .replace(/\/+$/, "");
+            const mpp = (mint: string) => {
+              const row = mintInfoByUrl.get(normalize(mint));
+              return String(
+                (row as unknown as { supportsMpp?: unknown })?.supportsMpp ?? ""
+              ) === "1"
+                ? 1
+                : 0;
+            };
+            const dmpp = mpp(b.mint) - mpp(a.mint);
+            if (dmpp !== 0) return dmpp;
+            return b.sum - a.sum;
+          });
+
+        if (candidates.length === 0) {
+          setStatus(t("payInsufficient"));
+          return;
+        }
+
+        let lastError: unknown = null;
+        let lastMint: string | null = null;
+        for (const candidate of candidates) {
+          try {
+            const { meltInvoiceWithTokensAtMint } = await import("./cashuMelt");
+            const result = await meltInvoiceWithTokensAtMint({
+              invoice,
+              mint: candidate.mint,
+              tokens: candidate.tokens,
+              unit: "sat",
+            });
+
+            if (!result.ok) {
+              if (result.remainingToken && result.remainingAmount > 0) {
+                const recoveryToken = result.remainingToken;
+                const inserted = insert("cashuToken", {
+                  token: recoveryToken as typeof Evolu.NonEmptyString.Type,
+                  rawToken: null,
+                  mint: result.mint as typeof Evolu.NonEmptyString1000.Type,
+                  unit: result.unit
+                    ? (result.unit as typeof Evolu.NonEmptyString100.Type)
+                    : null,
+                  amount:
+                    result.remainingAmount > 0
+                      ? (result.remainingAmount as typeof Evolu.PositiveInt.Type)
+                      : null,
+                  state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+                  error: null,
+                });
+
+                if (inserted.ok) {
+                  for (const row of cashuTokens) {
+                    if (
+                      String(row.state ?? "") === "accepted" &&
+                      String(row.mint ?? "").trim() === candidate.mint
+                    ) {
+                      update("cashuToken", {
+                        id: row.id as CashuTokenId,
+                        isDeleted: Evolu.sqliteTrue,
+                      });
+                    }
+                  }
+                }
+              }
+
+              lastError = result.error;
+              lastMint = candidate.mint;
+
+              if (!result.remainingToken) {
+                continue;
+              }
+
+              logPaymentEvent({
+                direction: "out",
+                status: "error",
+                amount: amountSat,
+                fee: null,
+                mint: result.mint,
+                unit: result.unit,
+                error: String(result.error ?? "unknown"),
+                contactId: null,
+              });
+
+              setStatus(
+                `${t("payFailed")}: ${String(result.error ?? "unknown")}`
+              );
+              return;
+            }
+
+            if (result.remainingToken && result.remainingAmount > 0) {
+              const inserted = insert("cashuToken", {
+                token:
+                  result.remainingToken as typeof Evolu.NonEmptyString.Type,
+                rawToken: null,
+                mint: result.mint as typeof Evolu.NonEmptyString1000.Type,
+                unit: result.unit
+                  ? (result.unit as typeof Evolu.NonEmptyString100.Type)
+                  : null,
+                amount:
+                  result.remainingAmount > 0
+                    ? (result.remainingAmount as typeof Evolu.PositiveInt.Type)
+                    : null,
+                state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+                error: null,
+              });
+              if (!inserted.ok) throw inserted.error;
+            }
+
+            for (const row of cashuTokens) {
+              if (
+                String(row.state ?? "") === "accepted" &&
+                String(row.mint ?? "").trim() === candidate.mint
+              ) {
+                update("cashuToken", {
+                  id: row.id as CashuTokenId,
+                  isDeleted: Evolu.sqliteTrue,
+                });
+              }
+            }
+
+            const feePaid = Number(
+              (result as unknown as { feePaid?: unknown }).feePaid ?? 0
+            );
+
+            logPaymentEvent({
+              direction: "out",
+              status: "ok",
+              amount: result.paidAmount,
+              fee: Number.isFinite(feePaid) && feePaid > 0 ? feePaid : null,
+              mint: result.mint,
+              unit: result.unit,
+              error: null,
+              contactId: null,
+            });
+
+            showPaidOverlay(
+              t("paidSentTo")
+                .replace("{amount}", formatInteger(result.paidAmount))
+                .replace("{unit}", displayUnit)
+                .replace(
+                  "{name}",
+                  String(knownContact?.name ?? "").trim() || address
+                )
+            );
+
+            safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
+            setContactsOnboardingHasPaid(true);
+
+            // Offer to save as a contact after a successful pay to a new address.
+            if (shouldOfferSave) {
+              setPostPaySaveContact({
+                lnAddress: address,
+                amountSat: result.paidAmount,
+              });
+            }
+            return;
+          } catch (e) {
+            lastError = e;
+            lastMint = candidate.mint;
+          }
+        }
+
+        logPaymentEvent({
+          direction: "out",
+          status: "error",
+          amount: amountSat,
+          fee: null,
+          mint: lastMint,
+          unit: "sat",
+          error: String(lastError ?? "unknown"),
+          contactId: null,
+        });
+        setStatus(`${t("payFailed")}: ${String(lastError ?? "unknown")}`);
+      } finally {
+        setCashuIsBusy(false);
+      }
+    },
+    [
+      canPayWithCashu,
+      cashuIsBusy,
+      cashuTokens,
+      contacts,
+      displayUnit,
+      formatInteger,
+      insert,
+      logPaymentEvent,
+      mintInfoByUrl,
+      setContactsOnboardingHasPaid,
       showPaidOverlay,
       t,
       update,
@@ -2504,9 +3644,6 @@ const App = () => {
     setContactsGuideTargetContactId(null);
     setContactsGuide(null);
   };
-
-  const [contactsGuideTargetContactId, setContactsGuideTargetContactId] =
-    React.useState<ContactId | null>(null);
 
   const contactsGuideSteps = useMemo(() => {
     if (!contactsGuide) return null;
@@ -2880,9 +4017,6 @@ const App = () => {
         setStatus(t("pasteEmpty"));
         return;
       }
-
-      if (cashuIsBusy) return;
-      setCashuIsBusy(true);
       setCashuDraft("");
       setStatus(t("cashuAccepting"));
 
@@ -2892,24 +4026,84 @@ const App = () => {
       const parsedAmount =
         parsed?.amount && parsed.amount > 0 ? parsed.amount : null;
 
-      try {
-        const { acceptCashuToken } = await import("./cashuAccept");
-        const accepted = await acceptCashuToken(tokenRaw);
-        const result = insert("cashuToken", {
-          token: accepted.token as typeof Evolu.NonEmptyString.Type,
-          rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
-          mint: accepted.mint as typeof Evolu.NonEmptyString1000.Type,
-          unit: accepted.unit
-            ? (accepted.unit as typeof Evolu.NonEmptyString100.Type)
-            : null,
-          amount:
-            accepted.amount > 0
-              ? (accepted.amount as typeof Evolu.PositiveInt.Type)
+      await enqueueCashuOp(async () => {
+        setCashuIsBusy(true);
+        try {
+          const { acceptCashuToken } = await import("./cashuAccept");
+          const accepted = await acceptCashuToken(tokenRaw);
+
+          const result = insert("cashuToken", {
+            token: accepted.token as typeof Evolu.NonEmptyString.Type,
+            rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
+            mint: accepted.mint as typeof Evolu.NonEmptyString1000.Type,
+            unit: accepted.unit
+              ? (accepted.unit as typeof Evolu.NonEmptyString100.Type)
               : null,
-          state: "accepted" as typeof Evolu.NonEmptyString100.Type,
-          error: null,
-        });
-        if (result.ok) {
+            amount:
+              accepted.amount > 0
+                ? (accepted.amount as typeof Evolu.PositiveInt.Type)
+                : null,
+            state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+            error: null,
+          });
+          if (!result.ok) {
+            setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
+            return;
+          }
+
+          safeLocalStorageSet(
+            LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY,
+            String(accepted.token ?? "")
+          );
+          ensureCashuTokenPersisted(String(accepted.token ?? ""));
+
+          if (recentlyReceivedTokenTimerRef.current !== null) {
+            try {
+              window.clearTimeout(recentlyReceivedTokenTimerRef.current);
+            } catch {
+              // ignore
+            }
+          }
+          setRecentlyReceivedToken({
+            token: String(accepted.token ?? "").trim(),
+            amount:
+              typeof accepted.amount === "number" && accepted.amount > 0
+                ? accepted.amount
+                : null,
+          });
+          recentlyReceivedTokenTimerRef.current = window.setTimeout(() => {
+            setRecentlyReceivedToken(null);
+            recentlyReceivedTokenTimerRef.current = null;
+          }, 25_000);
+
+          const cleanedMint = String(accepted.mint ?? "")
+            .trim()
+            .replace(/\/+$/, "");
+          if (cleanedMint) {
+            const nowSec = Math.floor(Date.now() / 1000);
+            const existing = mintInfoByUrl.get(cleanedMint) as
+              | (Record<string, unknown> & {
+                  isDeleted?: unknown;
+                  firstSeenAtSec?: unknown;
+                  lastCheckedAtSec?: unknown;
+                })
+              | undefined;
+            if (
+              String(existing?.isDeleted ?? "") !== String(Evolu.sqliteTrue)
+            ) {
+              const firstSeen = Number(existing?.firstSeenAtSec ?? 0) || nowSec;
+              upsert("mintInfo", {
+                id: cleanedMint as unknown as MintId,
+                url: cleanedMint as typeof Evolu.NonEmptyString1000.Type,
+                firstSeenAtSec: firstSeen as typeof Evolu.PositiveInt.Type,
+                lastSeenAtSec: nowSec as typeof Evolu.PositiveInt.Type,
+              });
+
+              const lastChecked = Number(existing?.lastCheckedAtSec ?? 0) || 0;
+              if (!lastChecked) void refreshMintInfo(cleanedMint);
+            }
+          }
+
           logPaymentEvent({
             direction: "in",
             status: "ok",
@@ -2920,49 +4114,69 @@ const App = () => {
             error: null,
             contactId: null,
           });
-          setStatus(t("cashuAccepted"));
+
+          const title =
+            accepted.amount && accepted.amount > 0
+              ? t("paidReceived")
+                  .replace("{amount}", formatInteger(accepted.amount))
+                  .replace("{unit}", displayUnit)
+              : t("cashuAccepted");
+          showPaidOverlay(title);
+
           if (options?.navigateToWallet) {
             navigateToWallet();
           }
-        } else {
-          setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
-        }
-      } catch (error) {
-        const message = String(error).trim() || "Accept failed";
-        logPaymentEvent({
-          direction: "in",
-          status: "error",
-          amount: parsedAmount,
-          fee: null,
-          mint: parsedMint,
-          unit: null,
-          error: message,
-          contactId: null,
-        });
-        const result = insert("cashuToken", {
-          token: tokenRaw as typeof Evolu.NonEmptyString.Type,
-          rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
-          mint: parsedMint
-            ? (parsedMint as typeof Evolu.NonEmptyString1000.Type)
-            : null,
-          unit: null,
-          amount:
-            typeof parsedAmount === "number"
-              ? (parsedAmount as typeof Evolu.PositiveInt.Type)
+        } catch (error) {
+          const message = String(error).trim() || "Accept failed";
+          logPaymentEvent({
+            direction: "in",
+            status: "error",
+            amount: parsedAmount,
+            fee: null,
+            mint: parsedMint,
+            unit: null,
+            error: message,
+            contactId: null,
+          });
+          const result = insert("cashuToken", {
+            token: tokenRaw as typeof Evolu.NonEmptyString.Type,
+            rawToken: tokenRaw as typeof Evolu.NonEmptyString.Type,
+            mint: parsedMint
+              ? (parsedMint as typeof Evolu.NonEmptyString1000.Type)
               : null,
-          state: "error" as typeof Evolu.NonEmptyString100.Type,
-          error: message.slice(0, 1000) as typeof Evolu.NonEmptyString1000.Type,
-        });
-        if (result.ok) {
-          setStatus(`${t("cashuAcceptFailed")}: ${message}`);
-        } else {
-          setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
+            unit: null,
+            amount:
+              typeof parsedAmount === "number"
+                ? (parsedAmount as typeof Evolu.PositiveInt.Type)
+                : null,
+            state: "error" as typeof Evolu.NonEmptyString100.Type,
+            error: message.slice(
+              0,
+              1000
+            ) as typeof Evolu.NonEmptyString1000.Type,
+          });
+          if (result.ok) {
+            setStatus(`${t("cashuAcceptFailed")}: ${message}`);
+          } else {
+            setStatus(`${t("errorPrefix")}: ${String(result.error)}`);
+          }
+        } finally {
+          setCashuIsBusy(false);
         }
-      } finally {
-        setCashuIsBusy(false);
-      }
+      });
     },
-    [cashuIsBusy, insert, t]
+    [
+      displayUnit,
+      enqueueCashuOp,
+      formatInteger,
+      insert,
+      logPaymentEvent,
+      mintInfoByUrl,
+      refreshMintInfo,
+      showPaidOverlay,
+      t,
+      upsert,
+    ]
   );
 
   const handleDelete = (id: ContactId) => {
@@ -3005,7 +4219,7 @@ const App = () => {
         return;
       }
 
-      const tokenText = String(row.rawToken ?? row.token ?? "").trim();
+      const tokenText = String(row.token ?? row.rawToken ?? "").trim();
       if (!tokenText) {
         pushToast(t("errorPrefix"));
         return;
@@ -3014,6 +4228,36 @@ const App = () => {
       if (cashuIsBusy) return;
       setCashuIsBusy(true);
       setStatus(t("cashuChecking"));
+
+      const looksLikeTransientError = (message: string) => {
+        const m = message.toLowerCase();
+        return (
+          m.includes("failed to fetch") ||
+          m.includes("networkerror") ||
+          m.includes("network error") ||
+          m.includes("timeout") ||
+          m.includes("timed out") ||
+          m.includes("econn") ||
+          m.includes("enotfound") ||
+          m.includes("dns") ||
+          m.includes("offline") ||
+          m.includes("503") ||
+          m.includes("502") ||
+          m.includes("504")
+        );
+      };
+
+      const looksLikeDefinitiveInvalid = (message: string) => {
+        const m = message.toLowerCase();
+        return (
+          m.includes("spent") ||
+          m.includes("already spent") ||
+          m.includes("invalid proof") ||
+          m.includes("invalid proofs") ||
+          m.includes("token proofs missing") ||
+          m.includes("invalid token")
+        );
+      };
 
       try {
         const { getCashuLib } = await import("./utils/cashuLib");
@@ -3085,15 +4329,25 @@ const App = () => {
         pushToast(t("cashuCheckOk"));
       } catch (e) {
         const message = String(e).trim() || "Token invalid";
-        update("cashuToken", {
-          id: row.id as CashuTokenId,
-          state: "error" as typeof Evolu.NonEmptyString100.Type,
-          error: t("cashuInvalid")
-            ? (t("cashuInvalid") as typeof Evolu.NonEmptyString1000.Type)
-            : (message.slice(0, 1000) as typeof Evolu.NonEmptyString1000.Type),
-        });
-        setStatus(`${t("cashuCheckFailed")}: ${message}`);
-        pushToast(t("cashuInvalid"));
+        const definitive = looksLikeDefinitiveInvalid(message);
+        const transient = looksLikeTransientError(message);
+
+        if (definitive && !transient) {
+          update("cashuToken", {
+            id: row.id as CashuTokenId,
+            state: "error" as typeof Evolu.NonEmptyString100.Type,
+            error: message.slice(
+              0,
+              1000
+            ) as typeof Evolu.NonEmptyString1000.Type,
+          });
+          setStatus(`${t("cashuCheckFailed")}: ${message}`);
+          pushToast(t("cashuInvalid"));
+        } else {
+          // Don't mark token invalid on transient mint/network issues.
+          setStatus(`${t("cashuCheckFailed")}: ${message}`);
+          pushToast(`${t("cashuCheckFailed")}: ${message}`);
+        }
       } finally {
         setCashuIsBusy(false);
       }
@@ -3506,6 +4760,15 @@ const App = () => {
       setPendingDeleteId(null);
       setEditingId(null);
       setForm(makeEmptyForm());
+      if (contactNewPrefill) {
+        setForm({
+          name: contactNewPrefill.suggestedName ?? "",
+          npub: contactNewPrefill.npub ?? "",
+          lnAddress: contactNewPrefill.lnAddress,
+          group: "",
+        });
+        setContactNewPrefill(null);
+      }
       return;
     }
 
@@ -4196,6 +5459,22 @@ const App = () => {
       };
     }
 
+    if (route.kind === "mints") {
+      return {
+        icon: "<",
+        label: t("close"),
+        onClick: navigateToAdvanced,
+      };
+    }
+
+    if (route.kind === "mint") {
+      return {
+        icon: "<",
+        label: t("close"),
+        onClick: navigateToMints,
+      };
+    }
+
     if (route.kind === "profile") {
       return {
         icon: "<",
@@ -4233,6 +5512,14 @@ const App = () => {
         icon: "<",
         label: t("close"),
         onClick: navigateToWallet,
+      };
+    }
+
+    if (route.kind === "lnAddressPay") {
+      return {
+        icon: "<",
+        label: t("close"),
+        onClick: navigateToContacts,
       };
     }
 
@@ -4379,11 +5666,14 @@ const App = () => {
     if (route.kind === "wallet") return t("wallet");
     if (route.kind === "topup") return t("topupTitle");
     if (route.kind === "topupInvoice") return t("topupInvoiceTitle");
+    if (route.kind === "lnAddressPay") return t("pay");
     if (route.kind === "cashuTokenNew") return t("cashuToken");
     if (route.kind === "cashuToken") return t("cashuToken");
     if (route.kind === "settings") return t("menu");
     if (route.kind === "advanced") return t("advanced");
     if (route.kind === "paymentsHistory") return t("paymentsHistory");
+    if (route.kind === "mints") return t("mints");
+    if (route.kind === "mint") return t("mints");
     if (route.kind === "profile") return t("profile");
     if (route.kind === "nostrRelays") return t("nostrRelay");
     if (route.kind === "nostrRelay") return t("nostrRelay");
@@ -4683,8 +5973,6 @@ const App = () => {
     setPendingRelayDeleteUrl(selectedRelayUrl);
     setStatus(t("deleteArmedHint"));
   };
-
-  const displayUnit = useBitcoinSymbol ? "₿" : "sat";
 
   const chatTopbarContact =
     route.kind === "chat" && selectedContact ? selectedContact : null;
@@ -5263,6 +6551,28 @@ const App = () => {
         // ignore
       }
 
+      const maybeLnAddress = String(normalized ?? "").trim();
+      const isLnAddress = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(maybeLnAddress);
+      if (isLnAddress) {
+        const needle = maybeLnAddress.toLowerCase();
+        const existing = contacts.find(
+          (c) =>
+            String(c.lnAddress ?? "")
+              .trim()
+              .toLowerCase() === needle
+        );
+
+        closeScan();
+        if (existing?.id) {
+          navigateToContactPay(existing.id);
+          return;
+        }
+
+        // New address: open pay screen and offer to save contact after success.
+        navigateToLnAddressPay(maybeLnAddress);
+        return;
+      }
+
       if (/^(lnbc|lntb|lnbcrt)/i.test(normalized)) {
         closeScan();
         await payLightningInvoiceWithCashu(normalized);
@@ -5562,6 +6872,53 @@ const App = () => {
 
   return (
     <div className={showGroupFilter ? "page has-group-filter" : "page"}>
+      {recentlyReceivedToken?.token ? (
+        <div className="toast-container" aria-live="polite">
+          <div
+            className="toast"
+            role="status"
+            onClick={() => {
+              const token = String(recentlyReceivedToken.token ?? "").trim();
+              if (!token) return;
+              void (async () => {
+                try {
+                  await navigator.clipboard?.writeText(token);
+                  pushToast(t("copiedToClipboard"));
+                  setRecentlyReceivedToken(null);
+                } catch {
+                  pushToast(t("copyFailed"));
+                }
+              })();
+            }}
+            style={{ cursor: "pointer" }}
+            title={
+              lang === "cs"
+                ? "Klikni pro zkopírování tokenu"
+                : "Click to copy token"
+            }
+          >
+            {(() => {
+              const amount =
+                typeof recentlyReceivedToken.amount === "number"
+                  ? recentlyReceivedToken.amount
+                  : null;
+              if (lang === "cs") {
+                return amount
+                  ? `Přijato ${formatInteger(
+                      amount
+                    )} ${displayUnit}. Klikni pro zkopírování tokenu.`
+                  : "Token přijat. Klikni pro zkopírování tokenu.";
+              }
+              return amount
+                ? `Received ${formatInteger(
+                    amount
+                  )} ${displayUnit}. Click to copy token.`
+                : "Token accepted. Click to copy token.";
+            })()}
+          </div>
+        </div>
+      ) : null}
+
       {toasts.length ? (
         <div className="toast-container" aria-live="polite">
           {toasts.map((toast) => (
@@ -5581,7 +6938,11 @@ const App = () => {
 
           <p
             className="muted"
-            style={{ margin: "6px 0 12px", lineHeight: 1.4 }}
+            style={{
+              margin: "6px 0 12px",
+              lineHeight: 1.4,
+              textAlign: "center",
+            }}
           >
             {t("onboardingSubtitle")}
           </p>
@@ -5958,7 +7319,13 @@ const App = () => {
                 </div>
               </button>
 
-              <div className="settings-row">
+              <button
+                type="button"
+                className="settings-row settings-link"
+                onClick={navigateToMints}
+                aria-label={t("mints")}
+                title={t("mints")}
+              >
                 <div className="settings-left">
                   <span className="settings-icon" aria-hidden="true">
                     🏦
@@ -5971,8 +7338,11 @@ const App = () => {
                   ) : (
                     <span className="muted">—</span>
                   )}
+                  <span className="settings-chevron" aria-hidden="true">
+                    &gt;
+                  </span>
                 </div>
-              </div>
+              </button>
 
               <button
                 type="button"
@@ -6046,6 +7416,13 @@ const App = () => {
                 >
                   {t("logout")}
                 </button>
+              </div>
+
+              <div
+                className="muted"
+                style={{ marginTop: 14, textAlign: "center", fontSize: 12 }}
+              >
+                {t("appVersionLabel")}: v{__APP_VERSION__}
               </div>
             </section>
           )}
@@ -6167,6 +7544,194 @@ const App = () => {
                   })}
                 </div>
               )}
+            </section>
+          )}
+
+          {route.kind === "mints" && (
+            <section className="panel">
+              {mintInfo.length === 0 ? (
+                <p className="muted">{t("mintsEmpty")}</p>
+              ) : (
+                <div>
+                  {mintInfo.map((row) => {
+                    const url = String(
+                      (row as unknown as { url?: unknown }).url ?? ""
+                    ).trim();
+                    if (!url) return null;
+
+                    const supportsMpp =
+                      String(
+                        (row as unknown as { supportsMpp?: unknown })
+                          .supportsMpp ?? ""
+                      ) === "1";
+                    const lastSeenAtSec =
+                      Number(
+                        (row as unknown as { lastSeenAtSec?: unknown })
+                          .lastSeenAtSec ?? 0
+                      ) || 0;
+
+                    const when = lastSeenAtSec
+                      ? new Date(lastSeenAtSec * 1000).toLocaleString(
+                          lang === "cs" ? "cs-CZ" : "en-US"
+                        )
+                      : null;
+
+                    return (
+                      <button
+                        key={url}
+                        type="button"
+                        className="settings-row settings-link"
+                        onClick={() => navigateToMint(url)}
+                        aria-label={url}
+                        title={url}
+                      >
+                        <div className="settings-left">
+                          <span className="settings-icon" aria-hidden="true">
+                            🏦
+                          </span>
+                          <span className="settings-label">{url}</span>
+                        </div>
+                        <div className="settings-right">
+                          {supportsMpp ? (
+                            <span className="relay-count">MPP</span>
+                          ) : null}
+                          {when ? (
+                            <span className="muted" style={{ fontSize: 12 }}>
+                              {when}
+                            </span>
+                          ) : null}
+                          <span className="settings-chevron" aria-hidden="true">
+                            &gt;
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {route.kind === "mint" && (
+            <section className="panel">
+              {(() => {
+                const cleaned = String(route.mintUrl ?? "")
+                  .trim()
+                  .replace(/\/+$/, "");
+                const row = mintInfoByUrl.get(cleaned) ?? null;
+                if (!row) return <p className="muted">{t("mintNotFound")}</p>;
+
+                const supportsMpp =
+                  String(
+                    (row as unknown as { supportsMpp?: unknown }).supportsMpp ??
+                      ""
+                  ) === "1";
+                const lastCheckedAtSec =
+                  Number(
+                    (row as unknown as { lastCheckedAtSec?: unknown })
+                      .lastCheckedAtSec ?? 0
+                  ) || 0;
+                const feesJson = String(
+                  (row as unknown as { feesJson?: unknown }).feesJson ?? ""
+                ).trim();
+
+                return (
+                  <div>
+                    <div className="settings-row">
+                      <div className="settings-left">
+                        <span className="settings-icon" aria-hidden="true">
+                          🔗
+                        </span>
+                        <span className="settings-label">{t("mintUrl")}</span>
+                      </div>
+                      <div className="settings-right">
+                        <span className="relay-url">{cleaned}</span>
+                      </div>
+                    </div>
+
+                    <div className="settings-row">
+                      <div className="settings-left">
+                        <span className="settings-icon" aria-hidden="true">
+                          🧩
+                        </span>
+                        <span className="settings-label">{t("mintMpp")}</span>
+                      </div>
+                      <div className="settings-right">
+                        <span className={supportsMpp ? "relay-count" : "muted"}>
+                          {supportsMpp ? "MPP" : t("unknown")}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="settings-row">
+                      <div className="settings-left">
+                        <span className="settings-icon" aria-hidden="true">
+                          💸
+                        </span>
+                        <span className="settings-label">{t("mintFees")}</span>
+                      </div>
+                      <div className="settings-right">
+                        {feesJson ? (
+                          <span className="relay-url">{feesJson}</span>
+                        ) : (
+                          <span className="muted">{t("unknown")}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="settings-row">
+                      <button
+                        type="button"
+                        className="btn-wide secondary"
+                        onClick={() => {
+                          void refreshMintInfo(cleaned);
+                        }}
+                      >
+                        {t("mintRefresh")}
+                      </button>
+                    </div>
+
+                    <div className="settings-row">
+                      <button
+                        type="button"
+                        className={
+                          pendingMintDeleteUrl === cleaned
+                            ? "btn-wide danger"
+                            : "btn-wide"
+                        }
+                        onClick={() => {
+                          if (pendingMintDeleteUrl === cleaned) {
+                            update("mintInfo", {
+                              id: cleaned as unknown as MintId,
+                              isDeleted: Evolu.sqliteTrue,
+                            });
+                            setPendingMintDeleteUrl(null);
+                            navigateToMints();
+                            return;
+                          }
+                          setPendingMintDeleteUrl(cleaned);
+                        }}
+                      >
+                        {t("mintDelete")}
+                      </button>
+                      {pendingMintDeleteUrl === cleaned ? (
+                        <p className="muted" style={{ marginTop: 10 }}>
+                          {t("deleteArmedHint")}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {lastCheckedAtSec ? (
+                      <p className="muted" style={{ marginTop: 10 }}>
+                        {t("mintLastChecked")}:{" "}
+                        {new Date(lastCheckedAtSec * 1000).toLocaleString(
+                          lang === "cs" ? "cs-CZ" : "en-US"
+                        )}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })()}
             </section>
           )}
 
@@ -6516,6 +8081,18 @@ const App = () => {
 
           {route.kind === "topupInvoice" && (
             <section className="panel">
+              {(() => {
+                const amountSat = Number.parseInt(topupAmount.trim(), 10);
+                if (!Number.isFinite(amountSat) || amountSat <= 0) return null;
+                return (
+                  <p className="muted" style={{ margin: "0 0 10px" }}>
+                    {t("topupInvoiceAmount")
+                      .replace("{amount}", formatInteger(amountSat))
+                      .replace("{unit}", displayUnit)}
+                  </p>
+                );
+              })()}
+
               {topupInvoiceQr ? (
                 <img
                   className="qr"
@@ -6582,7 +8159,7 @@ const App = () => {
                   return <p className="muted">{t("errorPrefix")}</p>;
                 }
 
-                const tokenText = String(row.rawToken ?? row.token ?? "");
+                const tokenText = String(row.token ?? row.rawToken ?? "");
                 const mintText = String(row.mint ?? "").trim();
                 const mintDisplay = (() => {
                   if (!mintText) return null;
@@ -6897,6 +8474,139 @@ const App = () => {
                   </div>
                 </>
               ) : null}
+            </section>
+          )}
+
+          {route.kind === "lnAddressPay" && (
+            <section className="panel">
+              <div className="contact-header">
+                <div className="contact-avatar is-large" aria-hidden="true">
+                  <span className="contact-avatar-fallback">⚡</span>
+                </div>
+                <div className="contact-header-text">
+                  <h3>{t("payTo")}</h3>
+                  <p className="muted">
+                    {formatMiddleDots(String(route.lnAddress ?? ""), 36)}
+                  </p>
+                  <p className="muted">
+                    {t("availablePrefix")} {formatInteger(cashuBalance)}{" "}
+                    {displayUnit}
+                  </p>
+                </div>
+              </div>
+
+              {!canPayWithCashu ? (
+                <p className="muted">{t("payInsufficient")}</p>
+              ) : null}
+
+              <div className="amount-display" aria-live="polite">
+                {(() => {
+                  const amountSat = Number.parseInt(
+                    lnAddressPayAmount.trim(),
+                    10
+                  );
+                  const display =
+                    Number.isFinite(amountSat) && amountSat > 0 ? amountSat : 0;
+                  return (
+                    <>
+                      <span className="amount-number">
+                        {formatInteger(display)}
+                      </span>
+                      <span className="amount-unit">{displayUnit}</span>
+                    </>
+                  );
+                })()}
+              </div>
+
+              <div
+                className="keypad"
+                role="group"
+                aria-label={`${t("payAmount")} (${displayUnit})`}
+              >
+                {(
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                    "6",
+                    "7",
+                    "8",
+                    "9",
+                    "C",
+                    "0",
+                    "⌫",
+                  ] as const
+                ).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={
+                      key === "C" || key === "⌫" ? "secondary" : "ghost"
+                    }
+                    onClick={() => {
+                      if (cashuIsBusy) return;
+                      if (key === "C") {
+                        setLnAddressPayAmount("");
+                        return;
+                      }
+                      if (key === "⌫") {
+                        setLnAddressPayAmount((v) => v.slice(0, -1));
+                        return;
+                      }
+                      setLnAddressPayAmount((v) => {
+                        const next = (v + key).replace(/^0+(\d)/, "$1");
+                        return next;
+                      });
+                    }}
+                    disabled={cashuIsBusy}
+                    aria-label={
+                      key === "C"
+                        ? t("clearForm")
+                        : key === "⌫"
+                        ? t("delete")
+                        : key
+                    }
+                  >
+                    {key}
+                  </button>
+                ))}
+              </div>
+
+              {(() => {
+                const amountSat = Number.parseInt(
+                  lnAddressPayAmount.trim(),
+                  10
+                );
+                const invalid =
+                  !canPayWithCashu ||
+                  !Number.isFinite(amountSat) ||
+                  amountSat <= 0 ||
+                  amountSat > cashuBalance;
+                return (
+                  <div className="actions">
+                    <button
+                      className="btn-wide"
+                      onClick={() => {
+                        if (invalid) return;
+                        void payLightningAddressWithCashu(
+                          route.lnAddress,
+                          amountSat
+                        );
+                      }}
+                      disabled={cashuIsBusy || invalid}
+                      title={
+                        amountSat > cashuBalance
+                          ? t("payInsufficient")
+                          : undefined
+                      }
+                    >
+                      {t("paySend")}
+                    </button>
+                  </div>
+                );
+              })()}
             </section>
           )}
 
@@ -7758,6 +9468,61 @@ const App = () => {
               </div>
             </div>
           )}
+
+          {postPaySaveContact && !paidOverlayIsOpen ? (
+            <div
+              className="modal-overlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t("saveContactPromptTitle")}
+            >
+              <div className="modal-sheet">
+                <div className="modal-title">{t("saveContactPromptTitle")}</div>
+                <div className="modal-body">
+                  {t("saveContactPromptBody")
+                    .replace(
+                      "{amount}",
+                      formatInteger(postPaySaveContact.amountSat)
+                    )
+                    .replace("{unit}", displayUnit)
+                    .replace("{lnAddress}", postPaySaveContact.lnAddress)}
+                </div>
+                <div className="modal-actions">
+                  <button
+                    className="btn-wide"
+                    onClick={() => {
+                      const ln = String(
+                        postPaySaveContact.lnAddress ?? ""
+                      ).trim();
+
+                      const npub = (() => {
+                        const lower = ln.toLowerCase();
+                        if (!lower.endsWith("@npub.cash")) return null;
+                        const left = ln.slice(0, -"@npub.cash".length).trim();
+                        return left || null;
+                      })();
+
+                      setPostPaySaveContact(null);
+                      setContactNewPrefill({
+                        lnAddress: ln,
+                        npub,
+                        suggestedName: null,
+                      });
+                      navigateToNewContact();
+                    }}
+                  >
+                    {t("saveContactPromptSave")}
+                  </button>
+                  <button
+                    className="btn-wide secondary"
+                    onClick={() => setPostPaySaveContact(null)}
+                  >
+                    {t("saveContactPromptSkip")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {paidOverlayIsOpen ? (
             <div className="paid-overlay" role="status" aria-live="assertive">

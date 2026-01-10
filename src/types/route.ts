@@ -5,10 +5,13 @@ export type Route =
   | { kind: "settings" }
   | { kind: "advanced" }
   | { kind: "paymentsHistory" }
+  | { kind: "mints" }
+  | { kind: "mint"; mintUrl: string }
   | { kind: "profile" }
   | { kind: "wallet" }
   | { kind: "topup" }
   | { kind: "topupInvoice" }
+  | { kind: "lnAddressPay"; lnAddress: string }
   | { kind: "cashuTokenNew" }
   | { kind: "cashuToken"; id: CashuTokenId }
   | { kind: "nostrRelays" }
@@ -26,10 +29,25 @@ export const parseRouteFromHash = (): Route => {
   if (hash === "#settings") return { kind: "settings" };
   if (hash === "#advanced") return { kind: "advanced" };
   if (hash === "#advanced/payments") return { kind: "paymentsHistory" };
+  if (hash === "#advanced/mints") return { kind: "mints" };
+
+  const mintPrefix = "#advanced/mint/";
+  if (hash.startsWith(mintPrefix)) {
+    const rest = hash.slice(mintPrefix.length);
+    const mintUrl = decodeURIComponent(String(rest ?? "")).trim();
+    if (mintUrl) return { kind: "mint", mintUrl };
+  }
   if (hash === "#profile") return { kind: "profile" };
   if (hash === "#wallet") return { kind: "wallet" };
   if (hash === "#wallet/topup") return { kind: "topup" };
   if (hash === "#wallet/topup/invoice") return { kind: "topupInvoice" };
+
+  const payLnPrefix = "#payln/";
+  if (hash.startsWith(payLnPrefix)) {
+    const rest = hash.slice(payLnPrefix.length);
+    const lnAddress = decodeURIComponent(String(rest ?? "")).trim();
+    if (lnAddress) return { kind: "lnAddressPay", lnAddress };
+  }
   if (hash === "#wallet/token/new") return { kind: "cashuTokenNew" };
 
   const walletTokenPrefix = "#wallet/token/";

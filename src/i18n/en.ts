@@ -11,6 +11,7 @@ export const en = {
   exportData: "Export",
   importData: "Import",
   dedupeContacts: "Deduplicate contacts",
+  appVersionLabel: "Version",
   dedupeContactsNone: "No duplicates found.",
   dedupeContactsResult:
     "Merged {groups} groups, removed {removed} contacts, moved {moved} messages.",
@@ -60,6 +61,16 @@ export const en = {
   relayUrl: "Relay URL",
 
   mints: "Mints",
+
+  unknown: "Unknown",
+  mintsEmpty: "No mints yet. Mints appear here after you accept tokens.",
+  mintNotFound: "Mint not found.",
+  mintUrl: "URL",
+  mintMpp: "MPP support",
+  mintFees: "Fees",
+  mintRefresh: "Refresh info",
+  mintDelete: "Delete mint",
+  mintLastChecked: "Last checked",
 
   chat: "Chat",
   sendMessage: "Messages",
@@ -184,10 +195,13 @@ export const en = {
   walletEarlyWarningTitle: "Warning",
   walletEarlyWarningBody:
     "Linky is in a very early stage. You may lose access to funds you load here. Only use small amounts.",
+  storageNotPersistent:
+    "Storage is not persistent (private browsing?). Your wallet may disappear after reloads. Use a normal window for best reliability.",
   topup: "Top-up",
   topupTitle: "Top-up your account",
   topupShowInvoice: "Show top-up invoice",
   topupInvoiceTitle: "Top-up invoice",
+  topupInvoiceAmount: "You will top up {amount} {unit}.",
   topupFetchingInvoice: "Fetching invoice…",
   topupInvoiceFailed: "Failed to fetch invoice",
   walletOpen: "Open wallet",
@@ -240,4 +254,15 @@ export const en = {
   payPaying: "Paying…",
   paySuccess: "Paid.",
   payFailed: "Payment failed",
+
+  paidSent: "Sent {amount} {unit}.",
+  paidSentTo: "Sent {amount} {unit} to {name}.",
+  paidReceived: "Received {amount} {unit}.",
+  topupOverlay: "Topped up {amount} {unit}.",
+
+  saveContactPromptTitle: "Save as contact?",
+  saveContactPromptBody:
+    "Paid {amount} {unit} to {lnAddress}. Save it as a contact?",
+  saveContactPromptSave: "Save contact",
+  saveContactPromptSkip: "Not now",
 } as const;

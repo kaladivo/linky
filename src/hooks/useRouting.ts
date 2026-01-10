@@ -31,6 +31,16 @@ export const navigateToPaymentsHistory = () => {
   window.location.assign("#advanced/payments");
 };
 
+export const navigateToMints = () => {
+  window.location.assign("#advanced/mints");
+};
+
+export const navigateToMint = (mintUrl: string) => {
+  window.location.assign(
+    `#advanced/mint/${encodeURIComponent(String(mintUrl ?? "").trim())}`
+  );
+};
+
 export const navigateToContact = (id: ContactId) => {
   window.location.assign(`#contact/${encodeURIComponent(String(id))}`);
 };
@@ -61,6 +71,10 @@ export const navigateToTopup = () => {
 
 export const navigateToTopupInvoice = () => {
   window.location.assign("#wallet/topup/invoice");
+};
+
+export const navigateToLnAddressPay = (lnAddress: string) => {
+  window.location.assign(`#payln/${encodeURIComponent(String(lnAddress))}`);
 };
 
 export const navigateToCashuTokenNew = () => {

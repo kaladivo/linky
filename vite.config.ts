@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react-swc";
+import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import path from "node:path";
@@ -10,6 +11,17 @@ import { VitePWA } from "vite-plugin-pwa";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const sqliteWasmPath = path.join(__dirname, "public/sqlite-wasm/sqlite3.wasm");
+
+const packageJsonPath = path.join(__dirname, "package.json");
+const appVersion = (() => {
+  try {
+    const raw = readFileSync(packageJsonPath, "utf8");
+    const pkg = JSON.parse(raw) as { version?: unknown };
+    return String(pkg.version ?? "").trim() || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 const serveSqliteWasm = (): Plugin => ({
   name: "serve-sqlite-wasm",
@@ -45,6 +57,7 @@ const serveSqliteWasm = (): Plugin => ({
 export default defineConfig({
   define: {
     global: "globalThis",
+    __APP_VERSION__: JSON.stringify(appVersion),
   },
   optimizeDeps: {
     exclude: ["@evolu/react-web"],

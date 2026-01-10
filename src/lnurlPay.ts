@@ -19,9 +19,7 @@ type LnurlInvoiceResponse = {
   reason?: string;
 };
 
-const getLnurlpUrlFromLightningAddress = (
-  lightningAddress: string
-): string => {
+const getLnurlpUrlFromLightningAddress = (lightningAddress: string): string => {
   const raw = lightningAddress.trim();
   const at = raw.lastIndexOf("@");
   if (at <= 0 || at === raw.length - 1) {
@@ -69,13 +67,34 @@ export const fetchLnurlInvoiceForLightningAddress = async (
 
   const commentAllowed = Number(payReq.commentAllowed ?? 0);
   const rawComment = String(comment ?? "").trim();
-  if (rawComment && Number.isFinite(commentAllowed) && commentAllowed > 0) {
-    callbackUrl.searchParams.set("comment", rawComment.slice(0, commentAllowed));
-  }
 
-  const invoiceJson = await fetchJson<LnurlInvoiceResponse>(
-    callbackUrl.toString()
-  );
+  // Some LNURL-pay providers omit/misreport commentAllowed. We try to include
+  // a short comment (e.g., user display name) and fall back silently if it
+  // causes invoice fetch to fail.
+  const canUseComment = rawComment.length > 0;
+  const providerAdvertisesComment =
+    Number.isFinite(commentAllowed) && commentAllowed > 0;
+  const maybeWithCommentUrl = (() => {
+    if (!canUseComment) return null;
+    const u = new URL(callbackUrl.toString());
+    const maxLen = providerAdvertisesComment
+      ? Math.max(0, Math.floor(commentAllowed))
+      : 140;
+    if (maxLen <= 0) return null;
+    u.searchParams.set("comment", rawComment.slice(0, maxLen));
+    return u.toString();
+  })();
+
+  const invoiceJson = await (async () => {
+    if (maybeWithCommentUrl && !providerAdvertisesComment) {
+      try {
+        return await fetchJson<LnurlInvoiceResponse>(maybeWithCommentUrl);
+      } catch {
+        // Retry without comment.
+      }
+    }
+    return await fetchJson<LnurlInvoiceResponse>(callbackUrl.toString());
+  })();
   if (String(invoiceJson.status ?? "").toUpperCase() === "ERROR") {
     throw new Error(
       asNonEmptyString(invoiceJson.reason) ?? "LNURL invoice error"

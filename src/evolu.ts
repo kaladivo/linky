@@ -24,6 +24,14 @@ export type NostrMessageId = typeof NostrMessageId.Type;
 const PaymentEventId = Evolu.id("PaymentEvent");
 export type PaymentEventId = typeof PaymentEventId.Type;
 
+// Primary key pro AppState tabulku (snapshoty nastavení/progresu)
+const AppStateId = Evolu.id("AppState");
+export type AppStateId = typeof AppStateId.Type;
+
+// Primary key pro MintInfo tabulku (metadata o mintech)
+const MintId = Evolu.id("Mint");
+export type MintId = typeof MintId.Type;
+
 // Schema pro Linky app
 export const Schema = {
   contact: {
@@ -88,6 +96,34 @@ export const Schema = {
     error: Evolu.nullOr(Evolu.NonEmptyString1000),
     // Optional: link to a contact (e.g., pay-to-contact).
     contactId: Evolu.nullOr(ContactId),
+  },
+
+  appState: {
+    id: AppStateId,
+    // "1" when dismissed.
+    contactsOnboardingDismissed: Evolu.nullOr(Evolu.NonEmptyString100),
+    // "1" when the user has successfully paid at least once.
+    contactsOnboardingHasPaid: Evolu.nullOr(Evolu.NonEmptyString100),
+    // Active guide task key (e.g., "add_contact" | "topup" | "pay" | "message").
+    contactsGuideTask: Evolu.nullOr(Evolu.NonEmptyString100),
+    // Persisted as (stepIndex + 1) so it fits PositiveInt.
+    contactsGuideStepPlusOne: Evolu.nullOr(Evolu.PositiveInt),
+    // Optional: which contact the guide is bound to.
+    contactsGuideTargetContactId: Evolu.nullOr(ContactId),
+  },
+
+  mintInfo: {
+    // We use mint URL as a stable id (so one row per mint).
+    id: MintId,
+    url: Evolu.NonEmptyString1000,
+    firstSeenAtSec: Evolu.PositiveInt,
+    lastSeenAtSec: Evolu.PositiveInt,
+    // "1" when mint claims MPP support (NUT-15). Null/"0" means unknown/false.
+    supportsMpp: Evolu.nullOr(Evolu.NonEmptyString100),
+    // JSON blobs (best-effort, may be truncated).
+    feesJson: Evolu.nullOr(Evolu.NonEmptyString1000),
+    infoJson: Evolu.nullOr(Evolu.NonEmptyString1000),
+    lastCheckedAtSec: Evolu.nullOr(Evolu.PositiveInt),
   },
 };
 
