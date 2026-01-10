@@ -2370,13 +2370,7 @@ const App = () => {
   ]);
 
   const showContactsOnboarding =
-    !contactsOnboardingDismissed &&
-    (route.kind === "contacts" ||
-      route.kind === "contact" ||
-      route.kind === "contactEdit" ||
-      route.kind === "contactNew" ||
-      route.kind === "contactPay" ||
-      route.kind === "chat");
+    !contactsOnboardingDismissed && route.kind === "contacts";
 
   const dismissContactsOnboarding = () => {
     safeLocalStorageSet(CONTACTS_ONBOARDING_DISMISSED_STORAGE_KEY, "1");
@@ -2385,22 +2379,30 @@ const App = () => {
   };
 
   const startContactsGuide = (task: ContactsGuideKey) => {
+    setContactsGuideTargetContactId(null);
     setContactsGuide({ task, step: 0 });
   };
 
   const stopContactsGuide = () => {
+    setContactsGuideTargetContactId(null);
     setContactsGuide(null);
   };
 
-  const firstIncompleteContactsTask = useMemo(() => {
-    const tsk = contactsOnboardingTasks.tasks.find((x) => !x.done);
-    return (tsk?.key ?? null) as ContactsGuideKey | null;
-  }, [contactsOnboardingTasks.tasks]);
+  const [contactsGuideTargetContactId, setContactsGuideTargetContactId] =
+    React.useState<ContactId | null>(null);
 
   const contactsGuideSteps = useMemo(() => {
     if (!contactsGuide) return null;
 
     const firstContactId = (contacts[0]?.id ?? null) as ContactId | null;
+    const routeContactId =
+      route.kind === "contact" ||
+      route.kind === "contactPay" ||
+      route.kind === "chat"
+        ? ((route as unknown as { id?: unknown }).id as ContactId | null)
+        : null;
+    const targetContactId =
+      contactsGuideTargetContactId ?? routeContactId ?? firstContactId;
 
     const ensureRoute = (kind: Route["kind"], contactId?: ContactId | null) => {
       if (route.kind === kind) {
@@ -2443,6 +2445,13 @@ const App = () => {
           titleKey: "guideAddContactStep2Title",
           bodyKey: "guideAddContactStep2Body",
           ensure: () => ensureRoute("contactNew"),
+        },
+        {
+          id: "add_contact_3",
+          selector: '[data-guide="scan-button"]',
+          titleKey: "guideAddContactStep3Title",
+          bodyKey: "guideAddContactStep3Body",
+          ensure: () => ensureRoute("settings"),
         },
       ],
       topup: [
@@ -2488,14 +2497,14 @@ const App = () => {
           selector: '[data-guide="contact-pay"]',
           titleKey: "guidePayStep2Title",
           bodyKey: "guidePayStep2Body",
-          ensure: () => ensureRoute("contact", firstContactId),
+          ensure: () => ensureRoute("contact", targetContactId),
         },
         {
           id: "pay_3",
-          selector: '[data-guide="pay-send"]',
+          selector: '[data-guide="pay-step3"]',
           titleKey: "guidePayStep3Title",
           bodyKey: "guidePayStep3Body",
-          ensure: () => ensureRoute("contactPay", firstContactId),
+          ensure: () => ensureRoute("contactPay", targetContactId),
         },
       ],
       message: [
@@ -2511,27 +2520,34 @@ const App = () => {
           selector: '[data-guide="contact-message"]',
           titleKey: "guideMessageStep2Title",
           bodyKey: "guideMessageStep2Body",
-          ensure: () => ensureRoute("contact", firstContactId),
+          ensure: () => ensureRoute("contact", targetContactId),
         },
         {
           id: "message_3",
           selector: '[data-guide="chat-input"]',
           titleKey: "guideMessageStep3Title",
           bodyKey: "guideMessageStep3Body",
-          ensure: () => ensureRoute("chat", firstContactId),
+          ensure: () => ensureRoute("chat", targetContactId),
         },
         {
           id: "message_4",
           selector: '[data-guide="chat-send"]',
           titleKey: "guideMessageStep4Title",
           bodyKey: "guideMessageStep4Body",
-          ensure: () => ensureRoute("chat", firstContactId),
+          ensure: () => ensureRoute("chat", targetContactId),
         },
       ],
     };
 
     return stepsByTask[contactsGuide.task] ?? null;
-  }, [contacts, contactsGuide, openNewContactPage, route, t]);
+  }, [
+    contacts,
+    contactsGuide,
+    contactsGuideTargetContactId,
+    openNewContactPage,
+    route,
+    t,
+  ]);
 
   const contactsGuideActiveStep = useMemo(() => {
     if (!contactsGuide || !contactsGuideSteps) return null;
@@ -2555,6 +2571,100 @@ const App = () => {
       // ignore
     }
   }, [contactsGuide, contactsGuideActiveStep]);
+
+  const contactsGuidePrevRouteRef = React.useRef<{
+    kind: Route["kind"];
+    id: string | null;
+  } | null>(null);
+
+  React.useEffect(() => {
+    if (!contactsGuide || !contactsGuideActiveStep?.step) {
+      contactsGuidePrevRouteRef.current = {
+        kind: route.kind,
+        id:
+          route.kind === "contact" ||
+          route.kind === "contactPay" ||
+          route.kind === "chat"
+            ? String((route as unknown as { id?: unknown }).id ?? "") || null
+            : null,
+      };
+      return;
+    }
+
+    const prev = contactsGuidePrevRouteRef.current;
+    const current = {
+      kind: route.kind,
+      id:
+        route.kind === "contact" ||
+        route.kind === "contactPay" ||
+        route.kind === "chat"
+          ? String((route as unknown as { id?: unknown }).id ?? "") || null
+          : null,
+    };
+    contactsGuidePrevRouteRef.current = current;
+
+    const id = contactsGuideActiveStep.step.id;
+
+    const goToStep = (step: number) => {
+      setContactsGuide((prevGuide) => {
+        if (!prevGuide) return prevGuide;
+        if (prevGuide.task !== contactsGuide.task) return prevGuide;
+        if (prevGuide.step === step) return prevGuide;
+        return { ...prevGuide, step };
+      });
+    };
+
+    const transition = (from: Route["kind"], to: Route["kind"]) =>
+      Boolean(prev && prev.kind === from && current.kind === to);
+
+    // Capture which contact the user actually picked so we don't auto-open another one.
+    if (
+      (contactsGuide.task === "pay" || contactsGuide.task === "message") &&
+      transition("contacts", "contact") &&
+      current.id
+    ) {
+      setContactsGuideTargetContactId(current.id as ContactId);
+    }
+
+    // Advance by performing the demonstrated navigation (route transitions).
+    if (id === "add_contact_1" && transition("contacts", "contactNew"))
+      goToStep(1);
+    if (
+      id === "add_contact_2" &&
+      prev &&
+      prev.kind === "contactNew" &&
+      current.kind !== "contactNew"
+    ) {
+      goToStep(2);
+    }
+
+    if (id === "topup_1" && transition("contacts", "settings")) goToStep(1);
+    if (id === "topup_2" && transition("settings", "wallet")) goToStep(2);
+    if (id === "topup_3" && transition("wallet", "topup")) goToStep(3);
+    if (id === "topup_4" && transition("topup", "topupInvoice"))
+      stopContactsGuide();
+
+    if (id === "pay_1" && transition("contacts", "contact")) goToStep(1);
+    if (id === "pay_2" && transition("contact", "contactPay")) goToStep(2);
+
+    if (id === "message_1" && transition("contacts", "contact")) goToStep(1);
+    if (id === "message_2" && transition("contact", "chat")) goToStep(2);
+
+    // Auto-finish when the underlying task becomes completed.
+    if (contactsGuide.task === "topup" && cashuBalance > 0) stopContactsGuide();
+    if (contactsGuide.task === "pay" && contactsOnboardingHasPaid)
+      stopContactsGuide();
+    if (contactsGuide.task === "message" && contactsOnboardingHasSentMessage)
+      stopContactsGuide();
+  }, [
+    cashuBalance,
+    contactsGuide,
+    contactsGuideActiveStep?.step,
+    contactsOnboardingHasPaid,
+    contactsOnboardingHasSentMessage,
+    route,
+    stopContactsGuide,
+  ]);
 
   React.useEffect(() => {
     const active = contactsGuideActiveStep?.step ?? null;
@@ -5533,6 +5643,7 @@ const App = () => {
                   onClick={() => {
                     openScan();
                   }}
+                  data-guide="scan-button"
                 >
                   {t("scan")}
                 </button>
@@ -6243,107 +6354,109 @@ const App = () => {
                     return null;
                   })()}
 
-                  <div className="amount-display" aria-live="polite">
+                  <div data-guide="pay-step3">
+                    <div className="amount-display" aria-live="polite">
+                      {(() => {
+                        const amountSat = Number.parseInt(payAmount.trim(), 10);
+                        const display =
+                          Number.isFinite(amountSat) && amountSat > 0
+                            ? amountSat
+                            : 0;
+                        return (
+                          <>
+                            <span className="amount-number">
+                              {formatInteger(display)}
+                            </span>
+                            <span className="amount-unit">{displayUnit}</span>
+                          </>
+                        );
+                      })()}
+                    </div>
+
+                    <div
+                      className="keypad"
+                      role="group"
+                      aria-label={`${t("payAmount")} (${displayUnit})`}
+                    >
+                      {(
+                        [
+                          "1",
+                          "2",
+                          "3",
+                          "4",
+                          "5",
+                          "6",
+                          "7",
+                          "8",
+                          "9",
+                          "C",
+                          "0",
+                          "⌫",
+                        ] as const
+                      ).map((key) => (
+                        <button
+                          key={key}
+                          type="button"
+                          className={
+                            key === "C" || key === "⌫" ? "secondary" : "ghost"
+                          }
+                          onClick={() => {
+                            if (cashuIsBusy) return;
+                            if (key === "C") {
+                              setPayAmount("");
+                              return;
+                            }
+                            if (key === "⌫") {
+                              setPayAmount((v) => v.slice(0, -1));
+                              return;
+                            }
+                            setPayAmount((v) => {
+                              const next = (v + key).replace(/^0+(\d)/, "$1");
+                              return next;
+                            });
+                          }}
+                          disabled={cashuIsBusy}
+                          aria-label={
+                            key === "C"
+                              ? t("clearForm")
+                              : key === "⌫"
+                              ? t("delete")
+                              : key
+                          }
+                        >
+                          {key}
+                        </button>
+                      ))}
+                    </div>
+
                     {(() => {
+                      const ln = String(selectedContact.lnAddress ?? "").trim();
                       const amountSat = Number.parseInt(payAmount.trim(), 10);
-                      const display =
-                        Number.isFinite(amountSat) && amountSat > 0
-                          ? amountSat
-                          : 0;
+                      const invalid =
+                        !ln ||
+                        !canPayWithCashu ||
+                        !Number.isFinite(amountSat) ||
+                        amountSat <= 0 ||
+                        amountSat > cashuBalance;
                       return (
-                        <>
-                          <span className="amount-number">
-                            {formatInteger(display)}
-                          </span>
-                          <span className="amount-unit">{displayUnit}</span>
-                        </>
+                        <div className="actions">
+                          <button
+                            className="btn-wide"
+                            onClick={() => void paySelectedContact()}
+                            disabled={cashuIsBusy || invalid}
+                            title={
+                              amountSat > cashuBalance
+                                ? t("payInsufficient")
+                                : undefined
+                            }
+                            data-guide="pay-send"
+                          >
+                            {t("paySend")}
+                          </button>
+                        </div>
                       );
                     })()}
                   </div>
-
-                  <div
-                    className="keypad"
-                    role="group"
-                    aria-label={`${t("payAmount")} (${displayUnit})`}
-                  >
-                    {(
-                      [
-                        "1",
-                        "2",
-                        "3",
-                        "4",
-                        "5",
-                        "6",
-                        "7",
-                        "8",
-                        "9",
-                        "C",
-                        "0",
-                        "⌫",
-                      ] as const
-                    ).map((key) => (
-                      <button
-                        key={key}
-                        type="button"
-                        className={
-                          key === "C" || key === "⌫" ? "secondary" : "ghost"
-                        }
-                        onClick={() => {
-                          if (cashuIsBusy) return;
-                          if (key === "C") {
-                            setPayAmount("");
-                            return;
-                          }
-                          if (key === "⌫") {
-                            setPayAmount((v) => v.slice(0, -1));
-                            return;
-                          }
-                          setPayAmount((v) => {
-                            const next = (v + key).replace(/^0+(\d)/, "$1");
-                            return next;
-                          });
-                        }}
-                        disabled={cashuIsBusy}
-                        aria-label={
-                          key === "C"
-                            ? t("clearForm")
-                            : key === "⌫"
-                            ? t("delete")
-                            : key
-                        }
-                      >
-                        {key}
-                      </button>
-                    ))}
-                  </div>
-
-                  {(() => {
-                    const ln = String(selectedContact.lnAddress ?? "").trim();
-                    const amountSat = Number.parseInt(payAmount.trim(), 10);
-                    const invalid =
-                      !ln ||
-                      !canPayWithCashu ||
-                      !Number.isFinite(amountSat) ||
-                      amountSat <= 0 ||
-                      amountSat > cashuBalance;
-                    return (
-                      <div className="actions">
-                        <button
-                          className="btn-wide"
-                          onClick={() => void paySelectedContact()}
-                          disabled={cashuIsBusy || invalid}
-                          title={
-                            amountSat > cashuBalance
-                              ? t("payInsufficient")
-                              : undefined
-                          }
-                          data-guide="pay-send"
-                        >
-                          {t("paySend")}
-                        </button>
-                      </div>
-                    );
-                  })()}
                 </>
               ) : null}
             </section>
@@ -6814,27 +6927,26 @@ const App = () => {
                 </div>
               ) : (
                 <div className="contacts-checklist-items" role="list">
-                  {contactsOnboardingTasks.tasks.map((task) => (
-                    <div
-                      key={task.key}
-                      className={
-                        task.done
-                          ? "contacts-checklist-item is-done"
-                          : "contacts-checklist-item"
-                      }
-                      role="listitem"
-                    >
-                      <span
-                        className="contacts-checklist-check"
-                        aria-hidden="true"
+                  {(() => {
+                    const task =
+                      contactsOnboardingTasks.tasks.find((x) => !x.done) ??
+                      null;
+                    if (!task) return null;
+                    return (
+                      <div
+                        key={task.key}
+                        className="contacts-checklist-item"
+                        role="listitem"
                       >
-                        ✓
-                      </span>
-                      <span className="contacts-checklist-label">
-                        {task.label}
-                      </span>
-                      {!task.done &&
-                      task.key === firstIncompleteContactsTask ? (
+                        <span
+                          className="contacts-checklist-check"
+                          aria-hidden="true"
+                        >
+                          ✓
+                        </span>
+                        <span className="contacts-checklist-label">
+                          {task.label}
+                        </span>
                         <button
                           type="button"
                           className="contacts-checklist-how"
@@ -6842,9 +6954,9 @@ const App = () => {
                         >
                           {t("contactsOnboardingShowHow")}
                         </button>
-                      ) : null}
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </section>
@@ -6870,6 +6982,7 @@ const App = () => {
                         key={contact.id}
                         className="contact-card is-clickable"
                         data-guide="contact-card"
+                        data-guide-contact-id={String(contact.id)}
                         role="button"
                         tabIndex={0}
                         onClick={() => openContactDetail(contact)}

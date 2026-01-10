@@ -95,7 +95,11 @@ export const cs = {
   guideAddContactStep1Body: "Klepněte na + a vytvořte svůj první kontakt.",
   guideAddContactStep2Title: "Uložit kontakt",
   guideAddContactStep2Body:
-    "Vyplňte alespoň jedno pole a uložte kontakt tlačítkem Uložit.",
+    "Vyplňte alespoň jedno pole a uložte kontakt. Když vložíte npub, ostatní informace se načtou automaticky. Můžete taky vyplnit skupinu kontaktu.",
+
+  guideAddContactStep3Title: "Přidat přes scan",
+  guideAddContactStep3Body:
+    "Kontakt můžete přidat také naskenováním QR kódu (npub) druhého uživatele v Nastavení → Scan.",
 
   guideTopupStep1Title: "Dobít bitcoin",
   guideTopupStep1Body: "Otevřete menu (☰).",
@@ -111,7 +115,7 @@ export const cs = {
   guidePayStep2Title: "Platba",
   guidePayStep2Body: "V detailu kontaktu klepněte na Zaplatit.",
   guidePayStep3Title: "Odeslat platbu",
-  guidePayStep3Body: "Zadejte částku a potvrďte platbu.",
+  guidePayStep3Body: "Zadejte částku (čísly) a pak klepněte na Odeslat.",
 
   guideMessageStep1Title: "Poslat zprávu",
   guideMessageStep1Body: "Otevřete libovolný kontakt.",

@@ -94,7 +94,12 @@ export const en = {
   guideAddContactStep1Title: "Add a contact",
   guideAddContactStep1Body: "Tap + to create your first contact.",
   guideAddContactStep2Title: "Save contact",
-  guideAddContactStep2Body: "Fill at least one field and save the contact.",
+  guideAddContactStep2Body:
+    "Fill at least one field and save the contact. If you paste an npub, other details will load automatically. You can also set a contact group.",
+
+  guideAddContactStep3Title: "Add via scan",
+  guideAddContactStep3Body:
+    "You can also add a contact by scanning their QR code (npub) via Settings → Scan.",
 
   guideTopupStep1Title: "Load bitcoin",
   guideTopupStep1Body: "Open the menu (☰).",
@@ -110,7 +115,7 @@ export const en = {
   guidePayStep2Title: "Payment",
   guidePayStep2Body: "In the contact detail, tap Pay.",
   guidePayStep3Title: "Send payment",
-  guidePayStep3Body: "Enter an amount and confirm payment.",
+  guidePayStep3Body: "Enter an amount (using the keypad) and tap Send.",
 
   guideMessageStep1Title: "Send a message",
   guideMessageStep1Body: "Open any contact.",
