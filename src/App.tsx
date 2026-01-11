@@ -8,7 +8,13 @@ import "./App.css";
 import { parseCashuToken } from "./cashu";
 import { deriveDefaultProfile } from "./derivedProfile";
 import type { CashuTokenId, ContactId, MintId } from "./evolu";
-import { evolu, EVOLU_SERVER_URLS, useEvolu } from "./evolu";
+import {
+  DEFAULT_EVOLU_SERVER_URLS,
+  evolu,
+  getEvoluServerUrls,
+  setEvoluServerUrls as persistEvoluServerUrls,
+  useEvolu,
+} from "./evolu";
 import { useInit } from "./hooks/useInit";
 import {
   navigateToAdvanced,
@@ -25,6 +31,7 @@ import {
   navigateToMint,
   navigateToMints,
   navigateToNewContact,
+  navigateToNewEvoluServer,
   navigateToNewRelay,
   navigateToNostrRelay,
   navigateToNostrRelays,
@@ -129,6 +136,18 @@ type AppNostrPool = {
   ) => { close: (reason?: string) => Promise<void> | void };
 };
 
+type WebSocketProbe = {
+  ok: boolean;
+  checkedAtMs: number;
+  latencyMs: number | null;
+  close?: { code: number | null; reason: string | null };
+  error: string | null;
+  firstMessage:
+    | null
+    | { kind: "text"; text: string }
+    | { kind: "binary"; type: string; size: number | null };
+};
+
 type ContactsGuideKey = "add_contact" | "topup" | "pay" | "message";
 
 type ContactsGuideStep = {
@@ -207,7 +226,43 @@ const formatBytes = (bytes: number): string => {
 
 const App = () => {
   const { insert, update, upsert } = useEvolu();
-  const evoluServerUrls = EVOLU_SERVER_URLS;
+
+  const [evoluServerUrls, setEvoluServerUrls] = useState<string[]>(() => [
+    ...getEvoluServerUrls(),
+  ]);
+  const [evoluServersReloadRequired, setEvoluServersReloadRequired] =
+    useState(false);
+  const [newEvoluServerUrl, setNewEvoluServerUrl] = useState("");
+  const [pendingEvoluServerDeleteUrl, setPendingEvoluServerDeleteUrl] =
+    useState<string | null>(null);
+
+  const [evoluShowLocalDataJson, setEvoluShowLocalDataJson] = useState(false);
+  const [evoluShowServerDebugJson, setEvoluShowServerDebugJson] =
+    useState(false);
+
+  const normalizeEvoluServerUrl = React.useCallback((value: string) => {
+    const raw = String(value ?? "")
+      .trim()
+      .replace(/\/+$/, "");
+    if (!raw) return null;
+    try {
+      const u = new URL(raw);
+      if (u.protocol !== "wss:" && u.protocol !== "ws:") return null;
+      const pathname = u.pathname.replace(/\/+$/, "");
+      return `${u.origin}${pathname === "/" ? "" : pathname}`.replace(
+        /\/+$/,
+        ""
+      );
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const saveEvoluServerUrls = React.useCallback((nextUrls: string[]) => {
+    persistEvoluServerUrls(nextUrls);
+    setEvoluServerUrls([...getEvoluServerUrls()]);
+    setEvoluServersReloadRequired(true);
+  }, []);
 
   const normalizeMintUrl = (value: unknown): string => {
     const raw = String(value ?? "").trim();
@@ -1129,7 +1184,7 @@ const App = () => {
       }
 
       let removedContacts = 0;
-      let movedMessages = 0;
+      const movedMessages = 0;
 
       for (const idxs of dupGroups) {
         const group = idxs.map((i) => contacts[i]);
@@ -1347,6 +1402,10 @@ const App = () => {
     Record<string, "checking" | "connected" | "disconnected">
   >(() => ({}));
 
+  const [evoluServerProbeByUrl, setEvoluServerProbeByUrl] = useState<
+    Record<string, WebSocketProbe>
+  >(() => ({}));
+
   const nostrFetchRelays = useMemo(() => {
     const merged = [...relayUrls, ...NOSTR_RELAYS];
     const seen = new Set<string>();
@@ -1407,56 +1466,143 @@ const App = () => {
     []
   );
 
+  const probeWebSocket = React.useCallback((url: string, timeoutMs = 3500) => {
+    return new Promise<WebSocketProbe>((resolve) => {
+      let ws: WebSocket | null = null;
+      let done = false;
+      const started = performance.now();
+      let firstMessage: WebSocketProbe["firstMessage"] = null;
+
+      const finish = (ok: boolean, extra?: Partial<WebSocketProbe>) => {
+        if (done) return;
+        done = true;
+        const latencyMs = ok ? Math.max(0, performance.now() - started) : null;
+        try {
+          ws?.close();
+        } catch {
+          // ignore
+        }
+        resolve({
+          ok,
+          checkedAtMs: Date.now(),
+          latencyMs,
+          error: null,
+          firstMessage,
+          ...extra,
+        });
+      };
+
+      try {
+        ws = new WebSocket(url);
+      } catch (e) {
+        finish(false, { error: String(e ?? "unknown") });
+        return;
+      }
+
+      const timer = window.setTimeout(() => {
+        finish(false, { error: "timeout" });
+      }, timeoutMs);
+
+      ws.addEventListener("message", (ev) => {
+        if (firstMessage) return;
+        try {
+          const data = (ev as MessageEvent).data;
+          if (typeof data === "string") {
+            firstMessage = {
+              kind: "text",
+              text: data.length > 2000 ? `${data.slice(0, 2000)}…` : data,
+            };
+            return;
+          }
+          if (data instanceof ArrayBuffer) {
+            firstMessage = {
+              kind: "binary",
+              type: "ArrayBuffer",
+              size: data.byteLength,
+            };
+            return;
+          }
+          if (data instanceof Blob) {
+            firstMessage = {
+              kind: "binary",
+              type: data.type || "Blob",
+              size: data.size,
+            };
+            return;
+          }
+          firstMessage = { kind: "binary", type: typeof data, size: null };
+        } catch {
+          // ignore
+        }
+      });
+
+      ws.addEventListener("open", () => {
+        window.clearTimeout(timer);
+        finish(true);
+      });
+
+      ws.addEventListener("error", () => {
+        window.clearTimeout(timer);
+        finish(false, { error: "error" });
+      });
+
+      ws.addEventListener("close", (ev) => {
+        window.clearTimeout(timer);
+        finish(false, {
+          error: "close",
+          close: {
+            code: Number.isFinite((ev as CloseEvent).code)
+              ? (ev as CloseEvent).code
+              : null,
+            reason: String((ev as CloseEvent).reason ?? "") || null,
+          },
+        });
+      });
+    });
+  }, []);
+
   React.useEffect(() => {
     if (evoluServerUrls.length === 0) return;
+    let cancelled = false;
 
-    const ownerId = String(appOwnerId ?? "").trim();
-    if (!ownerId) {
+    const run = async () => {
       setEvoluServerStatusByUrl((prev) => {
         const next = { ...prev };
-        for (const url of evoluServerUrls) next[url] = "disconnected";
+        for (const url of evoluServerUrls) next[url] = "checking";
         return next;
       });
-      return;
-    }
 
-    let cancelled = false;
-    setEvoluServerStatusByUrl((prev) => {
-      const next = { ...prev };
-      for (const url of evoluServerUrls) next[url] = "checking";
-      return next;
-    });
-
-    const withOwnerId = (baseUrl: string) => {
-      const u = String(baseUrl ?? "").trim();
-      if (!u) return u;
-      return u.includes("?")
-        ? `${u}&ownerId=${encodeURIComponent(ownerId)}`
-        : `${u}?ownerId=${encodeURIComponent(ownerId)}`;
-    };
-
-    (async () => {
       const results = await Promise.all(
         evoluServerUrls.map(async (url) => {
-          const ok = await checkRelayConnection(withOwnerId(url));
-          return [url, ok] as const;
+          // Evolu servers don't need (and may reject) extra query params.
+          const probe = await probeWebSocket(url, 3500);
+          return [url, probe] as const;
         })
       );
 
       if (cancelled) return;
       setEvoluServerStatusByUrl((prev) => {
         const next = { ...prev };
-        for (const [url, ok] of results) {
-          next[url] = ok ? "connected" : "disconnected";
-        }
+        for (const [url, probe] of results)
+          next[url] = probe.ok ? "connected" : "disconnected";
         return next;
       });
-    })();
+
+      setEvoluServerProbeByUrl((prev) => {
+        const next = { ...prev };
+        for (const [url, probe] of results) next[url] = probe;
+        return next;
+      });
+    };
+
+    void run();
+    const intervalId = window.setInterval(run, 15000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
     };
-  }, [appOwnerId, checkRelayConnection, evoluServerUrls]);
+  }, [evoluServerUrls, probeWebSocket]);
 
   React.useEffect(() => {
     if (relayUrls.length === 0) return;
@@ -1522,8 +1668,8 @@ const App = () => {
     const states = evoluServerUrls.map(
       (url) => evoluServerStatusByUrl[url] ?? "checking"
     );
+    if (states.some((s) => s === "connected")) return "connected" as const;
     if (states.some((s) => s === "checking")) return "checking" as const;
-    if (states.every((s) => s === "connected")) return "connected" as const;
     return "disconnected" as const;
   }, [evoluHasError, evoluServerStatusByUrl, evoluServerUrls]);
 
@@ -6268,7 +6414,7 @@ const App = () => {
       return {
         icon: "<",
         label: t("close"),
-        onClick: navigateToSettings,
+        onClick: navigateToAdvanced,
       };
     }
 
@@ -6276,7 +6422,7 @@ const App = () => {
       return {
         icon: "<",
         label: t("close"),
-        onClick: navigateToSettings,
+        onClick: navigateToAdvanced,
       };
     }
 
@@ -6289,6 +6435,14 @@ const App = () => {
     }
 
     if (route.kind === "evoluServer") {
+      return {
+        icon: "<",
+        label: t("close"),
+        onClick: navigateToEvoluServers,
+      };
+    }
+
+    if (route.kind === "evoluServerNew") {
       return {
         icon: "<",
         label: t("close"),
@@ -6357,6 +6511,14 @@ const App = () => {
         icon: "+",
         label: t("addRelay"),
         onClick: navigateToNewRelay,
+      };
+    }
+
+    if (route.kind === "evoluServers") {
+      return {
+        icon: "+",
+        label: t("evoluAddServerLabel"),
+        onClick: navigateToNewEvoluServer,
       };
     }
 
@@ -6437,6 +6599,7 @@ const App = () => {
     if (route.kind === "nostrRelayNew") return t("nostrRelay");
     if (route.kind === "evoluServers") return t("evoluServer");
     if (route.kind === "evoluServer") return t("evoluServer");
+    if (route.kind === "evoluServerNew") return t("evoluAddServerLabel");
     if (route.kind === "contactNew") return t("newContact");
     if (route.kind === "contact") return t("contact");
     if (route.kind === "contactEdit") return t("contactEditTitle");
@@ -8652,6 +8815,89 @@ const App = () => {
 
           {route.kind === "evoluServers" && (
             <section className="panel">
+              {evoluServersReloadRequired ? (
+                <>
+                  <p className="muted" style={{ marginTop: 2 }}>
+                    {t("evoluServersReloadHint")}
+                  </p>
+                  <div className="settings-row">
+                    <button
+                      type="button"
+                      className="btn-wide secondary"
+                      onClick={() => {
+                        window.location.reload();
+                      }}
+                    >
+                      {t("evoluServersReloadButton")}
+                    </button>
+                  </div>
+                </>
+              ) : null}
+
+              <div className="settings-row">
+                <button
+                  type="button"
+                  className="btn-wide secondary"
+                  onClick={() => setEvoluShowLocalDataJson((v) => !v)}
+                >
+                  {evoluShowLocalDataJson
+                    ? t("evoluHideLocalDataJson")
+                    : t("evoluShowLocalDataJson")}
+                </button>
+              </div>
+
+              {evoluShowLocalDataJson ? (
+                <pre className="debug-json">
+                  {JSON.stringify(
+                    {
+                      ownerId: appOwnerId ? String(appOwnerId) : null,
+                      estimateBytes: evoluSyncedDataBytes,
+                      estimateHuman:
+                        evoluSyncedDataBytes === null
+                          ? null
+                          : formatBytes(evoluSyncedDataBytes),
+                      contacts: {
+                        count: contacts.length,
+                        rows: contacts.map((c) => ({
+                          id: String((c as any).id ?? ""),
+                          name: String((c as any).name ?? ""),
+                          npub: String((c as any).npub ?? ""),
+                          lnAddress: String((c as any).lnAddress ?? ""),
+                          groupName: String((c as any).groupName ?? ""),
+                        })),
+                      },
+                      cashuTokens: {
+                        count: cashuTokensAll.length,
+                        rows: cashuTokensAll.map((t) => {
+                          const token = String((t as any).token ?? "");
+                          const rawToken = String((t as any).rawToken ?? "");
+                          const redact = (s: string) => {
+                            const v = String(s ?? "").trim();
+                            if (!v) return "";
+                            if (v.length <= 18) return `${v.slice(0, 6)}…`;
+                            return `${v.slice(0, 10)}…${v.slice(-6)}`;
+                          };
+                          return {
+                            id: String((t as any).id ?? ""),
+                            mint: String((t as any).mint ?? ""),
+                            unit: String((t as any).unit ?? ""),
+                            amount: (t as any).amount ?? null,
+                            state: String((t as any).state ?? ""),
+                            error: String((t as any).error ?? ""),
+                            token: token ? redact(token) : null,
+                            rawToken: rawToken ? redact(rawToken) : null,
+                            isDeleted: Boolean((t as any).isDeleted),
+                          };
+                        }),
+                      },
+                      lastEvoluError: evoluLastError ?? null,
+                    },
+                    null,
+                    2
+                  )}
+                </pre>
+              ) : null}
+
               {evoluServerUrls.length === 0 ? (
                 <p className="lede">{t("errorPrefix")}</p>
               ) : (
@@ -8663,6 +8909,8 @@ const App = () => {
                     const dotClass =
                       state === "connected"
                         ? "status-dot connected"
+                        : state === "checking"
+                        ? "status-dot checking"
                         : "status-dot disconnected";
 
                     return (
@@ -8716,6 +8964,8 @@ const App = () => {
                               className={
                                 state === "connected"
                                   ? "status-dot connected"
+                                  : state === "checking"
+                                  ? "status-dot checking"
                                   : "status-dot disconnected"
                               }
                               aria-label={state}
@@ -8772,19 +9022,36 @@ const App = () => {
                         </div>
 
                         <div className="settings-row">
-                          <div className="settings-left">
-                            <span className="settings-label">
-                              {t("evoluServerLimit")}
-                            </span>
-                          </div>
-                          <div className="settings-right">
-                            <span className="muted">
-                              {evoluErrorInfo.type === "ProtocolQuotaError"
-                                ? t("evoluServerLimitPaymentRequired")
-                                : t("evoluServerLimitUnknown")}
-                            </span>
-                          </div>
+                          <button
+                            type="button"
+                            className="btn-wide secondary"
+                            onClick={() =>
+                              setEvoluShowServerDebugJson((v) => !v)
+                            }
+                          >
+                            {evoluShowServerDebugJson
+                              ? t("evoluHideServerDebugJson")
+                              : t("evoluShowServerDebugJson")}
+                          </button>
                         </div>
+
+                        {evoluShowServerDebugJson ? (
+                          <pre className="debug-json">
+                            {JSON.stringify(
+                              {
+                                url: selectedEvoluServerUrl,
+                                state,
+                                probe:
+                                  evoluServerProbeByUrl[
+                                    selectedEvoluServerUrl
+                                  ] ?? null,
+                                lastEvoluError: evoluLastError ?? null,
+                              },
+                              null,
+                              2
+                            )}
+                          </pre>
+                        ) : null}
 
                         <div className="settings-row">
                           <button
@@ -8798,6 +9065,52 @@ const App = () => {
                             {evoluCleanupIsBusy
                               ? t("evoluCleanupLogsBusy")
                               : t("evoluCleanupLogs")}
+                          </button>
+                        </div>
+
+                        <div className="settings-row">
+                          <button
+                            type="button"
+                            className={
+                              pendingEvoluServerDeleteUrl ===
+                              selectedEvoluServerUrl
+                                ? "btn-wide danger"
+                                : "btn-wide"
+                            }
+                            onClick={() => {
+                              const isDefault = DEFAULT_EVOLU_SERVER_URLS.some(
+                                (d) =>
+                                  d.toLowerCase() ===
+                                  selectedEvoluServerUrl.toLowerCase()
+                              );
+                              if (isDefault) {
+                                pushToast(t("evoluDefaultServerCannotRemove"));
+                                return;
+                              }
+
+                              if (
+                                pendingEvoluServerDeleteUrl ===
+                                selectedEvoluServerUrl
+                              ) {
+                                saveEvoluServerUrls(
+                                  evoluServerUrls.filter(
+                                    (u) =>
+                                      u.toLowerCase() !==
+                                      selectedEvoluServerUrl.toLowerCase()
+                                  )
+                                );
+                                setPendingEvoluServerDeleteUrl(null);
+                                navigateToEvoluServers();
+                                return;
+                              }
+
+                              setStatus(t("deleteArmedHint"));
+                              setPendingEvoluServerDeleteUrl(
+                                selectedEvoluServerUrl
+                              );
+                            }}
+                          >
+                            {t("evoluServerRemove")}
                           </button>
                         </div>
                       </>
@@ -8868,6 +9181,53 @@ const App = () => {
                 {canSaveNewRelay ? (
                   <button onClick={saveNewRelay}>{t("saveChanges")}</button>
                 ) : null}
+              </div>
+            </section>
+          )}
+
+          {route.kind === "evoluServerNew" && (
+            <section className="panel">
+              <label htmlFor="evoluServerUrl">{t("evoluAddServerLabel")}</label>
+              <input
+                id="evoluServerUrl"
+                value={newEvoluServerUrl}
+                onChange={(e) => setNewEvoluServerUrl(e.target.value)}
+                placeholder="wss://..."
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+
+              <div className="panel-header" style={{ marginTop: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const normalized =
+                      normalizeEvoluServerUrl(newEvoluServerUrl);
+                    if (!normalized) {
+                      pushToast(t("evoluAddServerInvalid"));
+                      return;
+                    }
+                    if (
+                      evoluServerUrls.some(
+                        (u) => u.toLowerCase() === normalized.toLowerCase()
+                      )
+                    ) {
+                      pushToast(t("evoluAddServerAlready"));
+                      navigateToEvoluServers();
+                      return;
+                    }
+
+                    saveEvoluServerUrls([...evoluServerUrls, normalized]);
+                    setNewEvoluServerUrl("");
+                    setPendingEvoluServerDeleteUrl(null);
+                    setStatus(t("evoluAddServerSaved"));
+                    navigateToEvoluServers();
+                  }}
+                  disabled={!normalizeEvoluServerUrl(newEvoluServerUrl)}
+                >
+                  {t("evoluAddServerButton")}
+                </button>
               </div>
             </section>
           )}

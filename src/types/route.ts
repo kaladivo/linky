@@ -19,6 +19,7 @@ export type Route =
   | { kind: "nostrRelayNew" }
   | { kind: "evoluServers" }
   | { kind: "evoluServer"; id: string }
+  | { kind: "evoluServerNew" }
   | { kind: "contactNew" }
   | { kind: "contact"; id: ContactId }
   | { kind: "contactEdit"; id: ContactId }
@@ -69,6 +70,8 @@ export const parseRouteFromHash = (): Route => {
   }
 
   if (hash === "#evolu-servers") return { kind: "evoluServers" };
+
+  if (hash === "#evolu-server/new") return { kind: "evoluServerNew" };
 
   const evoluServerPrefix = "#evolu-server/";
   if (hash.startsWith(evoluServerPrefix)) {

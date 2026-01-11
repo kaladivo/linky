@@ -3,6 +3,10 @@ import { createEvolu, SimpleName } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 import { INITIAL_MNEMONIC_STORAGE_KEY } from "./mnemonic";
+import {
+  safeLocalStorageGetJson,
+  safeLocalStorageSetJson,
+} from "./utils/storage";
 
 const isEvoluLoggingEnabled = (): boolean => {
   if (!import.meta.env.DEV) return false;
@@ -16,9 +20,77 @@ const isEvoluLoggingEnabled = (): boolean => {
   }
 };
 
-export const EVOLU_SERVER_URLS: ReadonlyArray<string> = [
+export const EVOLU_SERVERS_STORAGE_KEY = "linky.evoluServers.v1";
+
+export const DEFAULT_EVOLU_SERVER_URLS: ReadonlyArray<string> = [
   "wss://free.evoluhq.com",
 ];
+
+const normalizeEvoluServerUrl = (value: unknown): string | null => {
+  const raw = String(value ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "wss:" && u.protocol !== "ws:") return null;
+    const pathname = u.pathname.replace(/\/+$/, "");
+    // Preserve pathname (some servers may be hosted under a path), but drop
+    // search/hash for stable identity.
+    return `${u.origin}${pathname === "/" ? "" : pathname}`.replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+};
+
+export const getEvoluServerUrls = (): ReadonlyArray<string> => {
+  const stored = safeLocalStorageGetJson<unknown>(
+    EVOLU_SERVERS_STORAGE_KEY,
+    []
+  );
+  const arr = Array.isArray(stored) ? stored : [];
+
+  const combined = [...DEFAULT_EVOLU_SERVER_URLS, ...arr]
+    .map(normalizeEvoluServerUrl)
+    .filter((v): v is string => Boolean(v));
+
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const url of combined) {
+    const key = url.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(url);
+  }
+
+  // If storage was invalid/empty, ensure we always have at least the default.
+  if (unique.length === 0) return [...DEFAULT_EVOLU_SERVER_URLS];
+  return unique;
+};
+
+export const setEvoluServerUrls = (urls: ReadonlyArray<string>): void => {
+  const normalized = urls
+    .map(normalizeEvoluServerUrl)
+    .filter((v): v is string => Boolean(v));
+
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const url of normalized) {
+    const key = url.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(url);
+  }
+
+  // We persist only non-default extras.
+  const defaultsLower = new Set(
+    DEFAULT_EVOLU_SERVER_URLS.map((u) => u.toLowerCase())
+  );
+  const extras = unique.filter((u) => !defaultsLower.has(u.toLowerCase()));
+  safeLocalStorageSetJson(EVOLU_SERVERS_STORAGE_KEY, extras);
+};
+
+export const EVOLU_SERVER_URLS: ReadonlyArray<string> = getEvoluServerUrls();
 
 export const EVOLU_TRANSPORTS: ReadonlyArray<{
   type: "WebSocket";

@@ -70,6 +70,20 @@ export const cs = {
   evoluServerLimitPaymentRequired: "Vyžaduje platbu / quota",
   evoluCleanupLogs: "Smazat syncované logy",
   evoluCleanupLogsBusy: "Mažu syncované logy…",
+  evoluAddServerLabel: "Přidat server",
+  evoluAddServerButton: "Přidat",
+  evoluAddServerInvalid: "Neplatná URL serveru (očekávám wss://…)",
+  evoluAddServerAlready: "Server už je přidaný.",
+  evoluAddServerSaved: "Server uložen. Pro použití obnovte stránku.",
+  evoluServersReloadHint:
+    "Aby se změny projevily (sync přes nové servery), je potřeba obnovit stránku.",
+  evoluServersReloadButton: "Obnovit teď",
+  evoluServerRemove: "Odebrat server",
+  evoluDefaultServerCannotRemove: "Výchozí server nejde odebrat.",
+  evoluShowLocalDataJson: "Zobrazit lokální Evolu data (JSON)",
+  evoluHideLocalDataJson: "Skrýt lokální Evolu data",
+  evoluShowServerDebugJson: "Zobrazit debug serveru (JSON)",
+  evoluHideServerDebugJson: "Skrýt debug serveru",
 
   mints: "Minty",
 

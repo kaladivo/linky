@@ -70,6 +70,20 @@ export const en = {
   evoluServerLimitPaymentRequired: "Payment required / quota",
   evoluCleanupLogs: "Remove synced logs",
   evoluCleanupLogsBusy: "Removing synced logs…",
+  evoluAddServerLabel: "Add server",
+  evoluAddServerButton: "Add",
+  evoluAddServerInvalid: "Invalid server URL (expected wss://…)",
+  evoluAddServerAlready: "Server already added.",
+  evoluAddServerSaved: "Server saved. Reload to apply.",
+  evoluServersReloadHint:
+    "Evolu needs a reload to start syncing via the updated server list.",
+  evoluServersReloadButton: "Reload now",
+  evoluServerRemove: "Remove server",
+  evoluDefaultServerCannotRemove: "Default server cannot be removed.",
+  evoluShowLocalDataJson: "Show local Evolu data (JSON)",
+  evoluHideLocalDataJson: "Hide local Evolu data",
+  evoluShowServerDebugJson: "Show server debug (JSON)",
+  evoluHideServerDebugJson: "Hide server debug",
 
   mints: "Mints",
 

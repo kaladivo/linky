@@ -578,6 +578,10 @@ button.settings-link:hover {
   background: #22c55e;
 }
 
+.status-dot.checking {
+  background: #f59e0b;
+}
+
 .status-dot.disconnected {
   background: #ef4444;
 }
@@ -588,6 +592,20 @@ button.settings-link:hover {
   color: #e2e8f0;
   font-size: 13px;
   word-break: break-word;
+}
+
+.debug-json {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.55);
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: auto;
+  max-height: 45vh;
+  white-space: pre;
 }
 
 .settings-left {

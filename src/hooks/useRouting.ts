@@ -110,3 +110,7 @@ export const navigateToEvoluServers = () => {
 export const navigateToEvoluServer = (id: string) => {
   window.location.assign(`#evolu-server/${encodeURIComponent(String(id))}`);
 };
+
+export const navigateToNewEvoluServer = () => {
+  window.location.assign("#evolu-server/new");
+};
