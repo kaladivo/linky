@@ -152,6 +152,7 @@ export const cs = {
   profileManual: "Ručně",
   profileUseDefault: "Použít výchozí",
   profileClearField: "Smazat",
+  profileNavigationHint: "Nechte vás profil nascanovat známému",
 
   language: "Jazyk",
   czech: "Čeština",

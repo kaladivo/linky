@@ -152,6 +152,7 @@ export const en = {
   profileManual: "Manual",
   profileUseDefault: "Use default",
   profileClearField: "Clear",
+  profileNavigationHint: "Let your contact scan your profile",
 
   language: "Language",
   czech: "Czech",

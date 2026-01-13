@@ -1185,75 +1185,6 @@ button.danger {
   line-height: 1.35;
 }
 
-.wallet-bottom-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 0 20px calc(20px + env(safe-area-inset-bottom, 0px));
-  z-index: 20;
-}
-
-.wallet-bottom-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.wallet-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.wallet-action-btn {
-  flex: 0 0 auto;
-  min-width: 160px;
-  width: 160px;
-  border: none;
-  border-radius: 12px;
-  padding: 12px 14px;
-  font-weight: 900;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.wallet-action-round {
-  flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
-  border-radius: 999px;
-  border: none;
-  background: #111827;
-  color: #e2e8f0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: none;
-}
-
-.wallet-action-round.is-primary {
-  width: 62px;
-  height: 62px;
-  margin-inline: -10px;
-  transform: translateY(-10px);
-  z-index: 2;
-  background: linear-gradient(135deg, #14b8a6, #0d9488);
-  color: #f8fafc;
-}
-
-.wallet-action-round:not(.is-primary):hover {
-  transform: none;
-  box-shadow: none;
-}
-
-.wallet-action-round.is-primary:hover {
-  transform: translateY(-10px);
-  box-shadow: none;
-}
-
 .ln-row {
   display: flex;
   gap: 10px;
@@ -1421,8 +1352,8 @@ button.icon {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 10;
-  padding: 12px 20px;
+  z-index: 20;
+  padding: 0 20px calc(20px + env(safe-area-inset-bottom, 0px));
   background: transparent;
   backdrop-filter: none;
 }
@@ -1431,7 +1362,7 @@ button.icon {
   max-width: 1200px;
   margin: 0 auto;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   justify-content: center;
   position: relative;
   width: fit-content;
@@ -1441,36 +1372,40 @@ button.icon {
 .contacts-qr-btn {
   flex: 0 0 auto;
   min-width: 160px;
+  width: 160px;
+  position: relative;
   border: none;
   border-radius: 12px;
-  padding: 10px 12px;
-  font-weight: 800;
+  padding: 12px 14px;
+  font-weight: 900;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .contacts-qr-btn.is-round {
-  min-width: 58px;
-  width: 58px;
-  height: 58px;
+  min-width: 62px;
+  width: 62px;
+  height: 62px;
   padding: 0;
   border-radius: 999px;
   margin-inline: -10px;
-  transform: translateY(-8px);
+  transform: translateY(-10px);
   z-index: 2;
   transition: none;
+  background: linear-gradient(135deg, #14b8a6, #0d9488);
+  color: #f8fafc;
 }
 
 .contacts-qr-btn.is-round:hover {
-  transform: translateY(-8px);
+  transform: translateY(-10px);
   box-shadow: none;
 }
 
 .contacts-empty-hint {
   position: absolute;
-  left: 80px;
+  left: 50%;
   bottom: 70px;
   transform: translateX(-50%);
   z-index: 3;
@@ -1499,7 +1434,7 @@ button.icon {
 
 @media (max-width: 420px) {
   .contacts-empty-hint {
-    left: 78px;
+    left: 50%;
     bottom: 66px;
   }
   .contacts-empty-hint-text {

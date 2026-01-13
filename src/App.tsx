@@ -9582,98 +9582,100 @@ const App = () => {
                 )}
               </div>
 
-              <div className="wallet-bottom-bar">
-                <div className="wallet-bottom-inner">
-                  <div className="wallet-actions">
-                    <button
-                      className="wallet-action-btn secondary"
-                      onClick={navigateToTopup}
-                      data-guide="wallet-topup"
-                    >
-                      <span aria-hidden="true">
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            d="M12 3v10"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                          />
-                          <path
-                            d="M8 9l4 4 4-4"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <path
-                            d="M4 14h16v6H4v-6Z"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </span>
+              <div className="contacts-qr-bar" role="region">
+                <div className="contacts-qr-inner">
+                  <button
+                    className="contacts-qr-btn secondary"
+                    onClick={navigateToTopup}
+                    data-guide="wallet-topup"
+                  >
+                    <span className="contacts-qr-btn-icon" aria-hidden="true">
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M12 3v10"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M8 9l4 4 4-4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M4 14h16v6H4v-6Z"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </span>
+                    <span className="contacts-qr-btn-label">
                       {t("walletReceive")}
-                    </button>
+                    </span>
+                  </button>
 
-                    <button
-                      type="button"
-                      className="wallet-action-round is-primary"
-                      onClick={navigateToContacts}
-                      aria-label={t("contactsTitle")}
-                      title={t("contactsTitle")}
-                    >
-                      <span aria-hidden="true">
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            d="M16 11c1.657 0 3-1.567 3-3.5S17.657 4 16 4s-3 1.567-3 3.5S14.343 11 16 11Z"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          />
-                          <path
-                            d="M8 12c2.209 0 4-1.791 4-4S10.209 4 8 4 4 5.791 4 8s1.791 4 4 4Z"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          />
-                          <path
-                            d="M2 20c0-3.314 2.686-6 6-6s6 2.686 6 6"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                          />
-                          <path
-                            d="M13 20c0-2.761 2.239-5 5-5s5 2.239 5 5"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                      </span>
-                    </button>
+                  <button
+                    type="button"
+                    className="contacts-qr-btn is-round"
+                    onClick={navigateToContacts}
+                    aria-label={t("contactsTitle")}
+                    title={t("contactsTitle")}
+                  >
+                    <span className="contacts-qr-btn-icon" aria-hidden="true">
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M16 11c1.657 0 3-1.567 3-3.5S17.657 4 16 4s-3 1.567-3 3.5S14.343 11 16 11Z"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        />
+                        <path
+                          d="M8 12c2.209 0 4-1.791 4-4S10.209 4 8 4 4 5.791 4 8s1.791 4 4 4Z"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        />
+                        <path
+                          d="M2 20c0-3.314 2.686-6 6-6s6 2.686 6 6"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M13 20c0-2.761 2.239-5 5-5s5 2.239 5 5"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </span>
+                  </button>
 
-                    <button
-                      className="wallet-action-btn secondary"
-                      onClick={openScan}
-                      disabled={scanIsOpen}
-                    >
-                      <span aria-hidden="true">
-                        <span className="contacts-qr-scanIcon" />
-                      </span>
+                  <button
+                    className="contacts-qr-btn secondary"
+                    onClick={openScan}
+                    disabled={scanIsOpen}
+                  >
+                    <span className="contacts-qr-btn-icon" aria-hidden="true">
+                      <span className="contacts-qr-scanIcon" />
+                    </span>
+                    <span className="contacts-qr-btn-label">
                       {t("walletSend")}
-                    </button>
-                  </div>
+                    </span>
+                  </button>
                 </div>
               </div>
             </section>
@@ -10971,36 +10973,6 @@ const App = () => {
 
               <div className="contacts-qr-bar" role="region">
                 <div className="contacts-qr-inner">
-                  {contacts.length === 0 ? (
-                    <div className="contacts-empty-hint">
-                      <div className="contacts-empty-hint-text">
-                        Zde je váš profil - nechte ho nascanovat vašemu kontaktu
-                      </div>
-                      <svg
-                        className="contacts-empty-hint-arrow"
-                        width="120"
-                        height="70"
-                        viewBox="0 0 120 70"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M14 14C36 10 52 14 64 24C78 36 78 48 60 60"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                          strokeLinecap="round"
-                        />
-                        <path
-                          d="M70 52L60 60L50 52"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </div>
-                  ) : null}
                   <button
                     type="button"
                     className="contacts-qr-btn secondary"
@@ -11008,6 +10980,36 @@ const App = () => {
                     disabled={!currentNpub}
                     data-guide="profile-qr-button"
                   >
+                    {contacts.length === 0 ? (
+                      <div className="contacts-empty-hint" aria-hidden="true">
+                        <div className="contacts-empty-hint-text">
+                          {t("profileNavigationHint")}
+                        </div>
+                        <svg
+                          className="contacts-empty-hint-arrow"
+                          width="120"
+                          height="70"
+                          viewBox="0 0 120 70"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                          aria-hidden="true"
+                        >
+                          <path
+                            d="M14 14C36 10 52 14 64 24C78 36 60 44 60 52"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M60 52L60 60L50 52M60 60L70 52"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </div>
+                    ) : null}
                     <span className="contacts-qr-btn-icon" aria-hidden="true">
                       {myProfilePicture ? (
                         <img
