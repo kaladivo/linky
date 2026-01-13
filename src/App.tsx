@@ -65,6 +65,14 @@ import {
 import { publishKind0ProfileMetadata } from "./nostrPublish";
 import type { Route } from "./types/route";
 import {
+  bumpCashuDeterministicCounter,
+  ensureCashuDeterministicCounterAtLeast,
+  getCashuDeterministicCounter,
+  getCashuDeterministicSeedFromStorage,
+  getCashuRestoreCursor,
+  setCashuRestoreCursor,
+} from "./utils/cashuDeterministic";
+import {
   CONTACTS_ONBOARDING_DISMISSED_STORAGE_KEY,
   CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY,
   FEEDBACK_CONTACT_NPUB,
@@ -235,6 +243,43 @@ const App = () => {
     const ownerId = appOwnerIdRef.current;
     return `${prefix}.${String(ownerId ?? "anon")}`;
   }, []);
+
+  const CASHU_SEEN_MINTS_STORAGE_KEY = "linky.cashu.seenMints.v1";
+
+  const readSeenMintsFromStorage = React.useCallback((): string[] => {
+    try {
+      const raw = localStorage.getItem(
+        makeLocalStorageKey(CASHU_SEEN_MINTS_STORAGE_KEY)
+      );
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .map((v) => normalizeMintUrl(String(v ?? "")))
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }, [makeLocalStorageKey]);
+
+  const rememberSeenMint = React.useCallback(
+    (mintUrl: unknown): void => {
+      const cleaned = normalizeMintUrl(mintUrl);
+      if (!cleaned) return;
+      try {
+        const key = makeLocalStorageKey(CASHU_SEEN_MINTS_STORAGE_KEY);
+        const existing = new Set(readSeenMintsFromStorage());
+        existing.add(cleaned);
+        localStorage.setItem(
+          key,
+          JSON.stringify(Array.from(existing).slice(0, 50))
+        );
+      } catch {
+        // ignore
+      }
+    },
+    [makeLocalStorageKey, readSeenMintsFromStorage]
+  );
 
   const makeLocalId = (): string => {
     try {
@@ -543,6 +588,8 @@ const App = () => {
   const [cashuDraft, setCashuDraft] = useState("");
   const cashuDraftRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [cashuIsBusy, setCashuIsBusy] = useState(false);
+  const [seedMnemonic, setSeedMnemonic] = useState<string | null>(null);
+  const [tokensRestoreIsBusy, setTokensRestoreIsBusy] = useState(false);
 
   const cashuOpQueueRef = React.useRef<Promise<void>>(Promise.resolve());
   const enqueueCashuOp = React.useCallback((op: () => Promise<void>) => {
@@ -641,6 +688,9 @@ const App = () => {
   } | null>(null);
 
   const npubCashClaimInFlightRef = React.useRef(false);
+  const npubCashInfoInFlightRef = React.useRef(false);
+  const npubCashInfoLoadedForNpubRef = React.useRef<string | null>(null);
+  const npubCashInfoLoadedAtMsRef = React.useRef<number>(0);
 
   const nostrInFlight = React.useRef<Set<string>>(new Set());
   const nostrMetadataInFlight = React.useRef<Set<string>>(new Set());
@@ -1908,13 +1958,25 @@ const App = () => {
       if (!cleaned) return;
       if (isMintDeleted(cleaned)) return;
 
+      // Even if the user later deletes the mint from settings or deletes all
+      // tokens, we still want to remember that this mint was used, so restore
+      // can scan it.
+      rememberSeenMint(cleaned);
+
       const existing = mintInfoByUrl.get(cleaned) as
-        | (Record<string, unknown> & {
+        | Record<string, unknown> & {
             id?: unknown;
             isDeleted?: unknown;
             firstSeenAtSec?: unknown;
-          })
-        | undefined;
+          };
+      [
+        appOwnerId,
+        insert,
+        isMintDeleted,
+        mintInfoByUrl,
+        normalizeMintUrl,
+        rememberSeenMint,
+      ];
 
       const now = Math.floor(nowSec) as typeof Evolu.PositiveInt.Type;
 
@@ -2871,6 +2933,11 @@ const App = () => {
     makeNip98AuthHeader,
   ]);
 
+  const claimNpubCashOnceLatestRef = React.useRef(claimNpubCashOnce);
+  React.useEffect(() => {
+    claimNpubCashOnceLatestRef.current = claimNpubCashOnce;
+  }, [claimNpubCashOnce]);
+
   React.useEffect(() => {
     // Load current user's Nostr profile (name + picture) from relays.
     if (!currentNpub) return;
@@ -3046,14 +3113,26 @@ const App = () => {
 
     let cancelled = false;
     const baseUrl = "https://npub.cash";
+    const infoController = new AbortController();
 
     const loadInfo = async () => {
+      if (npubCashInfoInFlightRef.current) return;
+      const nowMs = Date.now();
+      if (
+        npubCashInfoLoadedForNpubRef.current === currentNpub &&
+        nowMs - npubCashInfoLoadedAtMsRef.current < 10 * 60_000
+      ) {
+        return;
+      }
+
+      npubCashInfoInFlightRef.current = true;
       try {
         const url = `${baseUrl}/api/v1/info`;
         const auth = await makeNip98AuthHeader(url, "GET");
         const res = await fetch(url, {
           method: "GET",
           headers: { Authorization: auth },
+          signal: infoController.signal,
         });
         if (!res.ok) return;
         const data = (await res.json()) as unknown;
@@ -3070,14 +3149,19 @@ const App = () => {
         })();
         if (cancelled) return;
         if (mintUrl) setDefaultMintUrl(mintUrl);
+
+        npubCashInfoLoadedForNpubRef.current = currentNpub;
+        npubCashInfoLoadedAtMsRef.current = Date.now();
       } catch {
         // ignore
+      } finally {
+        npubCashInfoInFlightRef.current = false;
       }
     };
 
     const claimOnce = async () => {
       if (cancelled) return;
-      await claimNpubCashOnce();
+      await claimNpubCashOnceLatestRef.current();
     };
 
     void loadInfo();
@@ -3089,9 +3173,10 @@ const App = () => {
 
     return () => {
       cancelled = true;
+      infoController.abort();
       window.clearInterval(intervalId);
     };
-  }, [claimNpubCashOnce, currentNpub, currentNsec, makeNip98AuthHeader]);
+  }, [currentNpub, currentNsec, makeNip98AuthHeader]);
 
   React.useEffect(() => {
     // While user is looking at the top-up invoice, poll more frequently so we
@@ -4893,13 +4978,39 @@ const App = () => {
           throw new Error("Invalid token amount");
         }
 
-        const wallet = new CashuWallet(
-          new CashuMint(mint),
-          unit ? { unit } : undefined
-        );
+        const det = getCashuDeterministicSeedFromStorage();
+        const wallet = new CashuWallet(new CashuMint(mint), {
+          ...(unit ? { unit } : {}),
+          ...(det ? { bip39seed: det.bip39seed } : {}),
+        });
         await wallet.loadMint();
 
-        const swapped = await wallet.swap(total, proofs);
+        const walletUnit = wallet.unit;
+        const keysetId = wallet.keysetId;
+        const counter = det
+          ? getCashuDeterministicCounter({
+              mintUrl: mint,
+              unit: walletUnit,
+              keysetId,
+            })
+          : undefined;
+
+        const swapped = await wallet.swap(
+          total,
+          proofs,
+          typeof counter === "number" ? { counter } : undefined
+        );
+
+        if (det && typeof counter === "number") {
+          const keepLen = Array.isArray(swapped.keep) ? swapped.keep.length : 0;
+          const sendLen = Array.isArray(swapped.send) ? swapped.send.length : 0;
+          bumpCashuDeterministicCounter({
+            mintUrl: mint,
+            unit: walletUnit,
+            keysetId,
+            used: keepLen + sendLen,
+          });
+        }
         const newProofs = [
           ...((swapped?.keep as unknown as unknown[]) ?? []),
           ...((swapped?.send as unknown as unknown[]) ?? []),
@@ -4916,7 +5027,7 @@ const App = () => {
         const refreshedToken = getEncodedToken({
           mint,
           proofs: newProofs,
-          ...(unit ? { unit } : {}),
+          unit: walletUnit,
         });
 
         const result = update("cashuToken", {
@@ -4924,7 +5035,9 @@ const App = () => {
           token: refreshedToken as typeof Evolu.NonEmptyString.Type,
           rawToken: null,
           mint: mint ? (mint as typeof Evolu.NonEmptyString1000.Type) : null,
-          unit: unit ? (unit as typeof Evolu.NonEmptyString100.Type) : null,
+          unit: walletUnit
+            ? (walletUnit as typeof Evolu.NonEmptyString100.Type)
+            : null,
           amount:
             newTotal > 0
               ? (Math.floor(newTotal) as typeof Evolu.PositiveInt.Type)
@@ -5027,6 +5140,25 @@ const App = () => {
     },
     []
   );
+
+  React.useEffect(() => {
+    const nsec = String(currentNsec ?? "").trim();
+    if (!nsec) {
+      setSeedMnemonic(null);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const derived = await deriveEvoluMnemonicFromNsec(nsec);
+      if (cancelled) return;
+      setSeedMnemonic(derived ? String(derived) : null);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentNsec, deriveEvoluMnemonicFromNsec]);
 
   React.useEffect(() => {
     if (!currentNsec) return;
@@ -5908,6 +6040,393 @@ const App = () => {
     await navigator.clipboard?.writeText(currentNsec);
     pushToast(t("nostrKeysCopied"));
   };
+
+  const copySeed = async () => {
+    const value = String(seedMnemonic ?? "").trim();
+    if (!value) return;
+    await navigator.clipboard?.writeText(value);
+    pushToast(t("seedCopied"));
+  };
+
+  const restoreMissingTokens = React.useCallback(async () => {
+    if (tokensRestoreIsBusy) return;
+    if (cashuIsBusy) return;
+
+    await enqueueCashuOp(async () => {
+      setTokensRestoreIsBusy(true);
+      setCashuIsBusy(true);
+
+      try {
+        const det = getCashuDeterministicSeedFromStorage();
+        if (!det) {
+          pushToast(t("seedMissing"));
+          return;
+        }
+
+        const ownerId = await resolveOwnerIdForWrite();
+
+        const { getCashuLib } = await import("./utils/cashuLib");
+        const { CashuMint, CashuWallet, getDecodedToken, getEncodedToken } =
+          await getCashuLib();
+
+        const existingSecretsByMintUnit = new Map<string, Set<string>>();
+        const keyOf = (mintUrl: string, unit: string) =>
+          `${normalizeMintUrl(mintUrl)}|${String(unit ?? "").trim() || "sat"}`;
+
+        const ensureSet = (mintUrl: string, unit: string) => {
+          const key = keyOf(mintUrl, unit);
+          const existing = existingSecretsByMintUnit.get(key);
+          if (existing) return existing;
+          const next = new Set<string>();
+          existingSecretsByMintUnit.set(key, next);
+          return next;
+        };
+
+        for (const row of cashuTokensAll) {
+          const r = row as unknown as {
+            token?: unknown;
+            rawToken?: unknown;
+            isDeleted?: unknown;
+            state?: unknown;
+            mint?: unknown;
+            unit?: unknown;
+          };
+          if (r.isDeleted) continue;
+          const state = String(r.state ?? "").trim();
+          if (state && state !== "accepted") continue;
+
+          const tokenText = String(r.token ?? r.rawToken ?? "").trim();
+          if (!tokenText) continue;
+
+          try {
+            const decoded = getDecodedToken(tokenText);
+            const mintUrl = String(decoded?.mint ?? r.mint ?? "").trim();
+            if (!mintUrl) continue;
+            const unit = String(decoded?.unit ?? r.unit ?? "").trim() || "sat";
+            const proofs = Array.isArray(decoded?.proofs) ? decoded.proofs : [];
+
+            const set = ensureSet(mintUrl, unit);
+            for (const p of proofs) {
+              const secret = String((p as any)?.secret ?? "").trim();
+              if (secret) set.add(secret);
+            }
+          } catch {
+            // ignore invalid token strings
+          }
+        }
+
+        const mintCandidates = new Set<string>();
+        for (const key of existingSecretsByMintUnit.keys()) {
+          const mint = key.split("|")[0] ?? "";
+          if (mint) mintCandidates.add(mint);
+        }
+
+        // Important: allow restoring tokens even if the user deleted the last
+        // token for a mint locally. Evolu deletes are soft-deletes, so we can
+        // still use the stored mint URL as a scan candidate.
+        for (const row of cashuTokensAll) {
+          const r = row as unknown as {
+            token?: unknown;
+            rawToken?: unknown;
+            mint?: unknown;
+          };
+
+          const mintFromColumn = String(r.mint ?? "").trim();
+          if (mintFromColumn) {
+            mintCandidates.add(normalizeMintUrl(mintFromColumn));
+            continue;
+          }
+
+          const tokenText = String(r.token ?? r.rawToken ?? "").trim();
+          if (!tokenText) continue;
+          try {
+            const decoded = getDecodedToken(tokenText);
+            const mintUrl = String(decoded?.mint ?? "").trim();
+            if (mintUrl) mintCandidates.add(normalizeMintUrl(mintUrl));
+          } catch {
+            // ignore invalid token strings
+          }
+        }
+        for (const m of mintInfoDeduped) {
+          const url = String(m.canonicalUrl ?? "").trim();
+          if (url) mintCandidates.add(normalizeMintUrl(url));
+        }
+        if (defaultMintUrl)
+          mintCandidates.add(normalizeMintUrl(defaultMintUrl));
+        mintCandidates.add(normalizeMintUrl(MAIN_MINT_URL));
+
+        // Fallback: if the user deleted all token rows (or the query doesn't
+        // expose deleted rows), still scan mints we have ever seen.
+        for (const seen of readSeenMintsFromStorage()) {
+          mintCandidates.add(normalizeMintUrl(seen));
+        }
+
+        // Ensure our main mint is always remembered.
+        rememberSeenMint(MAIN_MINT_URL);
+
+        const alwaysIncludeMints = new Set<string>();
+        const mainMint = normalizeMintUrl(MAIN_MINT_URL);
+        if (mainMint) alwaysIncludeMints.add(mainMint);
+        const defaultMint = normalizeMintUrl(defaultMintUrl);
+        if (defaultMint) alwaysIncludeMints.add(defaultMint);
+
+        const mintsPreFilter = Array.from(mintCandidates)
+          .map((u) => normalizeMintUrl(u))
+          .filter(Boolean);
+
+        const mints = mintsPreFilter.filter(
+          (u) => alwaysIncludeMints.has(u) || !isMintDeleted(u)
+        );
+
+        if (mints.length === 0) {
+          pushToast(t("restoreNothing"));
+          return;
+        }
+
+        let restoredProofsTotal = 0;
+        let createdTokensTotal = 0;
+        const restoreRescanWindow = 4000;
+
+        for (const mintUrl of mints) {
+          const units = (() => {
+            const set = new Set<string>();
+            for (const key of existingSecretsByMintUnit.keys()) {
+              const [m, u] = key.split("|");
+              if (m === normalizeMintUrl(mintUrl) && u) set.add(u);
+            }
+            // If we don't know the unit (older stored tokens omitted it), try common ones.
+            if (set.size === 0) {
+              set.add("sat");
+              set.add("msat");
+            }
+            return Array.from(set);
+          })();
+
+          for (const unit of units) {
+            const wallet = new CashuWallet(new CashuMint(mintUrl), {
+              unit,
+              bip39seed: det.bip39seed,
+            });
+
+            try {
+              await wallet.loadMint();
+            } catch {
+              // skip unreachable mints
+              continue;
+            }
+
+            const keysets = await wallet.getKeySets();
+            for (const ks of keysets) {
+              const ksUnit = String((ks as any)?.unit ?? "").trim();
+              if (ksUnit && ksUnit !== wallet.unit) continue;
+              const keysetId = String((ks as any)?.id ?? "").trim();
+              if (!keysetId) continue;
+
+              const savedCursor = getCashuRestoreCursor({
+                mintUrl,
+                unit: wallet.unit,
+                keysetId,
+              });
+
+              // If the user deleted tokens locally, scanning only forward from the
+              // persisted cursor can miss them (they may be below the cursor).
+              // Scan a recent window behind the current high-water mark.
+              const detCounter = getCashuDeterministicCounter({
+                mintUrl,
+                unit: wallet.unit,
+                keysetId,
+              });
+              const highWater = Math.max(
+                savedCursor,
+                typeof detCounter === "number" && Number.isFinite(detCounter)
+                  ? detCounter
+                  : 0
+              );
+              const start = Math.max(0, highWater - restoreRescanWindow);
+
+              const batchRestore = async (counterStart: number) =>
+                await wallet.batchRestore(300, 100, counterStart, keysetId);
+
+              let restored: {
+                proofs: any[];
+                lastCounterWithSignature?: number;
+              };
+              try {
+                restored = await batchRestore(start);
+              } catch (e) {
+                continue;
+              }
+
+              const last = restored.lastCounterWithSignature;
+              if (typeof last === "number" && Number.isFinite(last)) {
+                setCashuRestoreCursor({
+                  mintUrl,
+                  unit: wallet.unit,
+                  keysetId,
+                  cursor: last + 1,
+                });
+                ensureCashuDeterministicCounterAtLeast({
+                  mintUrl,
+                  unit: wallet.unit,
+                  keysetId,
+                  atLeast: last + 1,
+                });
+              }
+
+              const knownSecrets = ensureSet(mintUrl, wallet.unit);
+
+              const filterFresh = (proofs: any[]) =>
+                (proofs ?? []).filter((p: any) => {
+                  const secret = String(p?.secret ?? "").trim();
+                  return secret && !knownSecrets.has(secret);
+                });
+
+              const filterSpendable = async (proofs: any[]) => {
+                if (proofs.length === 0) return proofs;
+                try {
+                  const states = await wallet.checkProofsStates(proofs);
+                  return proofs.filter((_, idx) => {
+                    const state = String(
+                      (states as any)?.[idx]?.state ?? ""
+                    ).trim();
+                    return state === "UNSPENT";
+                  });
+                } catch (e) {
+                  return proofs;
+                }
+              };
+
+              // Windowed scan first.
+              let freshProofs = filterFresh(restored.proofs ?? []);
+              let spendableProofs = await filterSpendable(freshProofs);
+
+              // If user deleted older tokens and our cursor is far ahead, the window
+              // may not include them. Fall back to a one-time deep scan from 0.
+              if (spendableProofs.length === 0 && start > 0) {
+                try {
+                  const deep = await batchRestore(0);
+
+                  // Prefer advancing cursors based on the furthest scan.
+                  const last0 = restored.lastCounterWithSignature;
+                  const last1 = deep.lastCounterWithSignature;
+                  const maxLast = Math.max(
+                    typeof last0 === "number" && Number.isFinite(last0)
+                      ? last0
+                      : -1,
+                    typeof last1 === "number" && Number.isFinite(last1)
+                      ? last1
+                      : -1
+                  );
+                  if (maxLast >= 0) {
+                    setCashuRestoreCursor({
+                      mintUrl,
+                      unit: wallet.unit,
+                      keysetId,
+                      cursor: maxLast + 1,
+                    });
+                    ensureCashuDeterministicCounterAtLeast({
+                      mintUrl,
+                      unit: wallet.unit,
+                      keysetId,
+                      atLeast: maxLast + 1,
+                    });
+                  }
+
+                  restored = deep;
+                  freshProofs = filterFresh(restored.proofs ?? []);
+                  spendableProofs = await filterSpendable(freshProofs);
+                } catch (e) {}
+              }
+
+              if (spendableProofs.length === 0) continue;
+
+              for (const p of spendableProofs) {
+                const secret = String(p?.secret ?? "").trim();
+                if (secret) knownSecrets.add(secret);
+              }
+
+              restoredProofsTotal += spendableProofs.length;
+
+              // Keep tokens reasonably sized.
+              const chunkSize = 200;
+              for (let i = 0; i < spendableProofs.length; i += chunkSize) {
+                const chunk = spendableProofs.slice(i, i + chunkSize);
+                const amount = chunk.reduce(
+                  (sum: number, p: any) => sum + (Number(p?.amount ?? 0) || 0),
+                  0
+                );
+                if (!Number.isFinite(amount) || amount <= 0) continue;
+
+                const token = getEncodedToken({
+                  mint: mintUrl,
+                  proofs: chunk,
+                  unit: wallet.unit,
+                  memo: "restored",
+                });
+
+                const payload = {
+                  token: token as typeof Evolu.NonEmptyString.Type,
+                  rawToken: null,
+                  mint: mintUrl as typeof Evolu.NonEmptyString1000.Type,
+                  unit: wallet.unit as typeof Evolu.NonEmptyString100.Type,
+                  amount: Math.floor(amount) as typeof Evolu.PositiveInt.Type,
+                  state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+                  error: null,
+                };
+
+                const r = ownerId
+                  ? insert("cashuToken", payload, { ownerId })
+                  : insert("cashuToken", payload);
+
+                if (r.ok) {
+                  createdTokensTotal += 1;
+                  logPaymentEvent({
+                    direction: "in",
+                    status: "ok",
+                    amount: Math.floor(amount),
+                    fee: null,
+                    mint: mintUrl,
+                    unit: wallet.unit,
+                    error: null,
+                    contactId: null,
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        if (restoredProofsTotal === 0 || createdTokensTotal === 0) {
+          pushToast(t("restoreNothing"));
+          return;
+        }
+
+        pushToast(
+          t("restoreDone")
+            .replace("{proofs}", String(restoredProofsTotal))
+            .replace("{tokens}", String(createdTokensTotal))
+        );
+      } catch (e) {
+        pushToast(`${t("restoreFailed")}: ${String(e ?? "unknown")}`);
+      } finally {
+        setCashuIsBusy(false);
+        setTokensRestoreIsBusy(false);
+      }
+    });
+  }, [
+    cashuIsBusy,
+    cashuTokensAll,
+    enqueueCashuOp,
+    insert,
+    isMintDeleted,
+    logPaymentEvent,
+    mintInfoDeduped,
+    normalizeMintUrl,
+    pushToast,
+    resolveOwnerIdForWrite,
+    t,
+    tokensRestoreIsBusy,
+  ]);
 
   React.useEffect(() => {
     // NIP-17 inbox sync + subscription while a chat is open.
@@ -8059,6 +8578,50 @@ const App = () => {
                   </span>
                 </div>
               </button>
+
+              <div className="settings-row">
+                <div className="settings-left">
+                  <span className="settings-icon" aria-hidden="true">
+                    🌱
+                  </span>
+                  <span className="settings-label">{t("seed")}</span>
+                </div>
+                <div className="settings-right">
+                  <div className="badge-box">
+                    <button
+                      className="ghost"
+                      onClick={copySeed}
+                      disabled={!seedMnemonic}
+                    >
+                      {t("copyCurrent")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="settings-row">
+                <div className="settings-left">
+                  <span className="settings-icon" aria-hidden="true">
+                    🪙
+                  </span>
+                  <span className="settings-label">{t("tokens")}</span>
+                </div>
+                <div className="settings-right">
+                  <div className="badge-box">
+                    <button
+                      className="ghost"
+                      onClick={() => {
+                        void restoreMissingTokens();
+                      }}
+                      disabled={
+                        !seedMnemonic || tokensRestoreIsBusy || cashuIsBusy
+                      }
+                    >
+                      {tokensRestoreIsBusy ? t("restoring") : t("restore")}
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               <button
                 type="button"

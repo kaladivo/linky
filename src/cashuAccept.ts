@@ -1,3 +1,8 @@
+import {
+  bumpCashuDeterministicCounter,
+  getCashuDeterministicCounter,
+  getCashuDeterministicSeedFromStorage,
+} from "./utils/cashuDeterministic";
 import { getCashuLib } from "./utils/cashuLib";
 
 type CashuAcceptResult = {
@@ -20,28 +25,48 @@ export const acceptCashuToken = async (
   const mintUrl = decoded.mint;
   if (!mintUrl) throw new Error("Token mint missing");
 
-  const wallet = new CashuWallet(
-    new CashuMint(mintUrl),
-    decoded.unit ? { unit: decoded.unit } : {}
-  );
+  const det = getCashuDeterministicSeedFromStorage();
+
+  const wallet = new CashuWallet(new CashuMint(mintUrl), {
+    ...(decoded.unit ? { unit: decoded.unit } : {}),
+    ...(det ? { bip39seed: det.bip39seed } : {}),
+  });
 
   await wallet.loadMint();
 
+  const unit = wallet.unit;
+  const keysetId = wallet.keysetId;
+  const counter = det
+    ? getCashuDeterministicCounter({ mintUrl, unit, keysetId })
+    : undefined;
+
   // This performs a swap at the mint, returning fresh proofs.
-  const proofs = await wallet.receive(decoded);
+  const proofs = await wallet.receive(
+    decoded,
+    typeof counter === "number" ? { counter } : undefined
+  );
+
+  if (det) {
+    bumpCashuDeterministicCounter({
+      mintUrl,
+      unit,
+      keysetId,
+      used: Array.isArray(proofs) ? proofs.length : 0,
+    });
+  }
 
   const amount = proofs.reduce((sum, proof) => sum + (proof.amount ?? 0), 0);
 
   const acceptedToken = getEncodedToken({
     mint: mintUrl,
     proofs,
-    ...(decoded.unit ? { unit: decoded.unit } : {}),
+    unit,
     ...(decoded.memo ? { memo: decoded.memo } : {}),
   });
 
   return {
     mint: mintUrl,
-    unit: decoded.unit ?? null,
+    unit,
     amount,
     token: acceptedToken,
   };
