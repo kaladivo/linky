@@ -53,6 +53,8 @@ export const cs = {
   seedCopied: "Seed zkopírován do schránky.",
   seedMissing: "Chybí seed. Přihlaste se znovu pomocí nsec.",
   tokens: "Tokeny",
+  payWithCashu: "Platit s cashu",
+  payWithCashuDisabled: "Platit s cashu je vypnuto v pokročilém nastavení.",
   restore: "Obnovit",
   restoring: "Obnovuji…",
   restoreNothing: "Žádné chybějící tokeny nenalezeny.",

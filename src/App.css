@@ -421,6 +421,27 @@
   font-weight: 900;
 }
 
+.pay-method-toggle {
+  border: none;
+  background: rgba(148, 163, 184, 0.12);
+  color: #e2e8f0;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.pay-method-toggle:hover {
+  transform: none;
+  box-shadow: none;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.pay-method-toggle.is-disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .onboarding-logo-svg {
   width: min(520px, 100%);
   height: auto;

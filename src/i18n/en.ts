@@ -53,6 +53,8 @@ export const en = {
   seedCopied: "Seed copied to clipboard.",
   seedMissing: "Seed missing. Log in again with your nsec.",
   tokens: "Tokens",
+  payWithCashu: "Pay with Cashu",
+  payWithCashuDisabled: "Pay with Cashu is disabled in Advanced settings.",
   restore: "Restore",
   restoring: "Restoring…",
   restoreNothing: "No missing tokens found.",

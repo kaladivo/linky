@@ -2,6 +2,7 @@ import {
   bumpCashuDeterministicCounter,
   getCashuDeterministicCounter,
   getCashuDeterministicSeedFromStorage,
+  withCashuDeterministicCounterLock,
 } from "./utils/cashuDeterministic";
 import { getCashuLib } from "./utils/cashuLib";
 
@@ -36,24 +37,61 @@ export const acceptCashuToken = async (
 
   const unit = wallet.unit;
   const keysetId = wallet.keysetId;
-  const counter = det
-    ? getCashuDeterministicCounter({ mintUrl, unit, keysetId })
-    : undefined;
 
-  // This performs a swap at the mint, returning fresh proofs.
-  const proofs = await wallet.receive(
-    decoded,
-    typeof counter === "number" ? { counter } : undefined
-  );
+  const isOutputsAlreadySignedError = (e: unknown): boolean => {
+    const m = String(e ?? "").toLowerCase();
+    return (
+      m.includes("outputs have already been signed") ||
+      m.includes("already been signed before")
+    );
+  };
 
-  if (det) {
-    bumpCashuDeterministicCounter({
-      mintUrl,
-      unit,
-      keysetId,
-      used: Array.isArray(proofs) ? proofs.length : 0,
-    });
-  }
+  const proofs = (await (det
+    ? withCashuDeterministicCounterLock(
+        { mintUrl, unit, keysetId },
+        async () => {
+          const receiveOnce = async (counter: number) =>
+            await wallet.receive(decoded, { counter });
+
+          let counter = getCashuDeterministicCounter({
+            mintUrl,
+            unit,
+            keysetId,
+          });
+
+          // This performs a swap at the mint, returning fresh proofs.
+          let proofs: unknown;
+          try {
+            proofs = await receiveOnce(counter);
+          } catch (e) {
+            // If the counter got out-of-sync (e.g. previous crash), bump forward and retry once.
+            if (!isOutputsAlreadySignedError(e)) throw e;
+            bumpCashuDeterministicCounter({
+              mintUrl,
+              unit,
+              keysetId,
+              used: 64,
+            });
+            counter = getCashuDeterministicCounter({ mintUrl, unit, keysetId });
+            proofs = await receiveOnce(counter);
+          }
+
+          bumpCashuDeterministicCounter({
+            mintUrl,
+            unit,
+            keysetId,
+            used: Array.isArray(proofs) ? proofs.length : 0,
+          });
+
+          return proofs as any;
+        }
+      )
+    : wallet.receive(decoded))) as Array<{
+    amount: number;
+    secret: string;
+    C: string;
+    id: string;
+  }>;
 
   const amount = proofs.reduce((sum, proof) => sum + (proof.amount ?? 0), 0);
 

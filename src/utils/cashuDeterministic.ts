@@ -29,6 +29,34 @@ export const getCashuDeterministicSeedFromStorage =
 
 const CASHU_COUNTER_STORAGE_PREFIX = "linky.cashu.detCounter.v1";
 const CASHU_RESTORE_CURSOR_STORAGE_PREFIX = "linky.cashu.restoreCursor.v1";
+const CASHU_COUNTER_LOCK_PREFIX = "linky.cashu.detCounterLock.v1";
+
+// In-memory per-keyset queue to ensure we never reuse the same deterministic
+// output counter range due to overlapping async mint operations.
+// Note: this does not coordinate across browser tabs/windows.
+const counterLocks = new Map<string, Promise<unknown>>();
+
+export const withCashuDeterministicCounterLock = async <T>(
+  args: {
+    mintUrl: string;
+    unit: string;
+    keysetId: string;
+  },
+  fn: () => Promise<T>
+): Promise<T> => {
+  const key = makeCounterKey(CASHU_COUNTER_LOCK_PREFIX, args);
+  const prev = counterLocks.get(key) ?? Promise.resolve();
+  const next = prev.catch(() => undefined).then(fn);
+
+  counterLocks.set(key, next);
+  try {
+    return await next;
+  } finally {
+    if (counterLocks.get(key) === next) {
+      counterLocks.delete(key);
+    }
+  }
+};
 
 const makeCounterKey = (
   prefix: string,

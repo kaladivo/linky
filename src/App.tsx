@@ -70,6 +70,7 @@ import {
   getCashuDeterministicSeedFromStorage,
   getCashuRestoreCursor,
   setCashuRestoreCursor,
+  withCashuDeterministicCounterLock,
 } from "./utils/cashuDeterministic";
 import {
   CONTACTS_ONBOARDING_DISMISSED_STORAGE_KEY,
@@ -77,6 +78,7 @@ import {
   FEEDBACK_CONTACT_NPUB,
   NO_GROUP_FILTER,
   NOSTR_NSEC_STORAGE_KEY,
+  PAY_WITH_CASHU_STORAGE_KEY,
   UNIT_TOGGLE_STORAGE_KEY,
 } from "./utils/constants";
 import {
@@ -188,6 +190,18 @@ const getInitialUseBitcoinSymbol = (): boolean => {
     return localStorage.getItem(UNIT_TOGGLE_STORAGE_KEY) === "1";
   } catch {
     return false;
+  }
+};
+
+const getInitialPayWithCashuEnabled = (): boolean => {
+  try {
+    const raw = localStorage.getItem(PAY_WITH_CASHU_STORAGE_KEY);
+    const v = String(raw ?? "").trim();
+    // Default: enabled.
+    if (!v) return true;
+    return v === "1";
+  } catch {
+    return true;
   }
 };
 
@@ -432,6 +446,9 @@ const App = () => {
   const [lang, setLang] = useState<Lang>(() => getInitialLang());
   const [useBitcoinSymbol, setUseBitcoinSymbol] = useState<boolean>(() =>
     getInitialUseBitcoinSymbol()
+  );
+  const [payWithCashuEnabled, setPayWithCashuEnabled] = useState<boolean>(() =>
+    getInitialPayWithCashuEnabled()
   );
 
   const displayUnit = useBitcoinSymbol ? "₿" : "sat";
@@ -1002,6 +1019,17 @@ const App = () => {
       // ignore
     }
   }, [useBitcoinSymbol]);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(
+        PAY_WITH_CASHU_STORAGE_KEY,
+        payWithCashuEnabled ? "1" : "0"
+      );
+    } catch {
+      // ignore
+    }
+  }, [payWithCashuEnabled]);
 
   React.useEffect(() => {
     if (!pendingDeleteId) return;
@@ -3506,11 +3534,81 @@ const App = () => {
     setPayAmount("");
   };
 
+  const [contactPayMethod, setContactPayMethod] = useState<
+    null | "cashu" | "lightning"
+  >(null);
+
+  React.useEffect(() => {
+    if (route.kind !== "contactPay") {
+      setContactPayMethod(null);
+      return;
+    }
+
+    const npub = String(selectedContact?.npub ?? "").trim();
+    const ln = String(selectedContact?.lnAddress ?? "").trim();
+    const canUseCashu = payWithCashuEnabled && Boolean(npub);
+    const canUseLightning = Boolean(ln);
+
+    // Default: prefer Cashu when possible.
+    if (canUseCashu) {
+      setContactPayMethod("cashu");
+      return;
+    }
+
+    if (canUseLightning) {
+      setContactPayMethod("lightning");
+      return;
+    }
+
+    // No usable method; keep a stable default for UI.
+    setContactPayMethod("lightning");
+  }, [payWithCashuEnabled, route.kind, selectedContact]);
+
   const paySelectedContact = async () => {
     if (route.kind !== "contactPay") return;
     if (!selectedContact) return;
+
     const lnAddress = String(selectedContact.lnAddress ?? "").trim();
-    if (!lnAddress) return;
+    const contactNpub = String(selectedContact.npub ?? "").trim();
+    const canPayViaLightning = Boolean(lnAddress);
+    const canPayViaCashuMessage = payWithCashuEnabled && Boolean(contactNpub);
+
+    const method: "cashu" | "lightning" =
+      contactPayMethod === "cashu" || contactPayMethod === "lightning"
+        ? contactPayMethod
+        : canPayViaCashuMessage
+        ? "cashu"
+        : "lightning";
+
+    // If cashu-pay is disabled or contact missing npub, force lightning.
+    if (method === "cashu" && !canPayViaCashuMessage) {
+      if (!payWithCashuEnabled) {
+        setStatus(t("payWithCashuDisabled"));
+      } else {
+        setStatus(t("chatMissingContactNpub"));
+      }
+      return;
+    }
+
+    // If lightning isn't possible, but cashu message is, fall back to cashu.
+    if (
+      method === "lightning" &&
+      !canPayViaLightning &&
+      canPayViaCashuMessage
+    ) {
+      setContactPayMethod("cashu");
+      // Continue as cashu.
+    }
+
+    const effectiveMethod: "cashu" | "lightning" =
+      method === "lightning" && !canPayViaLightning && canPayViaCashuMessage
+        ? "cashu"
+        : method;
+
+    if (effectiveMethod === "lightning") {
+      if (!lnAddress) return;
+    }
+
     if (!canPayWithCashu) return;
 
     const amountSat = Number.parseInt(payAmount.trim(), 10);
@@ -3528,6 +3626,219 @@ const App = () => {
     setCashuIsBusy(true);
 
     try {
+      if (effectiveMethod === "cashu") {
+        if (!currentNsec) {
+          setStatus(t("profileMissingNpub"));
+          return;
+        }
+
+        const amountSat = Number.parseInt(payAmount.trim(), 10);
+        if (!Number.isFinite(amountSat) || amountSat <= 0) {
+          setStatus(`${t("errorPrefix")}: ${t("payInvalidAmount")}`);
+          return;
+        }
+
+        if (amountSat > cashuBalance) {
+          setStatus(t("payInsufficient"));
+          return;
+        }
+
+        setStatus(t("payPaying"));
+
+        const mintGroups = new Map<string, { tokens: string[]; sum: number }>();
+        for (const row of cashuTokens) {
+          if (String(row.state ?? "") !== "accepted") continue;
+          const mint = String(row.mint ?? "").trim();
+          if (!mint) continue;
+          const tokenText = String(row.token ?? "").trim();
+          if (!tokenText) continue;
+
+          const amount = Number((row.amount ?? 0) as unknown as number) || 0;
+          const entry = mintGroups.get(mint) ?? { tokens: [], sum: 0 };
+          entry.tokens.push(tokenText);
+          entry.sum += amount;
+          mintGroups.set(mint, entry);
+        }
+
+        const candidates = Array.from(mintGroups.entries())
+          .map(([mint, info]) => ({ mint, ...info }))
+          .sort((a, b) => b.sum - a.sum);
+
+        if (candidates.length === 0) {
+          setStatus(t("payInsufficient"));
+          return;
+        }
+
+        let lastError: unknown = null;
+        let lastMint: string | null = null;
+
+        for (const candidate of candidates) {
+          try {
+            const { createSendTokenWithTokensAtMint } = await import(
+              "./cashuSend"
+            );
+
+            const split = await createSendTokenWithTokensAtMint({
+              amount: amountSat,
+              mint: candidate.mint,
+              tokens: candidate.tokens,
+              unit: "sat",
+            });
+
+            if (!split.ok) {
+              lastError = split.error;
+              lastMint = candidate.mint;
+              continue;
+            }
+
+            const sendToken = split.sendToken;
+            const remainingToken = split.remainingToken;
+            const remainingAmount = split.remainingAmount;
+
+            // Publish a DM with the Cashu token.
+            const messageText = `🥜 ${sendToken}`;
+
+            const { nip19, getPublicKey } = await import("nostr-tools");
+            const { wrapEvent } = await import("nostr-tools/nip59");
+
+            const decodedMe = nip19.decode(currentNsec);
+            if (decodedMe.type !== "nsec") throw new Error("invalid nsec");
+            const privBytes = decodedMe.data as Uint8Array;
+            const myPubHex = getPublicKey(privBytes);
+
+            const decodedContact = nip19.decode(contactNpub);
+            if (decodedContact.type !== "npub") throw new Error("invalid npub");
+            const contactPubHex = decodedContact.data as string;
+
+            const baseEvent = {
+              created_at: Math.ceil(Date.now() / 1e3),
+              kind: 14,
+              pubkey: myPubHex,
+              tags: [
+                ["p", contactPubHex],
+                ["p", myPubHex],
+              ],
+              content: messageText,
+            } satisfies UnsignedEvent;
+
+            const wrapForMe = wrapEvent(
+              baseEvent,
+              privBytes,
+              myPubHex
+            ) as NostrToolsEvent;
+            const wrapForContact = wrapEvent(
+              baseEvent,
+              privBytes,
+              contactPubHex
+            ) as NostrToolsEvent;
+
+            chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
+
+            const pool = await getSharedAppNostrPool();
+            const publishResults = await Promise.allSettled([
+              ...pool.publish(NOSTR_RELAYS, wrapForMe),
+              ...pool.publish(NOSTR_RELAYS, wrapForContact),
+            ]);
+
+            const anySuccess = publishResults.some(
+              (r) => r.status === "fulfilled"
+            );
+            if (!anySuccess) {
+              const firstError = publishResults.find(
+                (r): r is PromiseRejectedResult => r.status === "rejected"
+              )?.reason;
+              throw new Error(String(firstError ?? "publish failed"));
+            }
+
+            appendLocalNostrMessage({
+              contactId: String(selectedContact.id),
+              direction: "out",
+              content: messageText,
+              wrapId: String(wrapForMe.id ?? ""),
+              rumorId: null,
+              pubkey: myPubHex,
+              createdAtSec: baseEvent.created_at,
+            });
+
+            // Persist remaining change first, then remove old rows for that mint.
+            if (remainingToken && remainingAmount > 0) {
+              const inserted = insert("cashuToken", {
+                token: remainingToken as typeof Evolu.NonEmptyString.Type,
+                rawToken: null,
+                mint: split.mint as typeof Evolu.NonEmptyString1000.Type,
+                unit: split.unit
+                  ? (split.unit as typeof Evolu.NonEmptyString100.Type)
+                  : null,
+                amount:
+                  remainingAmount > 0
+                    ? (remainingAmount as typeof Evolu.PositiveInt.Type)
+                    : null,
+                state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+                error: null,
+              });
+              if (!inserted.ok) throw inserted.error;
+            }
+
+            for (const row of cashuTokens) {
+              if (
+                String(row.state ?? "") === "accepted" &&
+                String(row.mint ?? "").trim() === candidate.mint
+              ) {
+                update("cashuToken", {
+                  id: row.id as CashuTokenId,
+                  isDeleted: Evolu.sqliteTrue,
+                });
+              }
+            }
+
+            logPaymentEvent({
+              direction: "out",
+              status: "ok",
+              amount: split.sendAmount,
+              fee: null,
+              mint: split.mint,
+              unit: split.unit,
+              error: null,
+              contactId: selectedContact.id,
+            });
+
+            const displayName =
+              String(selectedContact.name ?? "").trim() ||
+              String(selectedContact.lnAddress ?? "").trim() ||
+              t("appTitle");
+
+            showPaidOverlay(
+              t("paidSentTo")
+                .replace("{amount}", formatInteger(split.sendAmount))
+                .replace("{unit}", displayUnit)
+                .replace("{name}", displayName)
+            );
+
+            setStatus(t("paySuccess"));
+            safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
+            setContactsOnboardingHasPaid(true);
+            navigateToContact(selectedContact.id);
+            return;
+          } catch (e) {
+            lastError = e;
+            lastMint = candidate.mint;
+          }
+        }
+
+        logPaymentEvent({
+          direction: "out",
+          status: "error",
+          amount: amountSat,
+          fee: null,
+          mint: lastMint,
+          unit: "sat",
+          error: String(lastError ?? "unknown"),
+          contactId: selectedContact.id,
+        });
+        setStatus(`${t("payFailed")}: ${String(lastError ?? "unknown")}`);
+        return;
+      }
+
       setStatus(t("payFetchingInvoice"));
       let invoice: string;
       try {
@@ -4989,30 +5300,39 @@ const App = () => {
 
         const walletUnit = wallet.unit;
         const keysetId = wallet.keysetId;
-        const counter = det
-          ? getCashuDeterministicCounter({
-              mintUrl: mint,
-              unit: walletUnit,
-              keysetId,
-            })
-          : undefined;
+        const swapped = await (det
+          ? withCashuDeterministicCounterLock(
+              { mintUrl: mint, unit: walletUnit, keysetId },
+              async () => {
+                const counter = getCashuDeterministicCounter({
+                  mintUrl: mint,
+                  unit: walletUnit,
+                  keysetId,
+                });
 
-        const swapped = await wallet.swap(
-          total,
-          proofs,
-          typeof counter === "number" ? { counter } : undefined
-        );
+                const swapped = await wallet.swap(
+                  total,
+                  proofs,
+                  typeof counter === "number" ? { counter } : undefined
+                );
 
-        if (det && typeof counter === "number") {
-          const keepLen = Array.isArray(swapped.keep) ? swapped.keep.length : 0;
-          const sendLen = Array.isArray(swapped.send) ? swapped.send.length : 0;
-          bumpCashuDeterministicCounter({
-            mintUrl: mint,
-            unit: walletUnit,
-            keysetId,
-            used: keepLen + sendLen,
-          });
-        }
+                const keepLen = Array.isArray(swapped.keep)
+                  ? swapped.keep.length
+                  : 0;
+                const sendLen = Array.isArray(swapped.send)
+                  ? swapped.send.length
+                  : 0;
+                bumpCashuDeterministicCounter({
+                  mintUrl: mint,
+                  unit: walletUnit,
+                  keysetId,
+                  used: keepLen + sendLen,
+                });
+
+                return swapped;
+              }
+            )
+          : wallet.swap(total, proofs));
         const newProofs = [
           ...((swapped?.keep as unknown as unknown[]) ?? []),
           ...((swapped?.send as unknown as unknown[]) ?? []),
@@ -8610,6 +8930,26 @@ const App = () => {
                 </div>
               </div>
 
+              <div className="settings-row">
+                <div className="settings-left">
+                  <span className="settings-icon" aria-hidden="true">
+                    🥜
+                  </span>
+                  <span className="settings-label">{t("payWithCashu")}</span>
+                </div>
+                <div className="settings-right">
+                  <label className="switch">
+                    <input
+                      className="switch-input"
+                      type="checkbox"
+                      aria-label={t("payWithCashu")}
+                      checked={payWithCashuEnabled}
+                      onChange={(e) => setPayWithCashuEnabled(e.target.checked)}
+                    />
+                  </label>
+                </div>
+              </div>
+
               <button
                 type="button"
                 className="settings-row settings-link"
@@ -10041,9 +10381,10 @@ const App = () => {
                   <div className="contact-detail-actions">
                     {(() => {
                       const ln = String(selectedContact.lnAddress ?? "").trim();
-                      if (!ln) return null;
-
                       const npub = String(selectedContact.npub ?? "").trim();
+                      const canPayThisContact =
+                        Boolean(ln) || (payWithCashuEnabled && Boolean(npub));
+                      if (!canPayThisContact) return null;
                       const isFeedbackContact = npub === FEEDBACK_CONTACT_NPUB;
                       return (
                         <button
@@ -10110,9 +10451,61 @@ const App = () => {
                       })()}
                     </div>
                     <div className="contact-header-text">
-                      {selectedContact.name ? (
-                        <h3>{selectedContact.name}</h3>
-                      ) : null}
+                      {(() => {
+                        const ln = String(
+                          selectedContact.lnAddress ?? ""
+                        ).trim();
+                        const npub = String(selectedContact.npub ?? "").trim();
+                        const canUseCashu =
+                          payWithCashuEnabled && Boolean(npub);
+                        const canUseLightning = Boolean(ln);
+                        const showToggle = canUseCashu && canUseLightning;
+                        const icon =
+                          contactPayMethod === "lightning" ? "⚡" : "🥜";
+
+                        return selectedContact.name ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                            }}
+                          >
+                            <h3 style={{ margin: 0 }}>
+                              {selectedContact.name}
+                            </h3>
+                            <button
+                              type="button"
+                              className={
+                                showToggle
+                                  ? "pay-method-toggle"
+                                  : "pay-method-toggle is-disabled"
+                              }
+                              onClick={() => {
+                                if (!showToggle) return;
+                                setContactPayMethod((prev) =>
+                                  prev === "lightning" ? "cashu" : "lightning"
+                                );
+                              }}
+                              aria-label={
+                                contactPayMethod === "lightning"
+                                  ? "Lightning"
+                                  : "Cashu"
+                              }
+                              title={
+                                showToggle
+                                  ? contactPayMethod === "lightning"
+                                    ? "Lightning"
+                                    : "Cashu"
+                                  : undefined
+                              }
+                            >
+                              {icon}
+                            </button>
+                          </div>
+                        ) : null;
+                      })()}
                       <p className="muted">
                         {t("availablePrefix")} {formatInteger(cashuBalance)}{" "}
                         {displayUnit}
@@ -10122,8 +10515,32 @@ const App = () => {
 
                   {(() => {
                     const ln = String(selectedContact.lnAddress ?? "").trim();
-                    if (!ln)
-                      return <p className="muted">{t("payMissingLn")}</p>;
+                    const npub = String(selectedContact.npub ?? "").trim();
+                    const canUseCashu = payWithCashuEnabled && Boolean(npub);
+                    const method =
+                      contactPayMethod === "lightning" ||
+                      contactPayMethod === "cashu"
+                        ? contactPayMethod
+                        : canUseCashu
+                        ? "cashu"
+                        : "lightning";
+
+                    if (method === "cashu") {
+                      if (!payWithCashuEnabled)
+                        return (
+                          <p className="muted">{t("payWithCashuDisabled")}</p>
+                        );
+                      if (!npub)
+                        return (
+                          <p className="muted">{t("chatMissingContactNpub")}</p>
+                        );
+                    }
+
+                    if (method === "lightning") {
+                      if (!ln)
+                        return <p className="muted">{t("payMissingLn")}</p>;
+                    }
+
                     if (!canPayWithCashu)
                       return <p className="muted">{t("payInsufficient")}</p>;
                     return null;
@@ -10206,9 +10623,18 @@ const App = () => {
 
                     {(() => {
                       const ln = String(selectedContact.lnAddress ?? "").trim();
+                      const npub = String(selectedContact.npub ?? "").trim();
+                      const canUseCashu = payWithCashuEnabled && Boolean(npub);
+                      const method =
+                        contactPayMethod === "lightning" ||
+                        contactPayMethod === "cashu"
+                          ? contactPayMethod
+                          : canUseCashu
+                          ? "cashu"
+                          : "lightning";
                       const amountSat = Number.parseInt(payAmount.trim(), 10);
                       const invalid =
-                        !ln ||
+                        (method === "lightning" ? !ln : !canUseCashu) ||
                         !canPayWithCashu ||
                         !Number.isFinite(amountSat) ||
                         amountSat <= 0 ||

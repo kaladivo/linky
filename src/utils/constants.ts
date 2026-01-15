@@ -5,6 +5,7 @@ export const CONTACTS_ONBOARDING_DISMISSED_STORAGE_KEY =
 export const CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY =
   "linky.contacts_onboarding_has_paid";
 export const CASHU_RECOVERY_VAULT_STORAGE_KEY = "linky.cashu_recovery_vault";
+export const PAY_WITH_CASHU_STORAGE_KEY = "linky.pay_with_cashu";
 export const FEEDBACK_CONTACT_NPUB =
   "npub1kkht6jvgr8mt4844saf80j5jjwyy6fdy90sxsuxt4hfv8pel499s96jvz8";
 export const NO_GROUP_FILTER = "__linky_no_group__";
