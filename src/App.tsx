@@ -47,7 +47,6 @@ import {
 } from "./hooks/useRouting";
 import { useToasts } from "./hooks/useToasts";
 import { getInitialLang, persistLang, translations, type Lang } from "./i18n";
-import LinkyLogo from "./LinkyLogo.tsx";
 import { INITIAL_MNEMONIC_STORAGE_KEY } from "./mnemonic";
 import {
   cacheProfileAvatarFromUrl,
@@ -8249,7 +8248,15 @@ const App = () => {
       {!currentNsec ? (
         <section className="panel panel-plain onboarding-panel">
           <div className="onboarding-logo" aria-hidden="true">
-            <LinkyLogo className="onboarding-logo-svg" />
+            <img
+              className="onboarding-logo-svg"
+              src="/icon.svg"
+              alt=""
+              width={256}
+              height={256}
+              loading="eager"
+              decoding="async"
+            />
           </div>
           <h1 className="page-title">{t("onboardingTitle")}</h1>
 
@@ -10832,26 +10839,27 @@ const App = () => {
                 </div>
               ) : (
                 <div className="contacts-checklist-items" role="list">
-                  {(() => {
-                    const task =
-                      contactsOnboardingTasks.tasks.find((x) => !x.done) ??
-                      null;
-                    if (!task) return null;
-                    return (
-                      <div
-                        key={task.key}
-                        className="contacts-checklist-item"
-                        role="listitem"
+                  {contactsOnboardingTasks.tasks.map((task) => (
+                    <div
+                      key={task.key}
+                      className={
+                        task.done
+                          ? "contacts-checklist-item is-done"
+                          : "contacts-checklist-item"
+                      }
+                      role="listitem"
+                    >
+                      <span
+                        className="contacts-checklist-check"
+                        aria-hidden="true"
                       >
-                        <span
-                          className="contacts-checklist-check"
-                          aria-hidden="true"
-                        >
-                          ✓
-                        </span>
-                        <span className="contacts-checklist-label">
-                          {task.label}
-                        </span>
+                        ✓
+                      </span>
+                      <span className="contacts-checklist-label">
+                        {task.label}
+                      </span>
+
+                      {!task.done ? (
                         <button
                           type="button"
                           className="contacts-checklist-how"
@@ -10859,9 +10867,9 @@ const App = () => {
                         >
                           {t("contactsOnboardingShowHow")}
                         </button>
-                      </div>
-                    );
-                  })()}
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
               )}
             </section>
