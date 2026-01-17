@@ -248,7 +248,7 @@ const App = () => {
     }
   }, []);
 
-  const MAIN_MINT_URL = "https://linky.cashu.cz";
+  const MAIN_MINT_URL = "https://mint.minibits.cash/Bitcoin";
 
   const PRESET_MINTS = [
     "https://linky.cashu.cz",
@@ -1040,9 +1040,9 @@ const App = () => {
 
         const requestQuote = async (baseUrl: string) => {
           const shouldProxy =
-            typeof window !== "undefined" &&
-            (window.location.hostname === "localhost" ||
-              window.location.hostname === "127.0.0.1");
+            typeof import.meta !== "undefined" &&
+            Boolean(import.meta.env?.DEV) &&
+            typeof window !== "undefined";
           const targetUrl = shouldProxy
             ? `/__mint-quote?mint=${encodeURIComponent(baseUrl)}`
             : `${baseUrl}/v1/mint/quote/bolt11`;
@@ -1288,6 +1288,30 @@ const App = () => {
     pushToast(status);
     setStatus(null);
   }, [pushToast, status]);
+
+  React.useEffect(() => {
+    if (!(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
+      return;
+    if (!("serviceWorker" in navigator)) return;
+    void (async () => {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const reg of regs) {
+          await reg.unregister();
+        }
+      } catch {
+        // ignore
+      }
+      try {
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((key) => caches.delete(key)));
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
 
   // Query pro všechny aktivní kontakty
   const contactsQuery = useMemo(
@@ -3983,6 +4007,40 @@ const App = () => {
     setContactPayMethod("lightning");
   }, [payWithCashuEnabled, route.kind, selectedContact]);
 
+  const buildCashuMintCandidates = React.useCallback(
+    (
+      mintGroups: Map<string, { tokens: string[]; sum: number }>,
+      preferredMint: string | null
+    ) => {
+      const preferred = normalizeMintUrl(preferredMint ?? "");
+      return Array.from(mintGroups.entries())
+        .map(([mint, info]) => ({ mint, ...info }))
+        .sort((a, b) => {
+          const normalize = (u: string) =>
+            String(u ?? "")
+              .trim()
+              .replace(/\/+$/, "");
+          const mpp = (mint: string) => {
+            const row = mintInfoByUrl.get(normalize(mint));
+            return String(
+              (row as unknown as { supportsMpp?: unknown })?.supportsMpp ?? ""
+            ) === "1"
+              ? 1
+              : 0;
+          };
+
+          const aPreferred = preferred && normalize(a.mint) === preferred;
+          const bPreferred = preferred && normalize(b.mint) === preferred;
+          if (aPreferred !== bPreferred) return aPreferred ? 1 : -1;
+
+          const dmpp = mpp(b.mint) - mpp(a.mint);
+          if (dmpp !== 0) return dmpp;
+          return b.sum - a.sum;
+        });
+    },
+    [mintInfoByUrl, normalizeMintUrl]
+  );
+
   const paySelectedContact = async () => {
     if (route.kind !== "contactPay") return;
     if (!selectedContact) return;
@@ -4079,9 +4137,8 @@ const App = () => {
           mintGroups.set(mint, entry);
         }
 
-        const candidates = Array.from(mintGroups.entries())
-          .map(([mint, info]) => ({ mint, ...info }))
-          .sort((a, b) => b.sum - a.sum);
+        const preferredMint = normalizeMintUrl(defaultMintUrl ?? "");
+        const candidates = buildCashuMintCandidates(mintGroups, preferredMint);
 
         if (candidates.length === 0) {
           setStatus(t("payInsufficient"));
@@ -4090,15 +4147,25 @@ const App = () => {
 
         let lastError: unknown = null;
         let lastMint: string | null = null;
+        let remaining = amountSat;
+        const sendBatches: Array<{
+          token: string;
+          amount: number;
+          mint: string;
+        }> = [];
 
         for (const candidate of candidates) {
+          if (remaining <= 0) break;
+          const useAmount = Math.min(remaining, candidate.sum);
+          if (useAmount <= 0) continue;
+
           try {
             const { createSendTokenWithTokensAtMint } = await import(
               "./cashuSend"
             );
 
             const split = await createSendTokenWithTokensAtMint({
-              amount: amountSat,
+              amount: useAmount,
               mint: candidate.mint,
               tokens: candidate.tokens,
               unit: "sat",
@@ -4110,74 +4177,15 @@ const App = () => {
               continue;
             }
 
-            const sendToken = split.sendToken;
+            sendBatches.push({
+              token: split.sendToken,
+              amount: split.sendAmount,
+              mint: split.mint,
+            });
+            remaining -= split.sendAmount;
+
             const remainingToken = split.remainingToken;
             const remainingAmount = split.remainingAmount;
-
-            // Publish a DM with the Cashu token.
-            const messageText = `🥜 ${sendToken}`;
-
-            const { nip19, getPublicKey } = await import("nostr-tools");
-            const { wrapEvent } = await import("nostr-tools/nip59");
-
-            const decodedMe = nip19.decode(currentNsec);
-            if (decodedMe.type !== "nsec") throw new Error("invalid nsec");
-            const privBytes = decodedMe.data as Uint8Array;
-            const myPubHex = getPublicKey(privBytes);
-
-            const decodedContact = nip19.decode(contactNpub);
-            if (decodedContact.type !== "npub") throw new Error("invalid npub");
-            const contactPubHex = decodedContact.data as string;
-
-            const baseEvent = {
-              created_at: Math.ceil(Date.now() / 1e3),
-              kind: 14,
-              pubkey: myPubHex,
-              tags: [
-                ["p", contactPubHex],
-                ["p", myPubHex],
-              ],
-              content: messageText,
-            } satisfies UnsignedEvent;
-
-            const wrapForMe = wrapEvent(
-              baseEvent,
-              privBytes,
-              myPubHex
-            ) as NostrToolsEvent;
-            const wrapForContact = wrapEvent(
-              baseEvent,
-              privBytes,
-              contactPubHex
-            ) as NostrToolsEvent;
-
-            chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
-
-            const pool = await getSharedAppNostrPool();
-            const publishResults = await Promise.allSettled([
-              ...pool.publish(NOSTR_RELAYS, wrapForMe),
-              ...pool.publish(NOSTR_RELAYS, wrapForContact),
-            ]);
-
-            const anySuccess = publishResults.some(
-              (r) => r.status === "fulfilled"
-            );
-            if (!anySuccess) {
-              const firstError = publishResults.find(
-                (r): r is PromiseRejectedResult => r.status === "rejected"
-              )?.reason;
-              throw new Error(String(firstError ?? "publish failed"));
-            }
-
-            appendLocalNostrMessage({
-              contactId: String(selectedContact.id),
-              direction: "out",
-              content: messageText,
-              wrapId: String(wrapForMe.id ?? ""),
-              rumorId: null,
-              pubkey: myPubHex,
-              createdAtSec: baseEvent.created_at,
-            });
 
             // Persist remaining change first, then remove old rows for that mint.
             if (remainingToken && remainingAmount > 0) {
@@ -4209,39 +4217,134 @@ const App = () => {
                 });
               }
             }
-
-            logPaymentEvent({
-              direction: "out",
-              status: "ok",
-              amount: split.sendAmount,
-              fee: null,
-              mint: split.mint,
-              unit: split.unit,
-              error: null,
-              contactId: selectedContact.id,
-            });
-
-            const displayName =
-              String(selectedContact.name ?? "").trim() ||
-              String(selectedContact.lnAddress ?? "").trim() ||
-              t("appTitle");
-
-            showPaidOverlay(
-              t("paidSentTo")
-                .replace("{amount}", formatInteger(split.sendAmount))
-                .replace("{unit}", displayUnit)
-                .replace("{name}", displayName)
-            );
-
-            setStatus(t("paySuccess"));
-            safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
-            setContactsOnboardingHasPaid(true);
-            navigateToContact(selectedContact.id);
-            return;
           } catch (e) {
             lastError = e;
             lastMint = candidate.mint;
           }
+        }
+
+        if (remaining > 0) {
+          logPaymentEvent({
+            direction: "out",
+            status: "error",
+            amount: amountSat,
+            fee: null,
+            mint: lastMint,
+            unit: "sat",
+            error: String(lastError ?? "insufficient funds"),
+            contactId: selectedContact.id,
+          });
+          setStatus(
+            lastError
+              ? `${t("payFailed")}: ${String(lastError)}`
+              : t("payInsufficient")
+          );
+          return;
+        }
+
+        try {
+          const { nip19, getPublicKey } = await import("nostr-tools");
+          const { wrapEvent } = await import("nostr-tools/nip59");
+
+          const decodedMe = nip19.decode(currentNsec);
+          if (decodedMe.type !== "nsec") throw new Error("invalid nsec");
+          const privBytes = decodedMe.data as Uint8Array;
+          const myPubHex = getPublicKey(privBytes);
+
+          const decodedContact = nip19.decode(contactNpub);
+          if (decodedContact.type !== "npub") throw new Error("invalid npub");
+          const contactPubHex = decodedContact.data as string;
+
+          const pool = await getSharedAppNostrPool();
+
+          for (const batch of sendBatches) {
+            const messageText = `🥜 ${batch.token}`;
+            const baseEvent = {
+              created_at: Math.ceil(Date.now() / 1e3),
+              kind: 14,
+              pubkey: myPubHex,
+              tags: [
+                ["p", contactPubHex],
+                ["p", myPubHex],
+              ],
+              content: messageText,
+            } satisfies UnsignedEvent;
+
+            const wrapForMe = wrapEvent(
+              baseEvent,
+              privBytes,
+              myPubHex
+            ) as NostrToolsEvent;
+            const wrapForContact = wrapEvent(
+              baseEvent,
+              privBytes,
+              contactPubHex
+            ) as NostrToolsEvent;
+
+            chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
+
+            const publishResults = await Promise.allSettled([
+              ...pool.publish(NOSTR_RELAYS, wrapForMe),
+              ...pool.publish(NOSTR_RELAYS, wrapForContact),
+            ]);
+
+            const anySuccess = publishResults.some(
+              (r) => r.status === "fulfilled"
+            );
+            if (!anySuccess) {
+              const firstError = publishResults.find(
+                (r): r is PromiseRejectedResult => r.status === "rejected"
+              )?.reason;
+              throw new Error(String(firstError ?? "publish failed"));
+            }
+
+            appendLocalNostrMessage({
+              contactId: String(selectedContact.id),
+              direction: "out",
+              content: messageText,
+              wrapId: String(wrapForMe.id ?? ""),
+              rumorId: null,
+              pubkey: myPubHex,
+              createdAtSec: baseEvent.created_at,
+            });
+          }
+
+          const totalSent = sendBatches.reduce(
+            (sum, b) => sum + (Number(b.amount ?? 0) || 0),
+            0
+          );
+          const usedMints = Array.from(new Set(sendBatches.map((b) => b.mint)));
+
+          logPaymentEvent({
+            direction: "out",
+            status: "ok",
+            amount: totalSent,
+            fee: null,
+            mint: usedMints.length === 1 ? usedMints[0] : "multi",
+            unit: "sat",
+            error: null,
+            contactId: selectedContact.id,
+          });
+
+          const displayName =
+            String(selectedContact.name ?? "").trim() ||
+            String(selectedContact.lnAddress ?? "").trim() ||
+            t("appTitle");
+
+          showPaidOverlay(
+            t("paidSentTo")
+              .replace("{amount}", formatInteger(totalSent))
+              .replace("{unit}", displayUnit)
+              .replace("{name}", displayName)
+          );
+
+          setStatus(t("paySuccess"));
+          safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
+          setContactsOnboardingHasPaid(true);
+          navigateToContact(selectedContact.id);
+          return;
+        } catch (e) {
+          lastError = e;
         }
 
         logPaymentEvent({
@@ -4291,25 +4394,8 @@ const App = () => {
         mintGroups.set(mint, entry);
       }
 
-      const candidates = Array.from(mintGroups.entries())
-        .map(([mint, info]) => ({ mint, ...info }))
-        .sort((a, b) => {
-          const normalize = (u: string) =>
-            String(u ?? "")
-              .trim()
-              .replace(/\/+$/, "");
-          const mpp = (mint: string) => {
-            const row = mintInfoByUrl.get(normalize(mint));
-            return String(
-              (row as unknown as { supportsMpp?: unknown })?.supportsMpp ?? ""
-            ) === "1"
-              ? 1
-              : 0;
-          };
-          const dmpp = mpp(b.mint) - mpp(a.mint);
-          if (dmpp !== 0) return dmpp;
-          return b.sum - a.sum;
-        });
+      const preferredMint = normalizeMintUrl(defaultMintUrl ?? "");
+      const candidates = buildCashuMintCandidates(mintGroups, preferredMint);
 
       if (candidates.length === 0) {
         setStatus(t("payInsufficient"));
@@ -4506,25 +4592,8 @@ const App = () => {
           mintGroups.set(mint, entry);
         }
 
-        const candidates = Array.from(mintGroups.entries())
-          .map(([mint, info]) => ({ mint, ...info }))
-          .sort((a, b) => {
-            const normalize = (u: string) =>
-              String(u ?? "")
-                .trim()
-                .replace(/\/+$/, "");
-            const mpp = (mint: string) => {
-              const row = mintInfoByUrl.get(normalize(mint));
-              return String(
-                (row as unknown as { supportsMpp?: unknown })?.supportsMpp ?? ""
-              ) === "1"
-                ? 1
-                : 0;
-            };
-            const dmpp = mpp(b.mint) - mpp(a.mint);
-            if (dmpp !== 0) return dmpp;
-            return b.sum - a.sum;
-          });
+        const preferredMint = normalizeMintUrl(defaultMintUrl ?? "");
+        const candidates = buildCashuMintCandidates(mintGroups, preferredMint);
 
         if (candidates.length === 0) {
           setStatus(t("payInsufficient"));
@@ -5719,39 +5788,58 @@ const App = () => {
 
         const walletUnit = wallet.unit;
         const keysetId = wallet.keysetId;
-        const swapped = await (det
-          ? withCashuDeterministicCounterLock(
-              { mintUrl: mint, unit: walletUnit, keysetId },
-              async () => {
-                const counter = getCashuDeterministicCounter({
-                  mintUrl: mint,
-                  unit: walletUnit,
-                  keysetId,
-                });
+        const parseSwapFee = (error: unknown): number | null => {
+          const message = String(error ?? "");
+          const feeMatch = message.match(/fee\s*:\s*(\d+)/i);
+          if (!feeMatch) return null;
+          const fee = Number(feeMatch[1]);
+          return Number.isFinite(fee) && fee > 0 ? fee : null;
+        };
 
-                const swapped = await wallet.swap(
-                  total,
-                  proofs,
-                  typeof counter === "number" ? { counter } : undefined
-                );
+        const runSwap = async (amountToSend: number) => {
+          return det
+            ? withCashuDeterministicCounterLock(
+                { mintUrl: mint, unit: walletUnit, keysetId },
+                async () => {
+                  const counter = getCashuDeterministicCounter({
+                    mintUrl: mint,
+                    unit: walletUnit,
+                    keysetId,
+                  });
 
-                const keepLen = Array.isArray(swapped.keep)
-                  ? swapped.keep.length
-                  : 0;
-                const sendLen = Array.isArray(swapped.send)
-                  ? swapped.send.length
-                  : 0;
-                bumpCashuDeterministicCounter({
-                  mintUrl: mint,
-                  unit: walletUnit,
-                  keysetId,
-                  used: keepLen + sendLen,
-                });
+                  const swapped = await wallet.swap(
+                    amountToSend,
+                    proofs,
+                    typeof counter === "number" ? { counter } : undefined
+                  );
 
-                return swapped;
-              }
-            )
-          : wallet.swap(total, proofs));
+                  const keepLen = Array.isArray(swapped.keep)
+                    ? swapped.keep.length
+                    : 0;
+                  const sendLen = Array.isArray(swapped.send)
+                    ? swapped.send.length
+                    : 0;
+                  bumpCashuDeterministicCounter({
+                    mintUrl: mint,
+                    unit: walletUnit,
+                    keysetId,
+                    used: keepLen + sendLen,
+                  });
+
+                  return swapped;
+                }
+              )
+            : wallet.swap(amountToSend, proofs);
+        };
+
+        let swapped: unknown;
+        try {
+          swapped = await runSwap(total);
+        } catch (error) {
+          const fee = parseSwapFee(error);
+          if (!fee || total - fee <= 0) throw error;
+          swapped = await runSwap(total - fee);
+        }
         const newProofs = [
           ...((swapped?.keep as unknown as unknown[]) ?? []),
           ...((swapped?.send as unknown as unknown[]) ?? []),
