@@ -127,6 +127,8 @@ export const en = {
   mints: "Mints",
 
   defaultMint: "Default mint",
+  selectedMint: "Selected mint",
+  setCustomMint: "Set custom mint",
   mintUrlInvalid: "Invalid mint URL.",
   mintSaved: "Mint saved.",
   mintUpdateFailed: "Mint update failed.",

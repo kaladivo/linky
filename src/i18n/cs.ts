@@ -127,6 +127,8 @@ export const cs = {
   mints: "Minty",
 
   defaultMint: "Výchozí mint",
+  selectedMint: "Zvolený mint",
+  setCustomMint: "Nastavit vlastní mint",
   mintUrlInvalid: "Neplatná URL mintu.",
   mintSaved: "Mint uložen.",
   mintUpdateFailed: "Aktualizace mintu selhala.",

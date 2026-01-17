@@ -84,7 +84,6 @@ import {
 import {
   safeLocalStorageGet,
   safeLocalStorageGetJson,
-  safeLocalStorageRemove,
   safeLocalStorageSet,
   safeLocalStorageSetJson,
 } from "./utils/storage";
@@ -249,7 +248,14 @@ const App = () => {
     }
   }, []);
 
-  const MAIN_MINT_URL = "https://mint.minibits.cash/Bitcoin";
+  const MAIN_MINT_URL = "https://linky.cashu.cz";
+
+  const PRESET_MINTS = [
+    "https://linky.cashu.cz",
+    "https://mint.minibits.cash/Bitcoin",
+    "https://kashu.me",
+    "https://cashu.21m.lol",
+  ];
 
   const CASHU_DEFAULT_MINT_OVERRIDE_STORAGE_KEY =
     "linky.cashu.defaultMintOverride.v1";
@@ -3038,6 +3044,51 @@ const App = () => {
       }
     },
     [currentNpub, currentNsec, makeNip98AuthHeader, normalizeMintUrl]
+  );
+
+  const applyDefaultMintSelection = React.useCallback(
+    async (mintUrl: string): Promise<void> => {
+      const cleaned = normalizeMintUrl(mintUrl);
+      if (!cleaned) {
+        pushToast(t("mintUrlInvalid"));
+        return;
+      }
+      try {
+        new URL(cleaned);
+      } catch {
+        pushToast(t("mintUrlInvalid"));
+        return;
+      }
+
+      try {
+        setStatus(t("mintUpdating"));
+        await updateNpubCashMint(cleaned);
+      } catch (error) {
+        const message = String(error ?? "");
+        if (message.includes("Missing nsec")) {
+          pushToast(t("profileMissingNpub"));
+        } else {
+          pushToast(t("mintUpdateFailed"));
+        }
+        return;
+      }
+
+      const key = makeLocalStorageKey(CASHU_DEFAULT_MINT_OVERRIDE_STORAGE_KEY);
+      safeLocalStorageSet(key, cleaned);
+      hasMintOverrideRef.current = true;
+      setDefaultMintUrl(cleaned);
+      setDefaultMintUrlDraft(cleaned);
+      npubCashMintSyncRef.current = cleaned;
+      setStatus(t("mintSaved"));
+    },
+    [
+      makeLocalStorageKey,
+      normalizeMintUrl,
+      pushToast,
+      setDefaultMintUrl,
+      t,
+      updateNpubCashMint,
+    ]
   );
 
   React.useEffect(() => {
@@ -7938,6 +7989,12 @@ const App = () => {
     if (key === "linky.cashu.cz") {
       return "https://linky-weld.vercel.app/icon.svg";
     }
+    if (key === "kashu.me") {
+      return "https://image.nostr.build/ca72a338d053ffa0f283a1399ebc772bef43814e4998c1fff8aa143b1ea6f29e.jpg";
+    }
+    if (key === "cashu.21m.lol") {
+      return "https://em-content.zobj.net/source/apple/391/zany-face_1f92a.png";
+    }
     return null;
   }, []);
 
@@ -9721,94 +9778,151 @@ const App = () => {
 
           {route.kind === "mints" && (
             <section className="panel">
-              <label htmlFor="defaultMintUrl">{t("defaultMint")}</label>
-              <input
-                id="defaultMintUrl"
-                value={defaultMintUrlDraft}
-                onChange={(e) => setDefaultMintUrlDraft(e.target.value)}
-                placeholder="https://…"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-              />
+              {(() => {
+                const selectedMint =
+                  normalizeMintUrl(defaultMintUrl ?? MAIN_MINT_URL) ||
+                  MAIN_MINT_URL;
+                const stripped = (value: string) =>
+                  value.replace(/^https?:\/\//i, "");
+                const draftValue = String(defaultMintUrlDraft ?? "").trim();
+                const cleanedDraft = normalizeMintUrl(draftValue);
+                const isDraftValid = (() => {
+                  if (!cleanedDraft) return false;
+                  try {
+                    new URL(cleanedDraft);
+                    return true;
+                  } catch {
+                    return false;
+                  }
+                })();
+                const canSave =
+                  Boolean(draftValue) &&
+                  isDraftValid &&
+                  cleanedDraft !== selectedMint;
 
-              <div className="panel-header" style={{ marginTop: 14 }}>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const cleaned = normalizeMintUrl(defaultMintUrlDraft);
-                    if (!cleaned) {
-                      pushToast(t("mintUrlInvalid"));
-                      return;
-                    }
-                    try {
-                      new URL(cleaned);
-                    } catch {
-                      pushToast(t("mintUrlInvalid"));
-                      return;
-                    }
+                const buttonMints = (() => {
+                  const set = new Set<string>(PRESET_MINTS);
+                  if (selectedMint) set.add(selectedMint);
+                  return Array.from(set.values());
+                })();
 
-                    try {
-                      setStatus(t("mintUpdating"));
-                      await updateNpubCashMint(cleaned);
-                    } catch (error) {
-                      const message = String(error ?? "");
-                      if (message.includes("Missing nsec")) {
-                        pushToast(t("profileMissingNpub"));
-                      } else {
-                        pushToast(t("mintUpdateFailed"));
-                      }
-                      return;
-                    }
+                return (
+                  <>
+                    <div className="settings-row" style={{ marginBottom: 6 }}>
+                      <div className="settings-left">
+                        <label className="muted">{t("selectedMint")}</label>
+                      </div>
+                    </div>
 
-                    const key = makeLocalStorageKey(
-                      CASHU_DEFAULT_MINT_OVERRIDE_STORAGE_KEY
-                    );
-                    safeLocalStorageSet(key, cleaned);
-                    hasMintOverrideRef.current = true;
-                    setDefaultMintUrl(cleaned);
-                    npubCashMintSyncRef.current = cleaned;
-                    setStatus(t("mintSaved"));
-                  }}
-                  disabled={!String(defaultMintUrlDraft ?? "").trim()}
-                >
-                  {t("saveChanges")}
-                </button>
+                    <div className="settings-row" style={{ marginBottom: 10 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 8,
+                        }}
+                      >
+                        {buttonMints.map((mint) => {
+                          const icon = getMintIconUrl(mint);
+                          const isSelected =
+                            normalizeMintUrl(mint) === selectedMint;
+                          const label = stripped(mint);
+                          const fallbackLetter = (
+                            label.match(/[a-z]/i)?.[0] ?? "?"
+                          ).toUpperCase();
+                          return (
+                            <button
+                              key={mint}
+                              type="button"
+                              className="ghost"
+                              onClick={() =>
+                                void applyDefaultMintSelection(mint)
+                              }
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 8,
+                                border: isSelected
+                                  ? "1px solid #22c55e"
+                                  : undefined,
+                                boxShadow: isSelected
+                                  ? "0 0 0 1px rgba(34,197,94,0.35)"
+                                  : undefined,
+                              }}
+                            >
+                              {icon.url ? (
+                                <img
+                                  src={icon.url}
+                                  alt=""
+                                  width={14}
+                                  height={14}
+                                  style={{
+                                    borderRadius: 9999,
+                                    objectFit: "cover",
+                                  }}
+                                  loading="lazy"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    (
+                                      e.currentTarget as HTMLImageElement
+                                    ).style.display = "none";
+                                  }}
+                                />
+                              ) : (
+                                <span
+                                  aria-hidden="true"
+                                  style={{
+                                    width: 14,
+                                    height: 14,
+                                    borderRadius: 9999,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: 9,
+                                    background: "rgba(148,163,184,0.25)",
+                                    color: "#e2e8f0",
+                                  }}
+                                >
+                                  {fallbackLetter}
+                                </span>
+                              )}
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
 
-                {hasMintOverrideRef.current ? (
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={async () => {
-                      try {
-                        setStatus(t("mintUpdating"));
-                        await updateNpubCashMint(MAIN_MINT_URL);
-                      } catch (error) {
-                        const message = String(error ?? "");
-                        if (message.includes("Missing nsec")) {
-                          pushToast(t("profileMissingNpub"));
-                        } else {
-                          pushToast(t("mintUpdateFailed"));
-                        }
-                        return;
-                      }
+                    <label htmlFor="defaultMintUrl">{t("setCustomMint")}</label>
+                    <input
+                      id="defaultMintUrl"
+                      value={defaultMintUrlDraft}
+                      onChange={(e) => setDefaultMintUrlDraft(e.target.value)}
+                      placeholder="https://…"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                    />
 
-                      const key = makeLocalStorageKey(
-                        CASHU_DEFAULT_MINT_OVERRIDE_STORAGE_KEY
-                      );
-                      safeLocalStorageRemove(key);
-                      hasMintOverrideRef.current = false;
-                      setDefaultMintUrl(MAIN_MINT_URL);
-                      setDefaultMintUrlDraft(normalizeMintUrl(MAIN_MINT_URL));
-                      npubCashMintSyncRef.current =
-                        normalizeMintUrl(MAIN_MINT_URL);
-                      setStatus(t("mintSaved"));
-                    }}
-                  >
-                    {t("useDefault")}
-                  </button>
-                ) : null}
-              </div>
+                    <div className="panel-header" style={{ marginTop: 14 }}>
+                      {canSave ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await applyDefaultMintSelection(
+                              defaultMintUrlDraft
+                            );
+                          }}
+                        >
+                          {t("saveChanges")}
+                        </button>
+                      ) : null}
+
+                      {hasMintOverrideRef.current ? null : null}
+                    </div>
+                  </>
+                );
+              })()}
             </section>
           )}
 
