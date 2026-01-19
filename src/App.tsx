@@ -132,17 +132,17 @@ type LocalMintInfoRow = {
 type AppNostrPool = {
   publish: (
     relays: string[],
-    event: NostrToolsEvent
+    event: NostrToolsEvent,
   ) => Array<Promise<unknown>>;
   querySync: (
     relays: string[],
     filter: Record<string, unknown>,
-    opts: { maxWait: number }
+    opts: { maxWait: number },
   ) => Promise<unknown>;
   subscribe: (
     relays: string[],
     filter: Record<string, unknown>,
-    opts: { onevent: (event: NostrToolsEvent) => void }
+    opts: { onevent: (event: NostrToolsEvent) => void },
   ) => { close: (reason?: string) => Promise<void> | void };
 };
 
@@ -272,7 +272,7 @@ const App = () => {
   const readSeenMintsFromStorage = React.useCallback((): string[] => {
     try {
       const raw = localStorage.getItem(
-        makeLocalStorageKey(CASHU_SEEN_MINTS_STORAGE_KEY)
+        makeLocalStorageKey(CASHU_SEEN_MINTS_STORAGE_KEY),
       );
       if (!raw) return [];
       const parsed = JSON.parse(raw);
@@ -295,13 +295,13 @@ const App = () => {
         existing.add(cleaned);
         localStorage.setItem(
           key,
-          JSON.stringify(Array.from(existing).slice(0, 50))
+          JSON.stringify(Array.from(existing).slice(0, 50)),
         );
       } catch {
         // ignore
       }
     },
-    [makeLocalStorageKey, readSeenMintsFromStorage]
+    [makeLocalStorageKey, readSeenMintsFromStorage],
   );
 
   const makeLocalId = (): string => {
@@ -314,7 +314,7 @@ const App = () => {
   };
 
   const [paymentEvents, setPaymentEvents] = useState<LocalPaymentEvent[]>(
-    () => []
+    () => [],
   );
 
   const route = useRouting();
@@ -376,12 +376,12 @@ const App = () => {
         const next = [entry, ...prev].slice(0, 250);
         safeLocalStorageSetJson(
           makeLocalStorageKey(LOCAL_PAYMENT_EVENTS_STORAGE_KEY_PREFIX),
-          next
+          next,
         );
         return next;
       });
     },
-    [makeLocalStorageKey]
+    [makeLocalStorageKey],
   );
 
   const [form, setForm] = useState<ContactFormState>(makeEmptyForm());
@@ -402,7 +402,7 @@ const App = () => {
   const topupInvoiceStartBalanceRef = React.useRef<number | null>(null);
   const topupInvoicePaidHandledRef = React.useRef(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<ContactId | null>(
-    null
+    null,
   );
   const [pendingCashuDeleteId, setPendingCashuDeleteId] =
     useState<CashuTokenId | null>(null);
@@ -419,13 +419,13 @@ const App = () => {
   const [contactsOnboardingDismissed, setContactsOnboardingDismissed] =
     useState<boolean>(
       () =>
-        safeLocalStorageGet(CONTACTS_ONBOARDING_DISMISSED_STORAGE_KEY) === "1"
+        safeLocalStorageGet(CONTACTS_ONBOARDING_DISMISSED_STORAGE_KEY) === "1",
     );
 
   const [contactsOnboardingHasPaid, setContactsOnboardingHasPaid] =
     useState<boolean>(
       () =>
-        safeLocalStorageGet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY) === "1"
+        safeLocalStorageGet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY) === "1",
     );
 
   const [contactsOnboardingCelebrating, setContactsOnboardingCelebrating] =
@@ -455,10 +455,10 @@ const App = () => {
   >(() => ({}));
   const [lang, setLang] = useState<Lang>(() => getInitialLang());
   const [useBitcoinSymbol, setUseBitcoinSymbol] = useState<boolean>(() =>
-    getInitialUseBitcoinSymbol()
+    getInitialUseBitcoinSymbol(),
   );
   const [payWithCashuEnabled, setPayWithCashuEnabled] = useState<boolean>(() =>
-    getInitialPayWithCashuEnabled()
+    getInitialPayWithCashuEnabled(),
   );
 
   const displayUnit = useBitcoinSymbol ? "₿" : "sat";
@@ -488,7 +488,7 @@ const App = () => {
     if (evoluHasError) return "disconnected" as const;
     if (evoluActiveServerUrls.length === 0) return "disconnected" as const;
     const states = evoluActiveServerUrls.map(
-      (url) => evoluServerStatusByUrl[url] ?? "checking"
+      (url) => evoluServerStatusByUrl[url] ?? "checking",
     );
     if (states.some((s) => s === "connected")) return "connected" as const;
     if (states.some((s) => s === "checking")) return "checking" as const;
@@ -510,12 +510,12 @@ const App = () => {
     setPaymentEvents(
       safeLocalStorageGetJson(
         `${LOCAL_PAYMENT_EVENTS_STORAGE_KEY_PREFIX}.${String(appOwnerId)}`,
-        [] as LocalPaymentEvent[]
-      )
+        [] as LocalPaymentEvent[],
+      ),
     );
 
     const overrideRaw = safeLocalStorageGet(
-      makeLocalStorageKey(CASHU_DEFAULT_MINT_OVERRIDE_STORAGE_KEY)
+      makeLocalStorageKey(CASHU_DEFAULT_MINT_OVERRIDE_STORAGE_KEY),
     );
     const override = normalizeMintUrl(overrideRaw);
     if (override) {
@@ -559,7 +559,7 @@ const App = () => {
       pushToast(
         lang === "cs"
           ? "Chybí uložený mnemonic (nelze vyčistit Evolu storage)."
-          : "Missing stored mnemonic (cannot clear Evolu storage)."
+          : "Missing stored mnemonic (cannot clear Evolu storage).",
       );
     } finally {
       setEvoluWipeStorageIsBusy(false);
@@ -571,7 +571,7 @@ const App = () => {
   >(() => ({}));
 
   const avatarObjectUrlsByNpubRef = React.useRef<Map<string, string>>(
-    new Map()
+    new Map(),
   );
 
   const rememberBlobAvatarUrl = React.useCallback(
@@ -604,7 +604,7 @@ const App = () => {
 
       return url;
     },
-    []
+    [],
   );
 
   useInit(() => {
@@ -650,7 +650,7 @@ const App = () => {
   const [topupInvoice, setTopupInvoice] = useState<string | null>(null);
   const [topupInvoiceQr, setTopupInvoiceQr] = useState<string | null>(null);
   const [topupInvoiceError, setTopupInvoiceError] = useState<string | null>(
-    null
+    null,
   );
   const [topupInvoiceIsBusy, setTopupInvoiceIsBusy] = useState(false);
   const [topupDebug, setTopupDebug] = useState<string | null>(null);
@@ -684,7 +684,7 @@ const App = () => {
 
   const chatMessagesRef = React.useRef<HTMLDivElement | null>(null);
   const chatMessageElByIdRef = React.useRef<Map<string, HTMLDivElement>>(
-    new Map()
+    new Map(),
   );
   const chatDidInitialScrollForContactRef = React.useRef<string | null>(null);
 
@@ -705,14 +705,14 @@ const App = () => {
         }
       }
     },
-    []
+    [],
   );
 
   const [myProfileName, setMyProfileName] = useState<string | null>(null);
   const [myProfilePicture, setMyProfilePicture] = useState<string | null>(null);
   const [myProfileQr, setMyProfileQr] = useState<string | null>(null);
   const [myProfileLnAddress, setMyProfileLnAddress] = useState<string | null>(
-    null
+    null,
   );
   const [myProfileMetadata, setMyProfileMetadata] =
     useState<NostrProfileMetadata | null>(null);
@@ -749,7 +749,7 @@ const App = () => {
   const t = React.useCallback(
     (key: string) =>
       (translations[lang] as unknown as Record<string, string>)[key] ?? key,
-    [lang]
+    [lang],
   );
 
   React.useEffect(() => {
@@ -829,7 +829,7 @@ const App = () => {
         paidOverlayTimerRef.current = null;
       }, 3000);
     },
-    [lang]
+    [lang],
   );
 
   const maybeShowPwaNotification = React.useCallback(
@@ -878,7 +878,7 @@ const App = () => {
         // ignore
       }
     },
-    [t]
+    [t],
   );
 
   const getInitials = (name: string) => {
@@ -929,15 +929,15 @@ const App = () => {
         numeric: true,
         sensitivity: "variant",
       }),
-    [lang]
+    [lang],
   );
   const numberFormatter = useMemo(() => new Intl.NumberFormat(lang), [lang]);
   const formatInteger = React.useCallback(
     (value: number) =>
       numberFormatter.format(
-        Number.isFinite(value) ? Math.trunc(value) : Math.trunc(0)
+        Number.isFinite(value) ? Math.trunc(value) : Math.trunc(0),
       ),
-    [numberFormatter]
+    [numberFormatter],
   );
 
   React.useEffect(() => {
@@ -1013,7 +1013,7 @@ const App = () => {
         const fetchWithTimeout = async (
           url: string,
           options: RequestInit,
-          ms: number
+          ms: number,
         ) => {
           quoteController = new AbortController();
           let timeoutId: number | null = null;
@@ -1047,7 +1047,7 @@ const App = () => {
             : `${baseUrl}/v1/mint/quote/bolt11`;
 
           setTopupDebug(
-            `quote: ${baseUrl} (${shouldProxy ? "proxy" : "direct"} fetch)`
+            `quote: ${baseUrl} (${shouldProxy ? "proxy" : "direct"} fetch)`,
           );
 
           const quoteRes = await fetchWithTimeout(
@@ -1060,7 +1060,7 @@ const App = () => {
               },
               body: JSON.stringify({ amount: amountSat, unit: "sat" }),
             },
-            12_000
+            12_000,
           );
 
           setTopupDebug(`quote: ${baseUrl} (response ${quoteRes.status})`);
@@ -1077,21 +1077,21 @@ const App = () => {
             throw new Error(
               `Mint quote parse failed (${quoteRes.status}): ${rawText.slice(
                 0,
-                200
-              )}`
+                200,
+              )}`,
             );
           }
           const quoteId = String(
             (mintQuote as unknown as { quote?: unknown; id?: unknown }).quote ??
               (mintQuote as unknown as { id?: unknown }).id ??
-              ""
+              "",
           ).trim();
           const invoice = String(
             (mintQuote as unknown as { request?: unknown }).request ??
               (mintQuote as unknown as { pr?: unknown }).pr ??
               (mintQuote as unknown as { paymentRequest?: unknown })
                 .paymentRequest ??
-              ""
+              "",
           ).trim();
 
           return { quoteId, invoice };
@@ -1103,7 +1103,7 @@ const App = () => {
           throw new Error(
             `Missing mint quote (quote=${quoteId || "-"}, invoice=${
               invoice || "-"
-            })`
+            })`,
           );
         }
 
@@ -1145,7 +1145,7 @@ const App = () => {
           setTopupInvoiceError(
             message
               ? `${t("topupInvoiceFailed")}: ${corsHint || message}`
-              : t("topupInvoiceFailed")
+              : t("topupInvoiceFailed"),
           );
         }
       } finally {
@@ -1215,7 +1215,7 @@ const App = () => {
     try {
       localStorage.setItem(
         UNIT_TOGGLE_STORAGE_KEY,
-        useBitcoinSymbol ? "1" : "0"
+        useBitcoinSymbol ? "1" : "0",
       );
     } catch {
       // ignore
@@ -1226,7 +1226,7 @@ const App = () => {
     try {
       localStorage.setItem(
         PAY_WITH_CASHU_STORAGE_KEY,
-        payWithCashuEnabled ? "1" : "0"
+        payWithCashuEnabled ? "1" : "0",
       );
     } catch {
       // ignore
@@ -1311,9 +1311,9 @@ const App = () => {
           .selectFrom("contact")
           .selectAll()
           .where("isDeleted", "is not", Evolu.sqliteTrue)
-          .orderBy("createdAt", "desc")
+          .orderBy("createdAt", "desc"),
       ),
-    []
+    [],
   );
 
   const contacts = useQuery(contactsQuery);
@@ -1324,7 +1324,7 @@ const App = () => {
 
     const fmt = (template: string, vars: Record<string, string | number>) => {
       return String(template ?? "").replace(/\{(\w+)\}/g, (_m, k: string) =>
-        String(vars[k] ?? "")
+        String(vars[k] ?? ""),
       );
     };
 
@@ -1458,7 +1458,7 @@ const App = () => {
                     | typeof Evolu.NonEmptyString1000.Type
                     | null,
                 },
-                { ownerId: appOwnerId }
+                { ownerId: appOwnerId },
               )
             : update("contact", {
                 id: keepId,
@@ -1484,7 +1484,7 @@ const App = () => {
             ? update(
                 "contact",
                 { id: dupId, isDeleted: Evolu.sqliteTrue },
-                { ownerId: appOwnerId }
+                { ownerId: appOwnerId },
               )
             : update("contact", { id: dupId, isDeleted: Evolu.sqliteTrue });
           if (del.ok) removedContacts += 1;
@@ -1496,7 +1496,7 @@ const App = () => {
           groups: dupGroups.length,
           removed: removedContacts,
           moved: movedMessages,
-        })
+        }),
       );
     } catch (e) {
       console.log("[linky] dedupe contacts failed", e);
@@ -1533,22 +1533,22 @@ const App = () => {
         id: c.id as ContactId,
         name: String(c.name ?? "").trim()
           ? (String(
-              c.name ?? ""
+              c.name ?? "",
             ).trim() as typeof Evolu.NonEmptyString1000.Type)
           : null,
         npub: String(c.npub ?? "").trim()
           ? (String(
-              c.npub ?? ""
+              c.npub ?? "",
             ).trim() as typeof Evolu.NonEmptyString1000.Type)
           : null,
         lnAddress: String(c.lnAddress ?? "").trim()
           ? (String(
-              c.lnAddress ?? ""
+              c.lnAddress ?? "",
             ).trim() as typeof Evolu.NonEmptyString1000.Type)
           : null,
         groupName: String(c.groupName ?? "").trim()
           ? (String(
-              c.groupName ?? ""
+              c.groupName ?? "",
             ).trim() as typeof Evolu.NonEmptyString1000.Type)
           : null,
       };
@@ -1660,7 +1660,7 @@ const App = () => {
         });
       });
     },
-    []
+    [],
   );
 
   React.useEffect(() => {
@@ -1678,7 +1678,7 @@ const App = () => {
         relayUrls.map(async (url) => {
           const ok = await checkRelayConnection(url);
           return [url, ok] as const;
-        })
+        }),
       );
 
       if (cancelled) return;
@@ -1708,7 +1708,7 @@ const App = () => {
     if (relayUrls.length === 0) return "disconnected";
     if (connectedRelayCount > 0) return "connected";
     const anyChecking = relayUrls.some(
-      (url) => (relayStatusByUrl[url] ?? "checking") === "checking"
+      (url) => (relayStatusByUrl[url] ?? "checking") === "checking",
     );
     return anyChecking ? "checking" : "disconnected";
   }, [connectedRelayCount, relayStatusByUrl, relayUrls]);
@@ -1723,9 +1723,8 @@ const App = () => {
     async (urls: string[]) => {
       if (!currentNsec) throw new Error("Missing nsec");
 
-      const { finalizeEvent, getPublicKey, nip19 } = await import(
-        "nostr-tools"
-      );
+      const { finalizeEvent, getPublicKey, nip19 } =
+        await import("nostr-tools");
 
       const decoded = nip19.decode(currentNsec);
       if (decoded.type !== "nsec") throw new Error("Invalid nsec");
@@ -1772,17 +1771,17 @@ const App = () => {
 
       const pool = await getSharedAppNostrPool();
       const publishResults = await Promise.allSettled(
-        pool.publish(relaysToUse, signed)
+        pool.publish(relaysToUse, signed),
       );
       const anySuccess = publishResults.some((r) => r.status === "fulfilled");
       if (!anySuccess) {
         const firstError = publishResults.find(
-          (r): r is PromiseRejectedResult => r.status === "rejected"
+          (r): r is PromiseRejectedResult => r.status === "rejected",
         )?.reason;
         throw new Error(String(firstError ?? "publish failed"));
       }
     },
-    [currentNsec]
+    [currentNsec],
   );
 
   const relayProfileSyncForNpubRef = React.useRef<string | null>(null);
@@ -1823,7 +1822,7 @@ const App = () => {
         const events = await pool.querySync(
           queryRelays,
           { kinds: [10002], authors: [pubkey], limit: 5 },
-          { maxWait: 5000 }
+          { maxWait: 5000 },
         );
 
         const relayListEvents = Array.isArray(events)
@@ -1890,9 +1889,9 @@ const App = () => {
           .selectFrom("cashuToken")
           .selectAll()
           .where("isDeleted", "is not", Evolu.sqliteTrue)
-          .orderBy("createdAt", "desc")
+          .orderBy("createdAt", "desc"),
       ),
-    []
+    [],
   );
 
   const cashuTokens = useQuery(cashuTokensQuery);
@@ -1900,9 +1899,9 @@ const App = () => {
   const cashuTokensAllQuery = useMemo(
     () =>
       evolu.createQuery((db) =>
-        db.selectFrom("cashuToken").selectAll().orderBy("createdAt", "desc")
+        db.selectFrom("cashuToken").selectAll().orderBy("createdAt", "desc"),
       ),
-    []
+    [],
   );
   const cashuTokensAll = useQuery(cashuTokensAllQuery);
 
@@ -1964,7 +1963,7 @@ const App = () => {
               state: "accepted" as typeof Evolu.NonEmptyString100.Type,
               error: null,
             },
-            { ownerId }
+            { ownerId },
           );
 
           if (r.ok) {
@@ -1985,14 +1984,14 @@ const App = () => {
         }
       }, 800);
     },
-    [insert, logPaymentEvent]
+    [insert, logPaymentEvent],
   );
 
   React.useEffect(() => {
     // If we have a remembered accepted token (from previous session) and it's
     // missing in the DB, try to restore it automatically.
     const remembered = String(
-      safeLocalStorageGet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY) ?? ""
+      safeLocalStorageGet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY) ?? "",
     ).trim();
     if (!remembered) return;
     ensureCashuTokenPersisted(remembered);
@@ -2021,7 +2020,7 @@ const App = () => {
         const state = String(
           (status as unknown as { state?: unknown; status?: unknown }).state ??
             (status as unknown as { status?: unknown }).status ??
-            ""
+            "",
         ).toLowerCase();
         const paid =
           state === "paid" ||
@@ -2095,7 +2094,7 @@ const App = () => {
     autoRestoreLastAcceptedTokenAttemptedRef.current = true;
 
     const remembered = String(
-      safeLocalStorageGet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY) ?? ""
+      safeLocalStorageGet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY) ?? "",
     ).trim();
     if (!remembered) return;
 
@@ -2136,7 +2135,7 @@ const App = () => {
         state: "accepted" as typeof Evolu.NonEmptyString100.Type,
         error: null,
       },
-      { ownerId }
+      { ownerId },
     );
 
     if (r.ok) {
@@ -2165,8 +2164,8 @@ const App = () => {
     setMintInfoAll(
       safeLocalStorageGetJson(
         `${LOCAL_MINT_INFO_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
-        [] as LocalMintInfoRow[]
-      )
+        [] as LocalMintInfoRow[],
+      ),
     );
   }, [appOwnerId]);
 
@@ -2175,8 +2174,8 @@ const App = () => {
       .filter(
         (row) =>
           String(
-            (row as unknown as { isDeleted?: unknown }).isDeleted ?? ""
-          ) !== String(Evolu.sqliteTrue)
+            (row as unknown as { isDeleted?: unknown }).isDeleted ?? "",
+          ) !== String(Evolu.sqliteTrue),
       )
       .sort((a, b) => {
         const aSeen = Number(a.lastSeenAtSec ?? 0) || 0;
@@ -2201,31 +2200,31 @@ const App = () => {
       const existingSeen =
         Number(
           (existing as unknown as { lastSeenAtSec?: unknown }).lastSeenAtSec ??
-            0
+            0,
         ) || 0;
       const rowSeen =
         Number(
-          (row as unknown as { lastSeenAtSec?: unknown }).lastSeenAtSec ?? 0
+          (row as unknown as { lastSeenAtSec?: unknown }).lastSeenAtSec ?? 0,
         ) || 0;
 
       const existingHasInfo = Boolean(
         String(
-          (existing as unknown as { infoJson?: unknown }).infoJson ?? ""
-        ).trim().length
+          (existing as unknown as { infoJson?: unknown }).infoJson ?? "",
+        ).trim().length,
       );
       const rowHasInfo = Boolean(
         String((row as unknown as { infoJson?: unknown }).infoJson ?? "").trim()
-          .length
+          .length,
       );
 
       const existingHasFees = Boolean(
         String(
-          (existing as unknown as { feesJson?: unknown }).feesJson ?? ""
-        ).trim().length
+          (existing as unknown as { feesJson?: unknown }).feesJson ?? "",
+        ).trim().length,
       );
       const rowHasFees = Boolean(
         String((row as unknown as { feesJson?: unknown }).feesJson ?? "").trim()
-          .length
+          .length,
       );
 
       // Prefer the row with more metadata, then most recently seen.
@@ -2245,11 +2244,11 @@ const App = () => {
 
         const aSeen =
           Number(
-            (a[1] as unknown as { lastSeenAtSec?: unknown }).lastSeenAtSec ?? 0
+            (a[1] as unknown as { lastSeenAtSec?: unknown }).lastSeenAtSec ?? 0,
           ) || 0;
         const bSeen =
           Number(
-            (b[1] as unknown as { lastSeenAtSec?: unknown }).lastSeenAtSec ?? 0
+            (b[1] as unknown as { lastSeenAtSec?: unknown }).lastSeenAtSec ?? 0,
           ) || 0;
         return bSeen - aSeen;
       })
@@ -2260,7 +2259,7 @@ const App = () => {
     const map = new Map<string, (typeof mintInfoAll)[number]>();
     for (const row of mintInfoAll) {
       const url = normalizeMintUrl(
-        String((row as unknown as { url?: unknown }).url ?? "")
+        String((row as unknown as { url?: unknown }).url ?? ""),
       );
       if (!url) continue;
       const existing = map.get(url) as
@@ -2289,17 +2288,17 @@ const App = () => {
       if (!cleaned) return false;
       return mintInfoAll.some((row) => {
         const url = normalizeMintUrl(
-          String((row as unknown as { url?: unknown }).url ?? "")
+          String((row as unknown as { url?: unknown }).url ?? ""),
         );
         if (url !== cleaned) return false;
         return (
           String(
-            (row as unknown as { isDeleted?: unknown }).isDeleted ?? ""
+            (row as unknown as { isDeleted?: unknown }).isDeleted ?? "",
           ) === String(Evolu.sqliteTrue)
         );
       });
     },
-    [mintInfoAll]
+    [mintInfoAll],
   );
 
   const touchMintInfo = React.useCallback(
@@ -2313,12 +2312,11 @@ const App = () => {
       // can scan it.
       rememberSeenMint(cleaned);
 
-      const existing = mintInfoByUrl.get(cleaned) as
-        | Record<string, unknown> & {
-            id?: unknown;
-            isDeleted?: unknown;
-            firstSeenAtSec?: unknown;
-          };
+      const existing = mintInfoByUrl.get(cleaned) as Record<string, unknown> & {
+        id?: unknown;
+        isDeleted?: unknown;
+        firstSeenAtSec?: unknown;
+      };
       [
         appOwnerId,
         insert,
@@ -2383,12 +2381,12 @@ const App = () => {
 
         safeLocalStorageSetJson(
           `${LOCAL_MINT_INFO_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
-          next
+          next,
         );
         return next;
       });
     },
-    [isMintDeleted, makeLocalId, mintInfoByUrl, normalizeMintUrl]
+    [isMintDeleted, makeLocalId, mintInfoByUrl, normalizeMintUrl],
   );
 
   const encounteredMintUrls = useMemo(() => {
@@ -2397,7 +2395,7 @@ const App = () => {
       const state = String((row as unknown as { state?: unknown }).state ?? "");
       if (state !== "accepted") continue;
       const mint = String(
-        (row as unknown as { mint?: unknown }).mint ?? ""
+        (row as unknown as { mint?: unknown }).mint ?? "",
       ).trim();
       const normalized = normalizeMintUrl(mint);
       if (normalized) set.add(normalized);
@@ -2415,19 +2413,19 @@ const App = () => {
       if (!key) return null;
       return mintRuntimeByUrl[key] ?? null;
     },
-    [mintRuntimeByUrl, normalizeMintUrl]
+    [mintRuntimeByUrl, normalizeMintUrl],
   );
 
   const recordMintRuntime = React.useCallback(
     (
       mintUrl: string,
-      patch: { lastCheckedAtSec: number; latencyMs: number | null }
+      patch: { lastCheckedAtSec: number; latencyMs: number | null },
     ) => {
       const key = normalizeMintUrl(mintUrl);
       if (!key) return;
       setMintRuntimeByUrl((prev) => ({ ...prev, [key]: patch }));
     },
-    [normalizeMintUrl]
+    [normalizeMintUrl],
   );
 
   const extractPpk = (value: unknown): number | null => {
@@ -2559,7 +2557,7 @@ const App = () => {
               };
               safeLocalStorageSetJson(
                 `${LOCAL_MINT_INFO_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
-                next
+                next,
               );
             }
             return next;
@@ -2595,7 +2593,7 @@ const App = () => {
             };
             safeLocalStorageSetJson(
               `${LOCAL_MINT_INFO_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
-              next
+              next,
             );
           }
           return next;
@@ -2622,7 +2620,7 @@ const App = () => {
       recordMintRuntime,
       touchMintInfo,
       setMintInfoAll,
-    ]
+    ],
   );
 
   React.useEffect(() => {
@@ -2717,7 +2715,7 @@ const App = () => {
     const active = mintInfoAll.filter(
       (row) =>
         String((row as unknown as { isDeleted?: unknown }).isDeleted ?? "") !==
-        String(Evolu.sqliteTrue)
+        String(Evolu.sqliteTrue),
     ) as Array<Record<string, unknown> & { id?: unknown; url?: unknown }>;
     if (active.length < 2) return;
 
@@ -2737,7 +2735,7 @@ const App = () => {
           `${k}:${rows
             .map((r) => String(r.id ?? ""))
             .sort()
-            .join(",")}`
+            .join(",")}`,
       )
       .sort()
       .join("|");
@@ -2795,7 +2793,7 @@ const App = () => {
     setMintInfoAll(next);
     safeLocalStorageSetJson(
       `${LOCAL_MINT_INFO_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
-      next
+      next,
     );
   }, [mintInfoAll, normalizeMintUrl]);
 
@@ -2849,8 +2847,8 @@ const App = () => {
     setNostrMessagesLocal(
       safeLocalStorageGetJson(
         `${LOCAL_NOSTR_MESSAGES_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
-        [] as LocalNostrMessage[]
-      )
+        [] as LocalNostrMessage[],
+      ),
     );
   }, [appOwnerId]);
 
@@ -2875,12 +2873,12 @@ const App = () => {
 
         safeLocalStorageSetJson(
           `${LOCAL_NOSTR_MESSAGES_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
-          next
+          next,
         );
         return next;
       });
     },
-    [appOwnerId]
+    [appOwnerId],
   );
 
   const chatContactId = route.kind === "chat" ? route.id : null;
@@ -2933,7 +2931,7 @@ const App = () => {
     showPaidOverlay(
       t("topupOverlay")
         .replace("{amount}", formatInteger(amountSat))
-        .replace("{unit}", displayUnit)
+        .replace("{unit}", displayUnit),
     );
 
     if (topupPaidNavTimerRef.current !== null) {
@@ -3026,11 +3024,11 @@ const App = () => {
         method,
         async (event) => finalizeEvent(event, privBytes),
         true,
-        payload
+        payload,
       );
       return token;
     },
-    [currentNsec]
+    [currentNsec],
   );
 
   const updateNpubCashMint = React.useCallback(
@@ -3057,7 +3055,7 @@ const App = () => {
         throw new Error("npub.cash mint update failed");
       }
     },
-    [currentNpub, currentNsec, makeNip98AuthHeader, normalizeMintUrl]
+    [currentNpub, currentNsec, makeNip98AuthHeader, normalizeMintUrl],
   );
 
   const applyDefaultMintSelection = React.useCallback(
@@ -3102,7 +3100,7 @@ const App = () => {
       setDefaultMintUrl,
       t,
       updateNpubCashMint,
-    ]
+    ],
   );
 
   React.useEffect(() => {
@@ -3167,7 +3165,7 @@ const App = () => {
                   state: "accepted" as typeof Evolu.NonEmptyString100.Type,
                   error: null,
                 },
-                { ownerId }
+                { ownerId },
               )
             : insert("cashuToken", {
                 token: accepted.token as typeof Evolu.NonEmptyString.Type,
@@ -3193,7 +3191,7 @@ const App = () => {
           // glitches.
           safeLocalStorageSet(
             LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY,
-            String(accepted.token ?? "")
+            String(accepted.token ?? ""),
           );
           ensureCashuTokenPersisted(String(accepted.token ?? ""));
 
@@ -3297,10 +3295,10 @@ const App = () => {
                 state: "error" as typeof Evolu.NonEmptyString100.Type,
                 error: message.slice(
                   0,
-                  1000
+                  1000,
                 ) as typeof Evolu.NonEmptyString1000.Type,
               },
-              { ownerId }
+              { ownerId },
             );
           } else {
             insert("cashuToken", {
@@ -3317,7 +3315,7 @@ const App = () => {
               state: "error" as typeof Evolu.NonEmptyString100.Type,
               error: message.slice(
                 0,
-                1000
+                1000,
               ) as typeof Evolu.NonEmptyString1000.Type,
             });
           }
@@ -3342,7 +3340,7 @@ const App = () => {
       showPaidOverlay,
       t,
       upsert,
-    ]
+    ],
   );
 
   const claimNpubCashOnce = React.useCallback(async () => {
@@ -3459,11 +3457,11 @@ const App = () => {
           const blobUrl = await cacheProfileAvatarFromUrl(
             currentNpub,
             picture,
-            { signal: controller.signal }
+            { signal: controller.signal },
           );
           if (cancelled) return;
           setMyProfilePicture(
-            rememberBlobAvatarUrl(currentNpub, blobUrl || picture)
+            rememberBlobAvatarUrl(currentNpub, blobUrl || picture),
           );
         }
 
@@ -3493,7 +3491,7 @@ const App = () => {
             relays: { count: nostrFetchRelays.length, urls: nostrFetchRelays },
             metadataHasPicture: Boolean(
               String(metadata?.picture ?? "").trim() ||
-                String(metadata?.image ?? "").trim()
+              String(metadata?.image ?? "").trim(),
             ),
           });
         }
@@ -3786,7 +3784,7 @@ const App = () => {
         const cached = loadCachedProfilePicture(npub);
         if (cached) {
           setNostrPictureByNpub((prev) =>
-            prev[npub] !== undefined ? prev : { ...prev, [npub]: cached.url }
+            prev[npub] !== undefined ? prev : { ...prev, [npub]: cached.url },
           );
           continue;
         }
@@ -3892,12 +3890,12 @@ const App = () => {
     return [...filtered].sort((a, b) => {
       const aKey = String(a.id ?? "");
       const bKey = String(b.id ?? "");
-      const aAttention = aKey ? contactAttentionById[aKey] ?? 0 : 0;
-      const bAttention = bKey ? contactAttentionById[bKey] ?? 0 : 0;
+      const aAttention = aKey ? (contactAttentionById[aKey] ?? 0) : 0;
+      const bAttention = bKey ? (contactAttentionById[bKey] ?? 0) : 0;
       if (aAttention !== bAttention) return bAttention - aAttention;
       return contactNameCollator.compare(
         String(a.name ?? ""),
-        String(b.name ?? "")
+        String(b.name ?? ""),
       );
     });
   }, [activeGroup, contactAttentionById, contactNameCollator, contacts]);
@@ -3940,7 +3938,7 @@ const App = () => {
             lnAddress: String(prefill.lnAddress ?? ""),
             group: "",
           }
-        : makeEmptyForm()
+        : makeEmptyForm(),
     );
     navigateToNewContact();
   };
@@ -4034,7 +4032,7 @@ const App = () => {
   const buildCashuMintCandidates = React.useCallback(
     (
       mintGroups: Map<string, { tokens: string[]; sum: number }>,
-      preferredMint: string | null
+      preferredMint: string | null,
     ) => {
       const preferred = normalizeMintUrl(preferredMint ?? "");
       return Array.from(mintGroups.entries())
@@ -4047,7 +4045,7 @@ const App = () => {
           const mpp = (mint: string) => {
             const row = mintInfoByUrl.get(normalize(mint));
             return String(
-              (row as unknown as { supportsMpp?: unknown })?.supportsMpp ?? ""
+              (row as unknown as { supportsMpp?: unknown })?.supportsMpp ?? "",
             ) === "1"
               ? 1
               : 0;
@@ -4062,7 +4060,7 @@ const App = () => {
           return b.sum - a.sum;
         });
     },
-    [mintInfoByUrl, normalizeMintUrl]
+    [mintInfoByUrl, normalizeMintUrl],
   );
 
   const paySelectedContact = async () => {
@@ -4078,8 +4076,8 @@ const App = () => {
       contactPayMethod === "cashu" || contactPayMethod === "lightning"
         ? contactPayMethod
         : canPayViaCashuMessage
-        ? "cashu"
-        : "lightning";
+          ? "cashu"
+          : "lightning";
 
     // If cashu-pay is disabled or contact missing npub, force lightning.
     if (method === "cashu" && !canPayViaCashuMessage) {
@@ -4184,9 +4182,8 @@ const App = () => {
           if (useAmount <= 0) continue;
 
           try {
-            const { createSendTokenWithTokensAtMint } = await import(
-              "./cashuSend"
-            );
+            const { createSendTokenWithTokensAtMint } =
+              await import("./cashuSend");
 
             const split = await createSendTokenWithTokensAtMint({
               amount: useAmount,
@@ -4261,7 +4258,7 @@ const App = () => {
           setStatus(
             lastError
               ? `${t("payFailed")}: ${String(lastError)}`
-              : t("payInsufficient")
+              : t("payInsufficient"),
           );
           return;
         }
@@ -4297,12 +4294,12 @@ const App = () => {
             const wrapForMe = wrapEvent(
               baseEvent,
               privBytes,
-              myPubHex
+              myPubHex,
             ) as NostrToolsEvent;
             const wrapForContact = wrapEvent(
               baseEvent,
               privBytes,
-              contactPubHex
+              contactPubHex,
             ) as NostrToolsEvent;
 
             chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
@@ -4313,11 +4310,11 @@ const App = () => {
             ]);
 
             const anySuccess = publishResults.some(
-              (r) => r.status === "fulfilled"
+              (r) => r.status === "fulfilled",
             );
             if (!anySuccess) {
               const firstError = publishResults.find(
-                (r): r is PromiseRejectedResult => r.status === "rejected"
+                (r): r is PromiseRejectedResult => r.status === "rejected",
               )?.reason;
               throw new Error(String(firstError ?? "publish failed"));
             }
@@ -4335,7 +4332,7 @@ const App = () => {
 
           const totalSent = sendBatches.reduce(
             (sum, b) => sum + (Number(b.amount ?? 0) || 0),
-            0
+            0,
           );
           const usedMints = Array.from(new Set(sendBatches.map((b) => b.mint)));
 
@@ -4359,7 +4356,7 @@ const App = () => {
             t("paidSentTo")
               .replace("{amount}", formatInteger(totalSent))
               .replace("{unit}", displayUnit)
-              .replace("{name}", displayName)
+              .replace("{name}", displayName),
           );
 
           setStatus(t("paySuccess"));
@@ -4388,12 +4385,11 @@ const App = () => {
       setStatus(t("payFetchingInvoice"));
       let invoice: string;
       try {
-        const { fetchLnurlInvoiceForLightningAddress } = await import(
-          "./lnurlPay"
-        );
+        const { fetchLnurlInvoiceForLightningAddress } =
+          await import("./lnurlPay");
         invoice = await fetchLnurlInvoiceForLightningAddress(
           lnAddress,
-          amountSat
+          amountSat,
         );
       } catch (e) {
         setStatus(`${t("payFailed")}: ${String(e)}`);
@@ -4495,7 +4491,7 @@ const App = () => {
 
             // Stop here: at this point the mint may have swapped proofs.
             setStatus(
-              `${t("payFailed")}: ${String(result.error ?? "unknown")}`
+              `${t("payFailed")}: ${String(result.error ?? "unknown")}`,
             );
             return;
           }
@@ -4537,7 +4533,7 @@ const App = () => {
             amount: result.paidAmount,
             fee: (() => {
               const feePaid = Number(
-                (result as unknown as { feePaid?: unknown }).feePaid ?? 0
+                (result as unknown as { feePaid?: unknown }).feePaid ?? 0,
               );
               return Number.isFinite(feePaid) && feePaid > 0 ? feePaid : null;
             })(),
@@ -4556,7 +4552,7 @@ const App = () => {
             t("paidSentTo")
               .replace("{amount}", formatInteger(result.paidAmount))
               .replace("{unit}", displayUnit)
-              .replace("{name}", displayName)
+              .replace("{name}", displayName),
           );
 
           setStatus(t("paySuccess"));
@@ -4689,7 +4685,7 @@ const App = () => {
               });
 
               setStatus(
-                `${t("payFailed")}: ${String(result.error ?? "unknown")}`
+                `${t("payFailed")}: ${String(result.error ?? "unknown")}`,
               );
               return;
             }
@@ -4731,7 +4727,7 @@ const App = () => {
               amount: result.paidAmount,
               fee: (() => {
                 const feePaid = Number(
-                  (result as unknown as { feePaid?: unknown }).feePaid ?? 0
+                  (result as unknown as { feePaid?: unknown }).feePaid ?? 0,
                 );
                 return Number.isFinite(feePaid) && feePaid > 0 ? feePaid : null;
               })(),
@@ -4744,7 +4740,7 @@ const App = () => {
             showPaidOverlay(
               t("paidSent")
                 .replace("{amount}", formatInteger(result.paidAmount))
-                .replace("{unit}", displayUnit)
+                .replace("{unit}", displayUnit),
             );
 
             setStatus(t("paySuccess"));
@@ -4784,7 +4780,7 @@ const App = () => {
       showPaidOverlay,
       t,
       update,
-    ]
+    ],
   );
 
   const payLightningAddressWithCashu = React.useCallback(
@@ -4803,7 +4799,7 @@ const App = () => {
         (c) =>
           String(c.lnAddress ?? "")
             .trim()
-            .toLowerCase() === address.toLowerCase()
+            .toLowerCase() === address.toLowerCase(),
       );
       const shouldOfferSave = !knownContact?.id;
 
@@ -4811,12 +4807,11 @@ const App = () => {
         setStatus(t("payFetchingInvoice"));
         let invoice: string;
         try {
-          const { fetchLnurlInvoiceForLightningAddress } = await import(
-            "./lnurlPay"
-          );
+          const { fetchLnurlInvoiceForLightningAddress } =
+            await import("./lnurlPay");
           invoice = await fetchLnurlInvoiceForLightningAddress(
             address,
-            amountSat
+            amountSat,
           );
         } catch (e) {
           setStatus(`${t("payFailed")}: ${String(e)}`);
@@ -4850,7 +4845,8 @@ const App = () => {
             const mpp = (mint: string) => {
               const row = mintInfoByUrl.get(normalize(mint));
               return String(
-                (row as unknown as { supportsMpp?: unknown })?.supportsMpp ?? ""
+                (row as unknown as { supportsMpp?: unknown })?.supportsMpp ??
+                  "",
               ) === "1"
                 ? 1
                 : 0;
@@ -4929,7 +4925,7 @@ const App = () => {
               });
 
               setStatus(
-                `${t("payFailed")}: ${String(result.error ?? "unknown")}`
+                `${t("payFailed")}: ${String(result.error ?? "unknown")}`,
               );
               return;
             }
@@ -4966,7 +4962,7 @@ const App = () => {
             }
 
             const feePaid = Number(
-              (result as unknown as { feePaid?: unknown }).feePaid ?? 0
+              (result as unknown as { feePaid?: unknown }).feePaid ?? 0,
             );
 
             logPaymentEvent({
@@ -4986,8 +4982,8 @@ const App = () => {
                 .replace("{unit}", displayUnit)
                 .replace(
                   "{name}",
-                  String(knownContact?.name ?? "").trim() || address
-                )
+                  String(knownContact?.name ?? "").trim() || address,
+                ),
             );
 
             safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
@@ -5036,14 +5032,14 @@ const App = () => {
       showPaidOverlay,
       t,
       update,
-    ]
+    ],
   );
 
   const contactsOnboardingHasSentMessage = useMemo(() => {
     return nostrMessagesRecent.some(
       (m) =>
         String((m as unknown as { direction?: unknown }).direction ?? "") ===
-        "out"
+        "out",
     );
   }, [nostrMessagesRecent]);
 
@@ -5256,7 +5252,7 @@ const App = () => {
     if (!contactsGuide || !contactsGuideSteps) return null;
     const idx = Math.min(
       Math.max(contactsGuide.step, 0),
-      Math.max(contactsGuideSteps.length - 1, 0)
+      Math.max(contactsGuideSteps.length - 1, 0),
     );
     return {
       idx,
@@ -5411,7 +5407,7 @@ const App = () => {
     back: () => {
       if (!contactsGuide) return;
       setContactsGuide((prev) =>
-        prev ? { ...prev, step: Math.max(prev.step - 1, 0) } : prev
+        prev ? { ...prev, step: Math.max(prev.step - 1, 0) } : prev,
       );
     },
     next: () => {
@@ -5458,7 +5454,7 @@ const App = () => {
       tokenText: string,
       options?: {
         navigateToWallet?: boolean;
-      }
+      },
     ) => {
       const tokenRaw = tokenText.trim();
       if (!tokenRaw) {
@@ -5499,7 +5495,7 @@ const App = () => {
                   state: "accepted" as typeof Evolu.NonEmptyString100.Type,
                   error: null,
                 },
-                { ownerId }
+                { ownerId },
               )
             : insert("cashuToken", {
                 token: accepted.token as typeof Evolu.NonEmptyString.Type,
@@ -5522,7 +5518,7 @@ const App = () => {
 
           safeLocalStorageSet(
             LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY,
-            String(accepted.token ?? "")
+            String(accepted.token ?? ""),
           );
           ensureCashuTokenPersisted(String(accepted.token ?? ""));
 
@@ -5619,10 +5615,10 @@ const App = () => {
                   state: "error" as typeof Evolu.NonEmptyString100.Type,
                   error: message.slice(
                     0,
-                    1000
+                    1000,
                   ) as typeof Evolu.NonEmptyString1000.Type,
                 },
-                { ownerId }
+                { ownerId },
               )
             : insert("cashuToken", {
                 token: tokenRaw as typeof Evolu.NonEmptyString.Type,
@@ -5638,7 +5634,7 @@ const App = () => {
                 state: "error" as typeof Evolu.NonEmptyString100.Type,
                 error: message.slice(
                   0,
-                  1000
+                  1000,
                 ) as typeof Evolu.NonEmptyString1000.Type,
               });
           if (result.ok) {
@@ -5663,18 +5659,18 @@ const App = () => {
       showPaidOverlay,
       t,
       upsert,
-    ]
+    ],
   );
 
   const handleDelete = (id: ContactId) => {
     const existing = contacts.find(
-      (c) => String(c.id ?? "") === String(id as unknown as string)
+      (c) => String(c.id ?? "") === String(id as unknown as string),
     );
     const result = appOwnerId
       ? update(
           "contact",
           { id, isDeleted: Evolu.sqliteTrue },
-          { ownerId: appOwnerId }
+          { ownerId: appOwnerId },
         )
       : update("contact", { id, isDeleted: Evolu.sqliteTrue });
     if (result.ok) {
@@ -5715,7 +5711,7 @@ const App = () => {
       ? update(
           "cashuToken",
           { id, isDeleted: Evolu.sqliteTrue },
-          { ownerId: appOwnerId }
+          { ownerId: appOwnerId },
         )
       : update("cashuToken", { id, isDeleted: Evolu.sqliteTrue });
     if (result.ok) {
@@ -5732,7 +5728,7 @@ const App = () => {
       const row = cashuTokensAll.find(
         (tkn) =>
           String(tkn?.id ?? "") === String(id as unknown as string) &&
-          !tkn?.isDeleted
+          !tkn?.isDeleted,
       );
 
       if (!row) {
@@ -5796,7 +5792,7 @@ const App = () => {
         const total = proofs.reduce(
           (sum: number, p: { amount?: unknown }) =>
             sum + (Number(p?.amount ?? 0) || 0),
-          0
+          0,
         );
         if (!Number.isFinite(total) || total <= 0) {
           throw new Error("Invalid token amount");
@@ -5833,7 +5829,7 @@ const App = () => {
                   const swapped = await wallet.swap(
                     amountToSend,
                     proofs,
-                    typeof counter === "number" ? { counter } : undefined
+                    typeof counter === "number" ? { counter } : undefined,
                   );
 
                   const keepLen = Array.isArray(swapped.keep)
@@ -5850,7 +5846,7 @@ const App = () => {
                   });
 
                   return swapped;
-                }
+                },
               )
             : wallet.swap(amountToSend, proofs);
         };
@@ -5876,7 +5872,7 @@ const App = () => {
 
         const newTotal = newProofs.reduce(
           (sum, p) => sum + (Number(p?.amount ?? 0) || 0),
-          0
+          0,
         );
         if (!Number.isFinite(newTotal) || newTotal <= 0) {
           throw new Error("Swap produced empty token");
@@ -5921,7 +5917,7 @@ const App = () => {
             state: "error" as typeof Evolu.NonEmptyString100.Type,
             error: message.slice(
               0,
-              1000
+              1000,
             ) as typeof Evolu.NonEmptyString1000.Type,
           });
           setStatus(`${t("cashuCheckFailed")}: ${message}`);
@@ -5935,7 +5931,7 @@ const App = () => {
         setCashuIsBusy(false);
       }
     },
-    [cashuIsBusy, cashuTokensAll, pushToast, t, update]
+    [cashuIsBusy, cashuTokensAll, pushToast, t, update],
   );
 
   const requestDeleteCashuToken = (id: CashuTokenId) => {
@@ -5984,7 +5980,7 @@ const App = () => {
 
         const hashBuf = await crypto.subtle.digest(
           "SHA-256",
-          data as unknown as BufferSource
+          data as unknown as BufferSource,
         );
         const hash = new Uint8Array(hashBuf);
         const entropy = hash.slice(0, 16); // 128-bit -> 12 words
@@ -5996,7 +5992,7 @@ const App = () => {
         return null;
       }
     },
-    []
+    [],
   );
 
   React.useEffect(() => {
@@ -6027,7 +6023,7 @@ const App = () => {
       const storedMnemonic = (() => {
         try {
           return String(
-            localStorage.getItem(INITIAL_MNEMONIC_STORAGE_KEY) ?? ""
+            localStorage.getItem(INITIAL_MNEMONIC_STORAGE_KEY) ?? "",
           ).trim();
         } catch {
           return "";
@@ -6041,7 +6037,7 @@ const App = () => {
         if (!derivedMnemonic) return null;
         try {
           const ownerSecret = Evolu.mnemonicToOwnerSecret(
-            derivedMnemonic as unknown as Evolu.Mnemonic
+            derivedMnemonic as unknown as Evolu.Mnemonic,
           ) as unknown;
 
           if (ownerSecret instanceof Uint8Array) {
@@ -6073,8 +6069,8 @@ const App = () => {
         try {
           const appOwner = Evolu.createAppOwner(
             Evolu.mnemonicToOwnerSecret(
-              derivedMnemonic as unknown as Evolu.Mnemonic
-            ) as unknown as Evolu.OwnerSecret
+              derivedMnemonic as unknown as Evolu.Mnemonic,
+            ) as unknown as Evolu.OwnerSecret,
           ) as unknown as { id?: unknown };
 
           const id = String(appOwner?.id ?? "").trim();
@@ -6098,15 +6094,15 @@ const App = () => {
         expectedAppOwnerId: previewId(expectedOwnerId),
         appOwnerMatchesExpected: Boolean(
           evoluOwnerInfo &&
-            expectedOwnerId &&
-            evoluOwnerInfo === expectedOwnerId
+          expectedOwnerId &&
+          evoluOwnerInfo === expectedOwnerId,
         ),
         storedMnemonic: storedMnemonic || null,
         derivedMnemonic: derivedMnemonic ?? null,
         mnemonicMatches: Boolean(
           derivedMnemonic &&
-            storedMnemonic &&
-            derivedMnemonic === storedMnemonic
+          storedMnemonic &&
+          derivedMnemonic === storedMnemonic,
         ),
         ownerSecretPreview,
       });
@@ -6160,7 +6156,7 @@ const App = () => {
       }
       globalThis.location.reload();
     },
-    [deriveEvoluMnemonicFromNsec, pushToast, t]
+    [deriveEvoluMnemonicFromNsec, pushToast, t],
   );
 
   const createNewAccount = React.useCallback(async () => {
@@ -6303,7 +6299,7 @@ const App = () => {
   const openFeedbackContact = React.useCallback(() => {
     const targetNpub = FEEDBACK_CONTACT_NPUB;
     const existing = contacts.find(
-      (c) => String(c.npub ?? "").trim() === targetNpub
+      (c) => String(c.npub ?? "").trim() === targetNpub,
     );
 
     if (existing?.id) {
@@ -6338,7 +6334,7 @@ const App = () => {
     if (!openFeedbackContactPendingRef.current) return;
     const targetNpub = FEEDBACK_CONTACT_NPUB;
     const existing = contacts.find(
-      (c) => String(c.npub ?? "").trim() === targetNpub
+      (c) => String(c.npub ?? "").trim() === targetNpub,
     );
     if (!existing?.id) return;
     openFeedbackContactPendingRef.current = false;
@@ -6426,7 +6422,7 @@ const App = () => {
         ? update(
             "contact",
             { id: editingId, ...payload },
-            { ownerId: appOwnerId }
+            { ownerId: appOwnerId },
           )
         : update("contact", { id: editingId, ...payload });
       if (result.ok) {
@@ -6569,14 +6565,14 @@ const App = () => {
         // ignore
       }
     },
-    [nostrFetchRelays, update]
+    [nostrFetchRelays, update],
   );
 
   React.useEffect(() => {
     const targetNpub = openScannedContactPendingNpubRef.current;
     if (!targetNpub) return;
     const existing = contacts.find(
-      (c) => String(c.npub ?? "").trim() === targetNpub
+      (c) => String(c.npub ?? "").trim() === targetNpub,
     );
     if (!existing?.id) return;
     openScannedContactPendingNpubRef.current = null;
@@ -6636,7 +6632,7 @@ const App = () => {
         // ignore
       }
     },
-    [editingId, form.npub, nostrFetchRelays, route.kind, update]
+    [editingId, form.npub, nostrFetchRelays, route.kind, update],
   );
 
   const exportAppData = React.useCallback(() => {
@@ -6663,8 +6659,8 @@ const App = () => {
             typeof t.amount === "number" && Number.isFinite(t.amount)
               ? t.amount
               : t.amount
-              ? Number(t.amount)
-              : null,
+                ? Number(t.amount)
+                : null,
           state: String(t.state ?? "").trim() || null,
           error: String(t.error ?? "").trim() || null,
         })),
@@ -6792,28 +6788,28 @@ const App = () => {
               payload.name ??
               (String(existing.name ?? "").trim()
                 ? (String(
-                    existing.name ?? ""
+                    existing.name ?? "",
                   ).trim() as typeof Evolu.NonEmptyString1000.Type)
                 : null),
             npub:
               payload.npub ??
               (String(existing.npub ?? "").trim()
                 ? (String(
-                    existing.npub ?? ""
+                    existing.npub ?? "",
                   ).trim() as typeof Evolu.NonEmptyString1000.Type)
                 : null),
             lnAddress:
               payload.lnAddress ??
               (String(existing.lnAddress ?? "").trim()
                 ? (String(
-                    existing.lnAddress ?? ""
+                    existing.lnAddress ?? "",
                   ).trim() as typeof Evolu.NonEmptyString1000.Type)
                 : null),
             groupName:
               payload.groupName ??
               (String(existing.groupName ?? "").trim()
                 ? (String(
-                    existing.groupName ?? ""
+                    existing.groupName ?? "",
                   ).trim() as typeof Evolu.NonEmptyString1000.Type)
                 : null),
           };
@@ -6843,7 +6839,7 @@ const App = () => {
         const state = sanitizeText(rec.state, 100);
         const error = sanitizeText(rec.error, 1000);
         const amountNum = Math.trunc(
-          Number((rec as Record<string, unknown>).amount ?? 0)
+          Number((rec as Record<string, unknown>).amount ?? 0),
         );
         const amount =
           Number.isFinite(amountNum) && amountNum > 0 ? amountNum : null;
@@ -6873,11 +6869,11 @@ const App = () => {
 
       pushToast(
         `${t(
-          "importDone"
-        )} (${addedContacts}/${updatedContacts}/${addedTokens})`
+          "importDone",
+        )} (${addedContacts}/${updatedContacts}/${addedTokens})`,
       );
     },
-    [appOwnerId, cashuTokensAll, contacts, insert, pushToast, t, update]
+    [appOwnerId, cashuTokensAll, contacts, insert, pushToast, t, update],
   );
 
   const handleImportAppDataFilePicked = React.useCallback(
@@ -6890,7 +6886,7 @@ const App = () => {
         pushToast(t("importFailed"));
       }
     },
-    [importAppDataFromText, pushToast, t]
+    [importAppDataFromText, pushToast, t],
   );
 
   const copyNostrKeys = async () => {
@@ -7033,7 +7029,7 @@ const App = () => {
           .filter(Boolean);
 
         const mints = mintsPreFilter.filter(
-          (u) => alwaysIncludeMints.has(u) || !isMintDeleted(u)
+          (u) => alwaysIncludeMints.has(u) || !isMintDeleted(u),
         );
 
         if (mints.length === 0) {
@@ -7098,7 +7094,7 @@ const App = () => {
                 savedCursor,
                 typeof detCounter === "number" && Number.isFinite(detCounter)
                   ? detCounter
-                  : 0
+                  : 0,
               );
               const start = Math.max(0, highWater - restoreRescanWindow);
 
@@ -7145,7 +7141,7 @@ const App = () => {
                   const states = await wallet.checkProofsStates(proofs);
                   return proofs.filter((_, idx) => {
                     const state = String(
-                      (states as any)?.[idx]?.state ?? ""
+                      (states as any)?.[idx]?.state ?? "",
                     ).trim();
                     return state === "UNSPENT";
                   });
@@ -7173,7 +7169,7 @@ const App = () => {
                       : -1,
                     typeof last1 === "number" && Number.isFinite(last1)
                       ? last1
-                      : -1
+                      : -1,
                   );
                   if (maxLast >= 0) {
                     setCashuRestoreCursor({
@@ -7211,7 +7207,7 @@ const App = () => {
                 const chunk = spendableProofs.slice(i, i + chunkSize);
                 const amount = chunk.reduce(
                   (sum: number, p: any) => sum + (Number(p?.amount ?? 0) || 0),
-                  0
+                  0,
                 );
                 if (!Number.isFinite(amount) || amount <= 0) continue;
 
@@ -7262,7 +7258,7 @@ const App = () => {
         pushToast(
           t("restoreDone")
             .replace("{proofs}", String(restoredProofsTotal))
-            .replace("{tokens}", String(createdTokensTotal))
+            .replace("{tokens}", String(createdTokensTotal)),
         );
       } catch (e) {
         pushToast(`${t("restoreFailed")}: ${String(e ?? "unknown")}`);
@@ -7372,7 +7368,7 @@ const App = () => {
         const existing = await pool.querySync(
           NOSTR_RELAYS,
           { kinds: [1059], "#p": [myPubHex], limit: 50 },
-          { maxWait: 5000 }
+          { maxWait: 5000 },
         );
 
         if (!cancelled) {
@@ -7390,7 +7386,7 @@ const App = () => {
               if (cancelled) return;
               processWrap(e);
             },
-          }
+          },
         );
 
         return () => {
@@ -7462,12 +7458,12 @@ const App = () => {
       const wrapForMe = wrapEvent(
         baseEvent,
         privBytes,
-        myPubHex
+        myPubHex,
       ) as NostrToolsEvent;
       const wrapForContact = wrapEvent(
         baseEvent,
         privBytes,
-        contactPubHex
+        contactPubHex,
       ) as NostrToolsEvent;
 
       chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
@@ -7483,7 +7479,7 @@ const App = () => {
       const anySuccess = publishResults.some((r) => r.status === "fulfilled");
       if (!anySuccess) {
         const firstError = publishResults.find(
-          (r): r is PromiseRejectedResult => r.status === "rejected"
+          (r): r is PromiseRejectedResult => r.status === "rejected",
         )?.reason;
         throw new Error(String(firstError ?? "publish failed"));
       }
@@ -7686,7 +7682,7 @@ const App = () => {
       myProfileMetadata?.picture ??
         myProfileMetadata?.image ??
         effectiveProfilePicture ??
-        ""
+        "",
     ).trim();
 
     setProfileEditName(initialName);
@@ -7847,7 +7843,7 @@ const App = () => {
           relays: nostrFetchRelays,
         }).catch(() => null),
         new Promise<null>((resolve) =>
-          window.setTimeout(() => resolve(null), 2000)
+          window.setTimeout(() => resolve(null), 2000),
         ),
       ]);
 
@@ -7980,7 +7976,7 @@ const App = () => {
         }
       }
     },
-    []
+    [],
   );
 
   const onPickProfilePhoto = React.useCallback(async () => {
@@ -7999,7 +7995,7 @@ const App = () => {
         setStatus(`${t("errorPrefix")}: ${String(err ?? "unknown")}`);
       }
     },
-    [createSquareAvatarDataUrl, setStatus, t]
+    [createSquareAvatarDataUrl, setStatus, t],
   );
 
   const saveNewRelay = () => {
@@ -8080,7 +8076,7 @@ const App = () => {
         return null;
       }
     },
-    [getMintOriginAndHost, mintInfoByUrl, normalizeMintUrl]
+    [getMintOriginAndHost, mintInfoByUrl, normalizeMintUrl],
   );
 
   const getMintDuckDuckGoIcon = React.useCallback((host: string | null) => {
@@ -8108,7 +8104,7 @@ const App = () => {
 
   const getMintIconUrl = React.useCallback(
     (
-      mint: unknown
+      mint: unknown,
     ): {
       origin: string | null;
       url: string | null;
@@ -8150,7 +8146,7 @@ const App = () => {
       getMintInfoIconUrl,
       getMintOriginAndHost,
       mintIconUrlByMint,
-    ]
+    ],
   );
 
   const requestDeleteSelectedRelay = () => {
@@ -8187,12 +8183,12 @@ const App = () => {
     const startOfToday = new Date(
       now.getFullYear(),
       now.getMonth(),
-      now.getDate()
+      now.getDate(),
     ).getTime();
     const startOfThatDay = new Date(
       d.getFullYear(),
       d.getMonth(),
-      d.getDate()
+      d.getDate(),
     ).getTime();
 
     const diffDays = Math.round((startOfToday - startOfThatDay) / 86_400_000);
@@ -8335,12 +8331,12 @@ const App = () => {
 
       return null;
     },
-    []
+    [],
   );
 
   const getCashuTokenMessageInfo = React.useCallback(
     (
-      text: string
+      text: string,
     ): {
       tokenRaw: string;
       mintDisplay: string | null;
@@ -8383,7 +8379,7 @@ const App = () => {
         isValid: !known,
       };
     },
-    [cashuTokensAll, extractCashuTokenFromText]
+    [cashuTokensAll, extractCashuTokenFromText],
   );
 
   React.useEffect(() => {
@@ -8398,7 +8394,7 @@ const App = () => {
     const seenWrapIds = new Set<string>();
     for (const m of nostrMessagesRecent) {
       const wrapId = String(
-        (m as unknown as { wrapId?: unknown } | null)?.wrapId ?? ""
+        (m as unknown as { wrapId?: unknown } | null)?.wrapId ?? "",
       ).trim();
       if (wrapId) seenWrapIds.add(wrapId);
     }
@@ -8467,7 +8463,7 @@ const App = () => {
 
             const isOutgoing = senderPub === myPubHex;
             const otherPub = isOutgoing
-              ? pTags.find((p) => p && p !== myPubHex) ?? ""
+              ? (pTags.find((p) => p && p !== myPubHex) ?? "")
               : senderPub;
             if (!otherPub) return;
 
@@ -8501,7 +8497,7 @@ const App = () => {
                 void maybeShowPwaNotification(
                   t("mints"),
                   body,
-                  `cashu_${otherPub}`
+                  `cashu_${otherPub}`,
                 );
               }
             }
@@ -8531,7 +8527,7 @@ const App = () => {
         const existing = await pool.querySync(
           relays,
           { kinds: [1059], "#p": [myPubHex], limit: 50 },
-          { maxWait: 5000 }
+          { maxWait: 5000 },
         );
 
         if (!cancelled) {
@@ -8549,7 +8545,7 @@ const App = () => {
               if (cancelled) return;
               processWrap(e);
             },
-          }
+          },
         );
 
         return () => {
@@ -8755,12 +8751,12 @@ const App = () => {
         const decoded = nip19.decode(normalized);
         if (decoded.type === "npub") {
           const already = contacts.some(
-            (c) => String(c.npub ?? "").trim() === normalized
+            (c) => String(c.npub ?? "").trim() === normalized,
           );
           if (already) {
             setStatus(t("contactExists"));
             const existing = contacts.find(
-              (c) => String(c.npub ?? "").trim() === normalized
+              (c) => String(c.npub ?? "").trim() === normalized,
             );
             closeScan();
             if (existing?.id) {
@@ -8779,7 +8775,7 @@ const App = () => {
                   lnAddress: null,
                   groupName: null,
                 },
-                { ownerId: appOwnerId }
+                { ownerId: appOwnerId },
               )
             : insert("contact", {
                 name: null,
@@ -8808,7 +8804,7 @@ const App = () => {
           (c) =>
             String(c.lnAddress ?? "")
               .trim()
-              .toLowerCase() === needle
+              .toLowerCase() === needle,
         );
 
         closeScan();
@@ -8841,7 +8837,7 @@ const App = () => {
       refreshContactFromNostr,
       saveCashuFromText,
       t,
-    ]
+    ],
   );
 
   // Keep a stable ref so the scan loop effect doesn't restart and stop the
@@ -8925,7 +8921,7 @@ const App = () => {
 
       type BarcodeDetectorInstance = {
         detect: (
-          image: HTMLVideoElement
+          image: HTMLVideoElement,
         ) => Promise<Array<{ rawValue?: unknown }>>;
       };
       type BarcodeDetectorConstructor = new (options: {
@@ -9018,12 +9014,12 @@ const App = () => {
 
       const isOut =
         String(
-          (m as unknown as { direction?: unknown } | null)?.direction ?? ""
+          (m as unknown as { direction?: unknown } | null)?.direction ?? "",
         ) === "out";
       if (isOut) continue;
 
       const content = String(
-        (m as unknown as { content?: unknown } | null)?.content ?? ""
+        (m as unknown as { content?: unknown } | null)?.content ?? "",
       );
       const info = getCashuTokenMessageInfo(content);
       if (!info) continue;
@@ -9055,12 +9051,12 @@ const App = () => {
       if (autoAcceptedChatMessageIdsRef.current.has(id)) continue;
 
       const dir = String(
-        (m as unknown as { direction?: unknown } | null)?.direction ?? ""
+        (m as unknown as { direction?: unknown } | null)?.direction ?? "",
       );
       if (dir !== "in") continue;
 
       const content = String(
-        (m as unknown as { content?: unknown } | null)?.content ?? ""
+        (m as unknown as { content?: unknown } | null)?.content ?? "",
       );
       const info = getCashuTokenMessageInfo(content);
       if (!info) continue;
@@ -9107,7 +9103,7 @@ const App = () => {
 
       const target = last;
       const targetId = String(
-        (target as unknown as { id?: unknown } | null)?.id ?? ""
+        (target as unknown as { id?: unknown } | null)?.id ?? "",
       );
 
       const tryScroll = (attempt: number) => {
@@ -9177,13 +9173,13 @@ const App = () => {
               if (lang === "cs") {
                 return amount
                   ? `Přijato ${formatInteger(
-                      amount
+                      amount,
                     )} ${displayUnit}. Klikni pro zkopírování tokenu.`
                   : "Token přijat. Klikni pro zkopírování tokenu.";
               }
               return amount
                 ? `Received ${formatInteger(
-                    amount
+                    amount,
                   )} ${displayUnit}. Click to copy token.`
                 : "Token accepted. Click to copy token.";
             })()}
@@ -9234,10 +9230,10 @@ const App = () => {
                   {(() => {
                     const format = (
                       template: string,
-                      vars: Record<string, string>
+                      vars: Record<string, string>,
                     ) =>
                       template.replace(/\{(\w+)\}/g, (_m, k: string) =>
-                        String(vars[k] ?? "")
+                        String(vars[k] ?? ""),
                       );
 
                     const name = onboardingStep.derivedName ?? "";
@@ -9462,9 +9458,7 @@ const App = () => {
                         type="checkbox"
                         aria-label={t("unitUseBitcoin")}
                         checked={useBitcoinSymbol}
-                        onChange={(e) =>
-                          setUseBitcoinSymbol(e.target.checked)
-                        }
+                        onChange={(e) => setUseBitcoinSymbol(e.target.checked)}
                       />
                     </label>
                   </div>
@@ -9627,8 +9621,8 @@ const App = () => {
                       nostrRelayOverallStatus === "connected"
                         ? "status-dot connected"
                         : nostrRelayOverallStatus === "checking"
-                        ? "status-dot checking"
-                        : "status-dot disconnected"
+                          ? "status-dot checking"
+                          : "status-dot disconnected"
                     }
                     aria-label={nostrRelayOverallStatus}
                     title={nostrRelayOverallStatus}
@@ -9662,8 +9656,8 @@ const App = () => {
                       evoluOverallStatus === "connected"
                         ? "status-dot connected"
                         : evoluOverallStatus === "checking"
-                        ? "status-dot checking"
-                        : "status-dot disconnected"
+                          ? "status-dot checking"
+                          : "status-dot disconnected"
                     }
                     aria-label={evoluOverallStatus}
                     title={evoluOverallStatus}
@@ -9793,26 +9787,27 @@ const App = () => {
                     const createdAtSec =
                       Number(
                         (ev as unknown as { createdAtSec?: unknown })
-                          .createdAtSec ?? 0
+                          .createdAtSec ?? 0,
                       ) || 0;
                     const direction = String(
-                      (ev as unknown as { direction?: unknown }).direction ?? ""
+                      (ev as unknown as { direction?: unknown }).direction ??
+                        "",
                     ).trim();
                     const status = String(
-                      (ev as unknown as { status?: unknown }).status ?? ""
+                      (ev as unknown as { status?: unknown }).status ?? "",
                     ).trim();
                     const amount =
                       Number(
-                        (ev as unknown as { amount?: unknown }).amount ?? 0
+                        (ev as unknown as { amount?: unknown }).amount ?? 0,
                       ) || 0;
                     const fee =
                       Number((ev as unknown as { fee?: unknown }).fee ?? 0) ||
                       0;
                     const mintText = String(
-                      (ev as unknown as { mint?: unknown }).mint ?? ""
+                      (ev as unknown as { mint?: unknown }).mint ?? "",
                     ).trim();
                     const errorText = String(
-                      (ev as unknown as { error?: unknown }).error ?? ""
+                      (ev as unknown as { error?: unknown }).error ?? "",
                     ).trim();
 
                     const locale = lang === "cs" ? "cs-CZ" : "en-US";
@@ -9842,7 +9837,7 @@ const App = () => {
                       <div
                         key={
                           String(
-                            (ev as unknown as { id?: unknown }).id ?? ""
+                            (ev as unknown as { id?: unknown }).id ?? "",
                           ) || timeLabel
                         }
                       >
@@ -9889,7 +9884,7 @@ const App = () => {
                             <div className="muted" style={{ marginTop: 2 }}>
                               {fee > 0
                                 ? `${t("paymentsHistoryFee")}: ${formatInteger(
-                                    fee
+                                    fee,
                                   )} ${displayUnit}`
                                 : ""}
                             </div>
@@ -10037,7 +10032,7 @@ const App = () => {
                           type="button"
                           onClick={async () => {
                             await applyDefaultMintSelection(
-                              defaultMintUrlDraft
+                              defaultMintUrlDraft,
                             );
                           }}
                         >
@@ -10063,10 +10058,10 @@ const App = () => {
                 const supportsMpp =
                   String(
                     (row as unknown as { supportsMpp?: unknown }).supportsMpp ??
-                      ""
+                      "",
                   ) === "1";
                 const feesJson = String(
-                  (row as unknown as { feesJson?: unknown }).feesJson ?? ""
+                  (row as unknown as { feesJson?: unknown }).feesJson ?? "",
                 ).trim();
 
                 const runtime = getMintRuntime(cleaned);
@@ -10178,8 +10173,8 @@ const App = () => {
                                   const url = normalizeMintUrl(
                                     String(
                                       (row as unknown as { url?: unknown })
-                                        .url ?? ""
-                                    )
+                                        .url ?? "",
+                                    ),
                                   );
                                   if (url !== cleaned) return row;
                                   return {
@@ -10189,9 +10184,9 @@ const App = () => {
                                 });
                                 safeLocalStorageSetJson(
                                   `${LOCAL_MINT_INFO_STORAGE_KEY_PREFIX}.${String(
-                                    ownerId
+                                    ownerId,
                                   )}`,
-                                  next
+                                  next,
                                 );
                                 return next;
                               });
@@ -10213,7 +10208,7 @@ const App = () => {
                       <p className="muted" style={{ marginTop: 10 }}>
                         {t("mintLastChecked")}:{" "}
                         {new Date(lastCheckedAtSec * 1000).toLocaleString(
-                          lang === "cs" ? "cs-CZ" : "en-US"
+                          lang === "cs" ? "cs-CZ" : "en-US",
                         )}
                       </p>
                     ) : null}
@@ -10236,8 +10231,8 @@ const App = () => {
                     const state = offline
                       ? "disconnected"
                       : evoluHasError
-                      ? "disconnected"
-                      : evoluServerStatusByUrl[url] ?? "checking";
+                        ? "disconnected"
+                        : (evoluServerStatusByUrl[url] ?? "checking");
 
                     const isSynced =
                       Boolean(syncOwner) &&
@@ -10261,8 +10256,8 @@ const App = () => {
                               state === "connected"
                                 ? "status-dot connected"
                                 : state === "checking"
-                                ? "status-dot checking"
-                                : "status-dot disconnected"
+                                  ? "status-dot checking"
+                                  : "status-dot disconnected"
                             }
                             aria-label={state}
                             title={state}
@@ -10271,10 +10266,10 @@ const App = () => {
                             {offline
                               ? t("evoluServerOfflineStatus")
                               : isSynced
-                              ? t("evoluSyncOk")
-                              : state === "checking"
-                              ? t("evoluSyncing")
-                              : t("evoluNotSynced")}
+                                ? t("evoluSyncOk")
+                                : state === "checking"
+                                  ? t("evoluSyncing")
+                                  : t("evoluNotSynced")}
                           </span>
                           <span className="settings-chevron" aria-hidden="true">
                             &gt;
@@ -10311,14 +10306,14 @@ const App = () => {
                 <>
                   {(() => {
                     const offline = isEvoluServerOffline(
-                      selectedEvoluServerUrl
+                      selectedEvoluServerUrl,
                     );
                     const state = evoluHasError
                       ? "disconnected"
                       : offline
-                      ? "disconnected"
-                      : evoluServerStatusByUrl[selectedEvoluServerUrl] ??
-                        "checking";
+                        ? "disconnected"
+                        : (evoluServerStatusByUrl[selectedEvoluServerUrl] ??
+                          "checking");
                     const isSynced =
                       Boolean(syncOwner) &&
                       !evoluHasError &&
@@ -10339,8 +10334,8 @@ const App = () => {
                                 state === "connected"
                                   ? "status-dot connected"
                                   : state === "checking"
-                                  ? "status-dot checking"
-                                  : "status-dot disconnected"
+                                    ? "status-dot checking"
+                                    : "status-dot disconnected"
                               }
                               aria-label={state}
                               title={state}
@@ -10359,10 +10354,10 @@ const App = () => {
                               {offline
                                 ? t("evoluServerOfflineStatus")
                                 : isSynced
-                                ? t("evoluSyncOk")
-                                : state === "checking"
-                                ? t("evoluSyncing")
-                                : t("evoluNotSynced")}
+                                  ? t("evoluSyncOk")
+                                  : state === "checking"
+                                    ? t("evoluSyncing")
+                                    : t("evoluNotSynced")}
                             </span>
                           </div>
                         </div>
@@ -10380,7 +10375,7 @@ const App = () => {
                               onClick={() => {
                                 setEvoluServerOffline(
                                   selectedEvoluServerUrl,
-                                  !offline
+                                  !offline,
                                 );
                               }}
                             >
@@ -10440,7 +10435,7 @@ const App = () => {
                     }
                     if (
                       evoluServerUrls.some(
-                        (u) => u.toLowerCase() === normalized.toLowerCase()
+                        (u) => u.toLowerCase() === normalized.toLowerCase(),
                       )
                     ) {
                       pushToast(t("evoluAddServerAlready"));
@@ -10607,7 +10602,7 @@ const App = () => {
                         }
                         onClick={() =>
                           navigateToCashuToken(
-                            token.id as unknown as CashuTokenId
+                            token.id as unknown as CashuTokenId,
                           )
                         }
                         style={{ cursor: "pointer" }}
@@ -10802,7 +10797,7 @@ const App = () => {
                     <span className="contact-avatar-fallback">
                       {getInitials(
                         effectiveProfileName ??
-                          (currentNpub ? formatShortNpub(currentNpub) : "")
+                          (currentNpub ? formatShortNpub(currentNpub) : ""),
                       )}
                     </span>
                   )}
@@ -10817,7 +10812,7 @@ const App = () => {
                   <p className="muted">
                     {formatMiddleDots(
                       String(npubCashLightningAddress ?? ""),
-                      36
+                      36,
                     )}
                   </p>
                 </div>
@@ -10886,8 +10881,8 @@ const App = () => {
                       key === "C"
                         ? t("clearForm")
                         : key === "⌫"
-                        ? t("delete")
-                        : key
+                          ? t("delete")
+                          : key
                     }
                   >
                     {key}
@@ -11015,7 +11010,7 @@ const App = () => {
                 const row = cashuTokensAll.find(
                   (tkn) =>
                     String(tkn?.id ?? "") ===
-                      String(route.id as unknown as string) && !tkn?.isDeleted
+                      String(route.id as unknown as string) && !tkn?.isDeleted,
                 );
 
                 if (!row) {
@@ -11055,7 +11050,7 @@ const App = () => {
                         className="btn-wide"
                         onClick={() =>
                           void checkAndRefreshCashuToken(
-                            route.id as unknown as CashuTokenId
+                            route.id as unknown as CashuTokenId,
                           )
                         }
                         disabled={cashuIsBusy}
@@ -11129,7 +11124,7 @@ const App = () => {
 
                   {(() => {
                     const group = String(
-                      selectedContact.groupName ?? ""
+                      selectedContact.groupName ?? "",
                     ).trim();
                     if (!group) return null;
                     return <p className="contact-detail-group">{group}</p>;
@@ -11216,7 +11211,7 @@ const App = () => {
                     <div className="contact-header-text">
                       {(() => {
                         const ln = String(
-                          selectedContact.lnAddress ?? ""
+                          selectedContact.lnAddress ?? "",
                         ).trim();
                         const npub = String(selectedContact.npub ?? "").trim();
                         const canUseCashu =
@@ -11248,7 +11243,7 @@ const App = () => {
                               onClick={() => {
                                 if (!showToggle) return;
                                 setContactPayMethod((prev) =>
-                                  prev === "lightning" ? "cashu" : "lightning"
+                                  prev === "lightning" ? "cashu" : "lightning",
                                 );
                               }}
                               aria-label={
@@ -11285,8 +11280,8 @@ const App = () => {
                       contactPayMethod === "cashu"
                         ? contactPayMethod
                         : canUseCashu
-                        ? "cashu"
-                        : "lightning";
+                          ? "cashu"
+                          : "lightning";
 
                     if (method === "cashu") {
                       if (!payWithCashuEnabled)
@@ -11375,8 +11370,8 @@ const App = () => {
                             key === "C"
                               ? t("clearForm")
                               : key === "⌫"
-                              ? t("delete")
-                              : key
+                                ? t("delete")
+                                : key
                           }
                         >
                           {key}
@@ -11393,8 +11388,8 @@ const App = () => {
                         contactPayMethod === "cashu"
                           ? contactPayMethod
                           : canUseCashu
-                          ? "cashu"
-                          : "lightning";
+                            ? "cashu"
+                            : "lightning";
                       const amountSat = Number.parseInt(payAmount.trim(), 10);
                       const invalid =
                         (method === "lightning" ? !ln : !canUseCashu) ||
@@ -11452,7 +11447,7 @@ const App = () => {
                 {(() => {
                   const amountSat = Number.parseInt(
                     lnAddressPayAmount.trim(),
-                    10
+                    10,
                   );
                   const display =
                     Number.isFinite(amountSat) && amountSat > 0 ? amountSat : 0;
@@ -11514,8 +11509,8 @@ const App = () => {
                       key === "C"
                         ? t("clearForm")
                         : key === "⌫"
-                        ? t("delete")
-                        : key
+                          ? t("delete")
+                          : key
                     }
                   >
                     {key}
@@ -11526,7 +11521,7 @@ const App = () => {
               {(() => {
                 const amountSat = Number.parseInt(
                   lnAddressPayAmount.trim(),
-                  10
+                  10,
                 );
                 const invalid =
                   !canPayWithCashu ||
@@ -11541,7 +11536,7 @@ const App = () => {
                         if (invalid) return;
                         void payLightningAddressWithCashu(
                           route.lnAddress,
-                          amountSat
+                          amountSat,
                         );
                       }}
                       disabled={cashuIsBusy || invalid}
@@ -11659,7 +11654,7 @@ const App = () => {
                                 {tokenInfo
                                   ? (() => {
                                       const icon = getMintIconUrl(
-                                        tokenInfo.mintUrl
+                                        tokenInfo.mintUrl,
                                       );
                                       const showMintFallback =
                                         icon.failed || !icon.url;
@@ -11678,12 +11673,12 @@ const App = () => {
                                           aria-label={
                                             tokenInfo.mintDisplay
                                               ? `${formatInteger(
-                                                  tokenInfo.amount ?? 0
+                                                  tokenInfo.amount ?? 0,
                                                 )} sat · ${
                                                   tokenInfo.mintDisplay
                                                 }`
                                               : `${formatInteger(
-                                                  tokenInfo.amount ?? 0
+                                                  tokenInfo.amount ?? 0,
                                                 )} sat`
                                           }
                                         >
@@ -11706,7 +11701,7 @@ const App = () => {
                                                       ...prev,
                                                       [icon.origin as string]:
                                                         icon.url,
-                                                    })
+                                                    }),
                                                   );
                                                 }
                                               }}
@@ -11736,7 +11731,7 @@ const App = () => {
                                                       ...prev,
                                                       [icon.origin as string]:
                                                         next ?? null,
-                                                    })
+                                                    }),
                                                   );
                                                 }
                                               }}
@@ -11771,7 +11766,7 @@ const App = () => {
                                           ) : null}
                                           <span>
                                             {formatInteger(
-                                              tokenInfo.amount ?? 0
+                                              tokenInfo.amount ?? 0,
                                             )}
                                           </span>
                                         </span>
@@ -12031,7 +12026,7 @@ const App = () => {
                     .replace(/\{done\}/g, String(contactsOnboardingTasks.done))
                     .replace(
                       /\{total\}/g,
-                      String(contactsOnboardingTasks.total)
+                      String(contactsOnboardingTasks.total),
                     )}
                 </div>
               </div>
@@ -12150,7 +12145,7 @@ const App = () => {
                     const avatarUrl = npub ? nostrPictureByNpub[npub] : null;
                     const initials = getInitials(String(contact.name ?? ""));
                     const hasAttention = Boolean(
-                      contactAttentionById[String(contact.id ?? "")]
+                      contactAttentionById[String(contact.id ?? "")],
                     );
 
                     return (
@@ -12376,7 +12371,7 @@ const App = () => {
                             <span className="contact-avatar-fallback">
                               {getInitials(
                                 effectiveProfileName ??
-                                  formatShortNpub(currentNpub)
+                                  formatShortNpub(currentNpub),
                               )}
                             </span>
                           )}
@@ -12514,7 +12509,7 @@ const App = () => {
                             <span className="contact-avatar-fallback">
                               {getInitials(
                                 effectiveProfileName ??
-                                  formatShortNpub(currentNpub)
+                                  formatShortNpub(currentNpub),
                               )}
                             </span>
                           )}
@@ -12646,7 +12641,7 @@ const App = () => {
                           <span className="contact-avatar-fallback">
                             {getInitials(
                               effectiveProfileName ??
-                                formatShortNpub(currentNpub)
+                                formatShortNpub(currentNpub),
                             )}
                           </span>
                         )}
@@ -12775,7 +12770,8 @@ const App = () => {
                       ) : (
                         <span className="contact-avatar-fallback">
                           {getInitials(
-                            effectiveProfileName ?? formatShortNpub(currentNpub)
+                            effectiveProfileName ??
+                              formatShortNpub(currentNpub),
                           )}
                         </span>
                       )}
@@ -12827,7 +12823,7 @@ const App = () => {
                   {t("saveContactPromptBody")
                     .replace(
                       "{amount}",
-                      formatInteger(postPaySaveContact.amountSat)
+                      formatInteger(postPaySaveContact.amountSat),
                     )
                     .replace("{unit}", displayUnit)
                     .replace("{lnAddress}", postPaySaveContact.lnAddress)}
@@ -12837,7 +12833,7 @@ const App = () => {
                     className="btn-wide"
                     onClick={() => {
                       const ln = String(
-                        postPaySaveContact.lnAddress ?? ""
+                        postPaySaveContact.lnAddress ?? "",
                       ).trim();
 
                       const npub = (() => {
