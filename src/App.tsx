@@ -2692,16 +2692,21 @@ const App = () => {
   React.useEffect(() => {
     if (encounteredMintUrls.length === 0) return;
 
-    const preferredMint = normalizeMintUrl(defaultMintUrl ?? "");
-
     const nowSec = Math.floor(Date.now() / 1000);
-    for (const mintUrl of encounteredMintUrls) {
+    const candidates = new Set<string>();
+    for (const mintUrl of encounteredMintUrls) candidates.add(mintUrl);
+    for (const mintUrl of PRESET_MINTS) candidates.add(mintUrl);
+    if (defaultMintUrl) candidates.add(defaultMintUrl);
+    for (const mint of mintInfoDeduped) {
+      const url = String(mint.canonicalUrl ?? "").trim();
+      if (url) candidates.add(url);
+    }
+
+    for (const mintUrl of candidates) {
       const cleaned = String(mintUrl ?? "")
         .trim()
         .replace(/\/+$/, "");
       if (!cleaned) continue;
-
-      if (preferredMint && cleaned !== preferredMint) continue;
 
       const existing = mintInfoByUrl.get(cleaned) as
         | (Record<string, unknown> & {
@@ -2736,6 +2741,7 @@ const App = () => {
     getMintRuntime,
     isMintDeleted,
     mintInfoByUrl,
+    mintInfoDeduped,
     refreshMintInfo,
     touchMintInfo,
   ]);
@@ -8355,17 +8361,21 @@ const App = () => {
   const getMintInfoIconUrl = React.useCallback(
     (mint: unknown): string | null => {
       const raw = String(mint ?? "").trim();
-      const { origin } = getMintOriginAndHost(raw);
-      const normalized = normalizeMintUrl(origin ?? raw);
+      const normalized = normalizeMintUrl(raw);
       if (!normalized) return null;
       const row = mintInfoByUrl.get(normalized) as
         | (Record<string, unknown> & { infoJson?: unknown })
         | undefined;
       const infoText = String(row?.infoJson ?? "").trim();
       if (!infoText) return null;
-
-      const { origin: normalizedOrigin } = getMintOriginAndHost(normalized);
-      if (!normalizedOrigin) return null;
+      let baseUrl: string | null = null;
+      try {
+        baseUrl = new URL(normalized).toString();
+      } catch {
+        const { origin } = getMintOriginAndHost(normalized);
+        baseUrl = origin ?? null;
+      }
+      if (!baseUrl) return null;
 
       const findIcon = (value: unknown): string | null => {
         if (!value || typeof value !== "object") return null;
@@ -8397,7 +8407,7 @@ const App = () => {
         const rawIcon = findIcon(info);
         if (!rawIcon) return null;
         try {
-          return new URL(rawIcon, normalizedOrigin).toString();
+          return new URL(rawIcon, baseUrl).toString();
         } catch {
           return null;
         }
@@ -8453,11 +8463,11 @@ const App = () => {
         };
       }
 
-      const override = getMintIconOverride(host);
-      if (override) return { origin, url: override, host, failed: false };
-
       const infoIcon = getMintInfoIconUrl(mint);
       if (infoIcon) return { origin, url: infoIcon, host, failed: false };
+
+      const override = getMintIconOverride(host);
+      if (override) return { origin, url: override, host, failed: false };
 
       const duckIcon = getMintDuckDuckGoIcon(host);
       if (duckIcon) return { origin, url: duckIcon, host, failed: false };
