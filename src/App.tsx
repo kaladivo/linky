@@ -1913,6 +1913,60 @@ const App = () => {
     cashuTokensAllRef.current = cashuTokensAll;
   }, [cashuTokensAll]);
 
+  const cashuTokensHydratedRef = React.useRef(false);
+  const cashuTokensHydrationTimeoutRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    if (!appOwnerId) {
+      cashuTokensHydratedRef.current = false;
+      if (cashuTokensHydrationTimeoutRef.current !== null) {
+        window.clearTimeout(cashuTokensHydrationTimeoutRef.current);
+        cashuTokensHydrationTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (cashuTokensAll.length > 0) {
+      cashuTokensHydratedRef.current = true;
+      if (cashuTokensHydrationTimeoutRef.current !== null) {
+        window.clearTimeout(cashuTokensHydrationTimeoutRef.current);
+        cashuTokensHydrationTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (cashuTokensHydrationTimeoutRef.current !== null) {
+      window.clearTimeout(cashuTokensHydrationTimeoutRef.current);
+    }
+    cashuTokensHydrationTimeoutRef.current = window.setTimeout(() => {
+      cashuTokensHydratedRef.current = true;
+      cashuTokensHydrationTimeoutRef.current = null;
+    }, 1200);
+
+    return () => {
+      if (cashuTokensHydrationTimeoutRef.current !== null) {
+        window.clearTimeout(cashuTokensHydrationTimeoutRef.current);
+        cashuTokensHydrationTimeoutRef.current = null;
+      }
+    };
+  }, [appOwnerId, cashuTokensAll]);
+
+  const isCashuTokenStored = React.useCallback((tokenRaw: string): boolean => {
+    const raw = String(tokenRaw ?? "").trim();
+    if (!raw) return false;
+    const current = cashuTokensAllRef.current;
+    return current.some((row) => {
+      const r = row as unknown as {
+        rawToken?: unknown;
+        token?: unknown;
+        isDeleted?: unknown;
+      };
+      if (r.isDeleted) return false;
+      const stored = String(r.rawToken ?? r.token ?? "").trim();
+      return stored && stored === raw;
+    });
+  }, []);
+
   const ensuredTokenRef = React.useRef<Set<string>>(new Set());
   const ensureCashuTokenPersisted = React.useCallback(
     (token: string) => {
@@ -5556,6 +5610,7 @@ const App = () => {
         setStatus(t("pasteEmpty"));
         return;
       }
+      if (isCashuTokenStored(tokenRaw)) return;
       setCashuDraft("");
       setStatus(t("cashuAccepting"));
 
@@ -6473,7 +6528,7 @@ const App = () => {
     const lastText = String(last?.content ?? "").trim();
     const tokenInfo = lastText ? getCashuTokenMessageInfo(lastText) : null;
     const preview =
-      lastText.length > 48 ? `${lastText.slice(0, 48)}…` : lastText;
+      lastText.length > 40 ? `${lastText.slice(0, 40)}…` : lastText;
     const lastTime = last
       ? formatContactMessageTimestamp(last.createdAtSec)
       : "";
@@ -9344,6 +9399,7 @@ const App = () => {
     // Auto-accept Cashu tokens received from others into the wallet.
     if (route.kind !== "chat") return;
     if (cashuIsBusy) return;
+    if (!cashuTokensHydratedRef.current) return;
 
     for (let i = chatMessages.length - 1; i >= 0; i -= 1) {
       const m = chatMessages[i];
@@ -9368,6 +9424,7 @@ const App = () => {
 
       // Only accept if it's not already in our wallet.
       if (!info.isValid) continue;
+      if (isCashuTokenStored(info.tokenRaw)) continue;
 
       void saveCashuFromText(info.tokenRaw);
       break;
@@ -9376,6 +9433,7 @@ const App = () => {
     cashuIsBusy,
     chatMessages,
     getCashuTokenMessageInfo,
+    isCashuTokenStored,
     route.kind,
     saveCashuFromText,
   ]);
@@ -9383,6 +9441,7 @@ const App = () => {
   React.useEffect(() => {
     // Auto-accept Cashu tokens from incoming messages even when chat isn't open.
     if (cashuIsBusy) return;
+    if (!cashuTokensHydratedRef.current) return;
 
     for (const m of nostrMessagesRecent) {
       const id = String((m as unknown as { id?: unknown } | null)?.id ?? "");
@@ -9402,6 +9461,7 @@ const App = () => {
 
       autoAcceptedChatMessageIdsRef.current.add(id);
       if (!info.isValid) continue;
+      if (isCashuTokenStored(info.tokenRaw)) continue;
 
       void saveCashuFromText(info.tokenRaw);
       break;
@@ -9409,6 +9469,7 @@ const App = () => {
   }, [
     cashuIsBusy,
     getCashuTokenMessageInfo,
+    isCashuTokenStored,
     nostrMessagesRecent,
     saveCashuFromText,
   ]);
@@ -10167,8 +10228,14 @@ const App = () => {
                     })();
 
                     const isError = status === "error";
-                    const directionLabel =
-                      direction === "in"
+                    const directionIcon = isError
+                      ? "⚠️"
+                      : direction === "in"
+                        ? "↘︎"
+                        : "↗︎";
+                    const directionLabel = isError
+                      ? t("paymentsHistoryFailed")
+                      : direction === "in"
                         ? t("paymentsHistoryIncoming")
                         : t("paymentsHistoryOutgoing");
 
@@ -10188,15 +10255,27 @@ const App = () => {
                             className="settings-left"
                             style={{ minWidth: 0 }}
                           >
-                            <div style={{ fontWeight: 900, color: "#e2e8f0" }}>
-                              {directionLabel}
-                              {isError
-                                ? ` · ${t("paymentsHistoryFailed")}`
-                                : ""}
+                            <div
+                              style={{
+                                fontWeight: 800,
+                                color: "#e2e8f0",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                fontSize: 13,
+                                lineHeight: 1.2,
+                              }}
+                              aria-label={directionLabel}
+                            >
+                              <span aria-hidden="true">{directionIcon}</span>
                             </div>
                             <div
                               className="muted"
-                              style={{ marginTop: 2, lineHeight: 1.35 }}
+                              style={{
+                                marginTop: 2,
+                                lineHeight: 1.25,
+                                fontSize: 11,
+                              }}
                             >
                               {timeLabel}
                               {mintDisplay ? ` · ${mintDisplay}` : ""}
@@ -10204,7 +10283,11 @@ const App = () => {
                             {isError && errorText ? (
                               <div
                                 className="muted"
-                                style={{ marginTop: 6, lineHeight: 1.35 }}
+                                style={{
+                                  marginTop: 4,
+                                  lineHeight: 1.25,
+                                  fontSize: 11,
+                                }}
                               >
                                 {errorText}
                               </div>
@@ -10213,14 +10296,28 @@ const App = () => {
 
                           <div
                             className="settings-right"
-                            style={{ textAlign: "right" }}
+                            style={{ textAlign: "right", minWidth: 80 }}
                           >
-                            <div style={{ fontWeight: 900, color: "#e2e8f0" }}>
+                            <div
+                              style={{
+                                fontWeight: 800,
+                                color: "#e2e8f0",
+                                fontSize: 13,
+                                lineHeight: 1.2,
+                              }}
+                            >
                               {amount > 0
                                 ? `${formatInteger(amount)} ${displayUnit}`
                                 : "—"}
                             </div>
-                            <div className="muted" style={{ marginTop: 2 }}>
+                            <div
+                              className="muted"
+                              style={{
+                                marginTop: 2,
+                                fontSize: 11,
+                                lineHeight: 1.2,
+                              }}
+                            >
                               {fee > 0
                                 ? `${t("paymentsHistoryFee")}: ${formatInteger(
                                     fee,
@@ -11052,10 +11149,13 @@ const App = () => {
                         ? formatShortNpub(currentNpub)
                         : t("appTitle"))}
                   </h3>
-                  <p className="muted">
+                  <p
+                    className="muted"
+                    style={{ maxWidth: "100%", overflow: "hidden" }}
+                  >
                     {formatMiddleDots(
                       String(npubCashLightningAddress ?? ""),
-                      36,
+                      28,
                     )}
                   </p>
                 </div>
