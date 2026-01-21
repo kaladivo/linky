@@ -80,7 +80,7 @@ export const formatBytes = (bytes: number): string => {
 };
 
 const normalizeUrlList = (
-  urls: ReadonlyArray<unknown>
+  urls: ReadonlyArray<unknown>,
 ): ReadonlyArray<string> => {
   const combined = urls
     .map(normalizeEvoluServerUrl)
@@ -101,7 +101,7 @@ const normalizeUrlList = (
 export const getEvoluDisabledServerUrls = (): ReadonlyArray<string> => {
   const stored = safeLocalStorageGetJson<unknown>(
     EVOLU_SERVERS_DISABLED_STORAGE_KEY,
-    []
+    [],
   );
   const arr = Array.isArray(stored) ? stored : [];
   return normalizeUrlList(arr);
@@ -116,7 +116,7 @@ export const isEvoluServerDisabled = (url: string): boolean => {
 
 export const setEvoluServerDisabled = (
   url: string,
-  disabled: boolean
+  disabled: boolean,
 ): void => {
   const normalized = normalizeEvoluServerUrl(url);
   if (!normalized) return;
@@ -137,15 +137,15 @@ export const toggleEvoluServerDisabled = (url: string): boolean => {
 export const getEvoluConfiguredServerUrls = (): ReadonlyArray<string> => {
   const stored = safeLocalStorageGetJson<unknown>(
     EVOLU_SERVERS_STORAGE_KEY,
-    []
+    [],
   );
   const arr = Array.isArray(stored) ? stored : [];
 
   const defaultRemoved = Boolean(
     safeLocalStorageGetJson<unknown>(
       EVOLU_SERVERS_DEFAULT_REMOVED_STORAGE_KEY,
-      false
-    )
+      false,
+    ),
   );
 
   const combined = [
@@ -188,12 +188,12 @@ export const setEvoluServerUrls = (urls: ReadonlyArray<string>): void => {
 
   // Persist whether defaults are removed, and persist only non-default extras.
   const defaultsLower = new Set(
-    DEFAULT_EVOLU_SERVER_URLS.map((u) => u.toLowerCase())
+    DEFAULT_EVOLU_SERVER_URLS.map((u) => u.toLowerCase()),
   );
   const hasAnyDefault = unique.some((u) => defaultsLower.has(u.toLowerCase()));
   safeLocalStorageSetJson(
     EVOLU_SERVERS_DEFAULT_REMOVED_STORAGE_KEY,
-    !hasAnyDefault
+    !hasAnyDefault,
   );
 
   const extras = unique.filter((u) => !defaultsLower.has(u.toLowerCase()));
@@ -204,7 +204,7 @@ export const EVOLU_SERVER_URLS: ReadonlyArray<string> =
   getEvoluActiveServerUrls();
 
 export const buildEvoluTransports = (
-  urls: ReadonlyArray<string>
+  urls: ReadonlyArray<string>,
 ): ReadonlyArray<{ type: "WebSocket"; url: string }> =>
   urls.map((url) => ({ type: "WebSocket", url }));
 
@@ -215,7 +215,7 @@ export const EVOLU_TRANSPORTS: ReadonlyArray<{
 
 export const probeWebSocketConnection = (
   url: string,
-  timeoutMs = 2500
+  timeoutMs = 2500,
 ): Promise<boolean> => {
   return new Promise<boolean>((resolve) => {
     let ws: WebSocket | null = null;
@@ -265,6 +265,10 @@ export type ContactId = typeof ContactId.Type;
 // Primary key pro CashuToken tabulku
 const CashuTokenId = Evolu.id("CashuToken");
 export type CashuTokenId = typeof CashuTokenId.Type;
+
+// Primary key pro CredoToken tabulku
+const CredoTokenId = Evolu.id("CredoToken");
+export type CredoTokenId = typeof CredoTokenId.Type;
 
 // Primary key pro NostrIdentity tabulku
 const NostrIdentityId = Evolu.id("NostrIdentity");
@@ -334,6 +338,24 @@ export const Schema = {
     // "pending" | "accepted" | "error"
     state: Evolu.nullOr(Evolu.NonEmptyString100),
     error: Evolu.nullOr(Evolu.NonEmptyString1000),
+  },
+
+  credoToken: {
+    id: CredoTokenId,
+    promiseId: Evolu.NonEmptyString1000,
+    issuer: Evolu.NonEmptyString1000,
+    recipient: Evolu.NonEmptyString1000,
+    amount: Evolu.PositiveInt,
+    unit: Evolu.NonEmptyString100,
+    createdAtSec: Evolu.PositiveInt,
+    expiresAtSec: Evolu.PositiveInt,
+    settledAmount: Evolu.nullOr(Evolu.PositiveInt),
+    settledAtSec: Evolu.nullOr(Evolu.PositiveInt),
+    // "in" | "out"
+    direction: Evolu.NonEmptyString100,
+    contactId: Evolu.nullOr(ContactId),
+    // Raw credo token message (wire format)
+    rawToken: Evolu.nullOr(Evolu.NonEmptyString1000),
   },
 
   paymentEvent: {
@@ -426,8 +448,8 @@ const externalAppOwner = initialMnemonic
   ? // Evolu's runtime supports 12-word mnemonics; the types are stricter than runtime.
     (Evolu.createAppOwner(
       Evolu.mnemonicToOwnerSecret(
-        initialMnemonic as unknown as Evolu.Mnemonic
-      ) as unknown as Evolu.OwnerSecret
+        initialMnemonic as unknown as Evolu.Mnemonic,
+      ) as unknown as Evolu.OwnerSecret,
     ) as Evolu.AppOwner)
   : null;
 
@@ -499,6 +521,7 @@ export const getEvoluDatabaseInfo = async (): Promise<{
   const tables = [
     "contact",
     "cashuToken",
+    "credoToken",
     "nostrIdentity",
     "nostrMessage",
     "paymentEvent",
@@ -516,7 +539,9 @@ export const getEvoluDatabaseInfo = async (): Promise<{
     for (const table of tables) {
       try {
         const q = evolu.createQuery((db: any) =>
-          db.selectFrom(table).select((eb: any) => eb.fn.countAll().as("count"))
+          db
+            .selectFrom(table)
+            .select((eb: any) => eb.fn.countAll().as("count")),
         );
         const rows = await evolu.loadQuery(q as any);
         out[table] = Number((rows?.[0] as any)?.count ?? 0);
@@ -585,7 +610,7 @@ export const makeJournalEntriesQuery = (limit = 100) =>
       .selectFrom("journalEntry")
       .selectAll()
       .orderBy("createdAtSec", "desc")
-      .limit(Math.max(1, Math.min(1000, Math.floor(limit))))
+      .limit(Math.max(1, Math.min(1000, Math.floor(limit)))),
   );
 
 export const wipeEvoluStorage = (): void => {
@@ -683,12 +708,12 @@ export const useEvoluServersManager = (opts?: {
 
   const isOffline = useCallback(
     (url: string): boolean => disabledLower.has(url.toLowerCase()),
-    [disabledLower]
+    [disabledLower],
   );
 
   const activeUrls = useMemo(
     () => configuredUrls.filter((u) => !isOffline(u)),
-    [configuredUrls, isOffline]
+    [configuredUrls, isOffline],
   );
 
   const refreshFromStorage = useCallback(() => {
@@ -702,7 +727,7 @@ export const useEvoluServersManager = (opts?: {
       refreshFromStorage();
       setReloadRequired(true);
     },
-    [refreshFromStorage]
+    [refreshFromStorage],
   );
 
   const setServerOffline = useCallback(
@@ -711,7 +736,7 @@ export const useEvoluServersManager = (opts?: {
       refreshFromStorage();
       setReloadRequired(true);
     },
-    [refreshFromStorage]
+    [refreshFromStorage],
   );
 
   useEffect(() => {
@@ -729,7 +754,7 @@ export const useEvoluServersManager = (opts?: {
         activeUrls.map(async (url) => {
           const ok = await probeWebSocketConnection(url, probeTimeoutMs);
           return [url, ok] as const;
-        })
+        }),
       );
 
       if (cancelled) return;

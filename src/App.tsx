@@ -6,8 +6,13 @@ import type { Event as NostrToolsEvent, UnsignedEvent } from "nostr-tools";
 import React, { useMemo, useState } from "react";
 import "./App.css";
 import { parseCashuToken } from "./cashu";
+import {
+  createCredoPromiseToken,
+  createCredoSettlementToken,
+  parseCredoMessage,
+} from "./credo";
 import { deriveDefaultProfile } from "./derivedProfile";
-import type { CashuTokenId, ContactId, MintId } from "./evolu";
+import type { CashuTokenId, ContactId, CredoTokenId, MintId } from "./evolu";
 import {
   createJournalEntryPayload,
   evolu,
@@ -28,6 +33,7 @@ import {
   navigateToContactEdit,
   navigateToContactPay,
   navigateToContacts,
+  navigateToCredoToken,
   navigateToEvoluServer,
   navigateToEvoluServers,
   navigateToLnAddressPay,
@@ -72,6 +78,7 @@ import {
 } from "./utils/cashuDeterministic";
 import { getCashuLib } from "./utils/cashuLib";
 import {
+  ALLOW_PROMISES_STORAGE_KEY,
   CONTACTS_ONBOARDING_DISMISSED_STORAGE_KEY,
   CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY,
   FEEDBACK_CONTACT_NPUB,
@@ -88,6 +95,9 @@ import {
 } from "./utils/storage";
 
 const LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY = "linky.lastAcceptedCashuToken.v1";
+
+const PROMISE_TOTAL_CAP_SAT = 100_000;
+const PROMISE_EXPIRES_SEC = 30 * 24 * 60 * 60;
 
 const LOCAL_PAYMENT_EVENTS_STORAGE_KEY_PREFIX = "linky.local.paymentEvents.v1";
 const LOCAL_NOSTR_MESSAGES_STORAGE_KEY_PREFIX = "linky.local.nostrMessages.v1";
@@ -127,6 +137,23 @@ type LocalMintInfoRow = {
   feesJson?: unknown;
   infoJson?: unknown;
   lastCheckedAtSec?: unknown;
+};
+
+type CredoTokenRow = {
+  id: CredoTokenId;
+  promiseId?: unknown;
+  issuer?: unknown;
+  recipient?: unknown;
+  amount?: unknown;
+  unit?: unknown;
+  createdAtSec?: unknown;
+  expiresAtSec?: unknown;
+  settledAmount?: unknown;
+  settledAtSec?: unknown;
+  direction?: unknown;
+  contactId?: unknown;
+  rawToken?: unknown;
+  isDeleted?: unknown;
 };
 
 type AppNostrPool = {
@@ -201,6 +228,18 @@ const getInitialPayWithCashuEnabled = (): boolean => {
     return v === "1";
   } catch {
     return true;
+  }
+};
+
+const getInitialAllowPromisesEnabled = (): boolean => {
+  try {
+    const raw = localStorage.getItem(ALLOW_PROMISES_STORAGE_KEY);
+    const v = String(raw ?? "").trim();
+    // Default: disabled.
+    if (!v) return false;
+    return v === "1";
+  } catch {
+    return false;
   }
 };
 
@@ -459,6 +498,9 @@ const App = () => {
   );
   const [payWithCashuEnabled, setPayWithCashuEnabled] = useState<boolean>(() =>
     getInitialPayWithCashuEnabled(),
+  );
+  const [allowPromisesEnabled, setAllowPromisesEnabled] = useState<boolean>(
+    () => getInitialAllowPromisesEnabled(),
   );
 
   const displayUnit = useBitcoinSymbol ? "₿" : "sat";
@@ -940,6 +982,16 @@ const App = () => {
     [numberFormatter],
   );
 
+  const formatDurationShort = React.useCallback((seconds: number): string => {
+    const total = Math.max(0, Math.floor(seconds));
+    const days = Math.floor(total / 86400);
+    const hours = Math.floor((total % 86400) / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  }, []);
+
   const contactPayBackToChatRef = React.useRef<ContactId | null>(null);
 
   React.useEffect(() => {
@@ -1235,6 +1287,17 @@ const App = () => {
       // ignore
     }
   }, [payWithCashuEnabled]);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(
+        ALLOW_PROMISES_STORAGE_KEY,
+        allowPromisesEnabled ? "1" : "0",
+      );
+    } catch {
+      // ignore
+    }
+  }, [allowPromisesEnabled]);
 
   React.useEffect(() => {
     if (!pendingDeleteId) return;
@@ -1908,10 +1971,38 @@ const App = () => {
   );
   const cashuTokensAll = useQuery(cashuTokensAllQuery);
 
+  const credoTokensQuery = useMemo(
+    () =>
+      evolu.createQuery((db) =>
+        db
+          .selectFrom("credoToken")
+          .selectAll()
+          .where("isDeleted", "is not", Evolu.sqliteTrue)
+          .orderBy("createdAt", "desc"),
+      ),
+    [],
+  );
+
+  const credoTokens = useQuery(credoTokensQuery);
+
+  const credoTokensAllQuery = useMemo(
+    () =>
+      evolu.createQuery((db) =>
+        db.selectFrom("credoToken").selectAll().orderBy("createdAt", "desc"),
+      ),
+    [],
+  );
+  const credoTokensAll = useQuery(credoTokensAllQuery);
+
   const cashuTokensAllRef = React.useRef(cashuTokensAll);
   React.useEffect(() => {
     cashuTokensAllRef.current = cashuTokensAll;
   }, [cashuTokensAll]);
+
+  const credoTokensAllRef = React.useRef(credoTokensAll);
+  React.useEffect(() => {
+    credoTokensAllRef.current = credoTokensAll;
+  }, [credoTokensAll]);
 
   const cashuTokensHydratedRef = React.useRef(false);
   const cashuTokensHydrationTimeoutRef = React.useRef<number | null>(null);
@@ -1967,11 +2058,85 @@ const App = () => {
     });
   }, []);
 
+  const isCashuTokenKnownAny = React.useCallback(
+    (tokenRaw: string): boolean => {
+      const raw = String(tokenRaw ?? "").trim();
+      if (!raw) return false;
+      const current = cashuTokensAllRef.current;
+      return current.some((row) => {
+        const r = row as unknown as {
+          rawToken?: unknown;
+          token?: unknown;
+        };
+        const stored = String(r.rawToken ?? r.token ?? "").trim();
+        return stored && stored === raw;
+      });
+    },
+    [],
+  );
+
+  const getCredoRemainingAmount = React.useCallback((row: unknown): number => {
+    const r = row as {
+      amount?: unknown;
+      settledAmount?: unknown;
+    };
+    const amount = Number(r.amount ?? 0) || 0;
+    const settled = Number(r.settledAmount ?? 0) || 0;
+    return Math.max(0, amount - settled);
+  }, []);
+
+  const isCredoPromiseKnown = React.useCallback(
+    (promiseId: string): boolean => {
+      const id = String(promiseId ?? "").trim();
+      if (!id) return false;
+      const current = credoTokensAllRef.current;
+      return current.some((row) => {
+        const r = row as { promiseId?: unknown };
+        return String(r.promiseId ?? "").trim() === id;
+      });
+    },
+    [],
+  );
+
+  const applyCredoSettlement = React.useCallback(
+    (args: { promiseId: string; amount: number; settledAtSec: number }) => {
+      const id = String(args.promiseId ?? "").trim();
+      if (!id) return;
+      const current = credoTokensAllRef.current;
+      const row = current.find(
+        (r) => String((r as CredoTokenRow)?.promiseId ?? "") === id,
+      );
+      if (!row) return;
+      const existing = Number((row as CredoTokenRow)?.settledAmount ?? 0) || 0;
+      const totalAmount = Number((row as CredoTokenRow)?.amount ?? 0) || 0;
+      const nextSettled = Math.min(
+        totalAmount,
+        existing + Math.max(0, args.amount),
+      );
+      update("credoToken", {
+        id: (row as CredoTokenRow).id as CredoTokenId,
+        settledAmount:
+          nextSettled > 0
+            ? (nextSettled as typeof Evolu.PositiveInt.Type)
+            : null,
+        settledAtSec:
+          args.settledAtSec > 0
+            ? (Math.floor(args.settledAtSec) as typeof Evolu.PositiveInt.Type)
+            : null,
+      });
+    },
+    [update],
+  );
+
   const ensuredTokenRef = React.useRef<Set<string>>(new Set());
   const ensureCashuTokenPersisted = React.useCallback(
     (token: string) => {
       const remembered = String(token ?? "").trim();
       if (!remembered) return;
+      if (isCashuTokenKnownAny(remembered)) {
+        safeLocalStorageSet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY, "");
+        return;
+      }
 
       // Delay to give Evolu time to reflect the insert in queries.
       window.setTimeout(() => {
@@ -1984,9 +2149,7 @@ const App = () => {
             const r = row as unknown as {
               token?: unknown;
               rawToken?: unknown;
-              isDeleted?: unknown;
             };
-            if (r.isDeleted) return false;
             const stored = String(r.token ?? r.rawToken ?? "").trim();
             return stored && stored === remembered;
           });
@@ -2041,7 +2204,55 @@ const App = () => {
         }
       }, 800);
     },
-    [insert, logPaymentEvent],
+    [insert, isCashuTokenKnownAny, logPaymentEvent],
+  );
+
+  const insertCredoPromise = React.useCallback(
+    (args: {
+      promiseId: string;
+      token: string;
+      issuer: string;
+      recipient: string;
+      amount: number;
+      unit: string;
+      createdAtSec: number;
+      expiresAtSec: number;
+      direction: "in" | "out";
+    }) => {
+      if (isCredoPromiseKnown(args.promiseId)) return;
+      const contactNpub =
+        args.direction === "out" ? args.recipient : args.issuer;
+      const contact = contacts.find(
+        (c) => String(c.npub ?? "").trim() === String(contactNpub ?? "").trim(),
+      );
+
+      const payload = {
+        promiseId: args.promiseId as typeof Evolu.NonEmptyString1000.Type,
+        issuer: args.issuer as typeof Evolu.NonEmptyString1000.Type,
+        recipient: args.recipient as typeof Evolu.NonEmptyString1000.Type,
+        amount: Math.max(
+          1,
+          Math.floor(args.amount),
+        ) as typeof Evolu.PositiveInt.Type,
+        unit: String(args.unit ?? "sat") as typeof Evolu.NonEmptyString100.Type,
+        createdAtSec: Math.max(
+          1,
+          Math.floor(args.createdAtSec),
+        ) as typeof Evolu.PositiveInt.Type,
+        expiresAtSec: Math.max(
+          1,
+          Math.floor(args.expiresAtSec),
+        ) as typeof Evolu.PositiveInt.Type,
+        settledAmount: null,
+        settledAtSec: null,
+        direction: args.direction as typeof Evolu.NonEmptyString100.Type,
+        contactId: contact?.id ?? null,
+        rawToken: args.token as typeof Evolu.NonEmptyString1000.Type,
+      };
+
+      insert("credoToken", payload);
+    },
+    [contacts, insert, isCredoPromiseKnown],
   );
 
   React.useEffect(() => {
@@ -2051,8 +2262,12 @@ const App = () => {
       safeLocalStorageGet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY) ?? "",
     ).trim();
     if (!remembered) return;
+    if (isCashuTokenKnownAny(remembered)) {
+      safeLocalStorageSet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY, "");
+      return;
+    }
     ensureCashuTokenPersisted(remembered);
-  }, [cashuTokensAll, ensureCashuTokenPersisted]);
+  }, [cashuTokensAll, ensureCashuTokenPersisted, isCashuTokenKnownAny]);
 
   React.useEffect(() => {
     if (route.kind !== "topupInvoice") return;
@@ -2154,6 +2369,10 @@ const App = () => {
       safeLocalStorageGet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY) ?? "",
     ).trim();
     if (!remembered) return;
+    if (isCashuTokenKnownAny(remembered)) {
+      safeLocalStorageSet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY, "");
+      return;
+    }
 
     const ownerId = appOwnerIdRef.current;
     if (!ownerId) return;
@@ -2208,7 +2427,7 @@ const App = () => {
       });
       safeLocalStorageSet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY, "");
     }
-  }, [cashuTokensAll, insert, logPaymentEvent]);
+  }, [cashuTokensAll, insert, isCashuTokenKnownAny, logPaymentEvent]);
 
   const [mintInfoAll, setMintInfoAll] = useState<LocalMintInfoRow[]>(() => []);
 
@@ -3011,7 +3230,59 @@ const App = () => {
     }, 0);
   }, [cashuTokens]);
 
+  const credoTokensActive = useMemo(() => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    return credoTokens.filter((row) => {
+      const r = row as CredoTokenRow;
+      const expiresAt = Number(r.expiresAtSec ?? 0) || 0;
+      if (expiresAt && nowSec >= expiresAt) return false;
+      return getCredoRemainingAmount(row) > 0;
+    });
+  }, [credoTokens, getCredoRemainingAmount]);
+
+  const totalCredoOutstandingOut = useMemo(() => {
+    return credoTokensActive.reduce((sum, row) => {
+      const dir = String((row as CredoTokenRow)?.direction ?? "");
+      if (dir !== "out") return sum;
+      return sum + getCredoRemainingAmount(row);
+    }, 0);
+  }, [credoTokensActive, getCredoRemainingAmount]);
+
+  const credoOweTokens = useMemo(
+    () =>
+      credoTokensActive.filter(
+        (row) => String((row as CredoTokenRow)?.direction ?? "") === "out",
+      ),
+    [credoTokensActive],
+  );
+
+  const credoPromisedTokens = useMemo(
+    () =>
+      credoTokensActive.filter(
+        (row) => String((row as CredoTokenRow)?.direction ?? "") === "in",
+      ),
+    [credoTokensActive],
+  );
+
   const canPayWithCashu = cashuBalance > 0;
+
+  const getCredoAvailableForContact = React.useCallback(
+    (contactNpub: string): number => {
+      const npub = String(contactNpub ?? "").trim();
+      if (!npub) return 0;
+      const nowSec = Math.floor(Date.now() / 1000);
+      return credoTokensActive.reduce((sum, row) => {
+        const r = row as CredoTokenRow;
+        const dir = String(r.direction ?? "");
+        const issuer = String(r.issuer ?? "").trim();
+        const expiresAt = Number(r.expiresAtSec ?? 0) || 0;
+        if (expiresAt && nowSec >= expiresAt) return sum;
+        if (dir !== "in" || issuer !== npub) return sum;
+        return sum + getCredoRemainingAmount(row);
+      }, 0);
+    },
+    [credoTokensActive, getCredoRemainingAmount],
+  );
 
   React.useEffect(() => {
     if (route.kind !== "topupInvoice") return;
@@ -4160,7 +4431,8 @@ const App = () => {
 
     const npub = String(selectedContact?.npub ?? "").trim();
     const ln = String(selectedContact?.lnAddress ?? "").trim();
-    const canUseCashu = payWithCashuEnabled && Boolean(npub);
+    const canUseCashu =
+      (payWithCashuEnabled || allowPromisesEnabled) && Boolean(npub);
     const canUseLightning = Boolean(ln);
 
     // Default: prefer Cashu when possible.
@@ -4176,7 +4448,7 @@ const App = () => {
 
     // No usable method; keep a stable default for UI.
     setContactPayMethod("lightning");
-  }, [payWithCashuEnabled, route.kind, selectedContact]);
+  }, [allowPromisesEnabled, payWithCashuEnabled, route.kind, selectedContact]);
 
   const buildCashuMintCandidates = React.useCallback(
     (
@@ -4219,7 +4491,8 @@ const App = () => {
     const lnAddress = String(selectedContact.lnAddress ?? "").trim();
     const contactNpub = String(selectedContact.npub ?? "").trim();
     const canPayViaLightning = Boolean(lnAddress);
-    const canPayViaCashuMessage = payWithCashuEnabled && Boolean(contactNpub);
+    const canPayViaCashuMessage =
+      (payWithCashuEnabled || allowPromisesEnabled) && Boolean(contactNpub);
 
     const method: "cashu" | "lightning" =
       contactPayMethod === "cashu" || contactPayMethod === "lightning"
@@ -4257,17 +4530,36 @@ const App = () => {
       if (!lnAddress) return;
     }
 
-    if (!canPayWithCashu) return;
-
     const amountSat = Number.parseInt(payAmount.trim(), 10);
     if (!Number.isFinite(amountSat) || amountSat <= 0) {
       setStatus(`${t("errorPrefix")}: ${t("payInvalidAmount")}`);
       return;
     }
 
-    if (amountSat > cashuBalance) {
-      setStatus(t("payInsufficient"));
-      return;
+    const availableCredo = contactNpub
+      ? getCredoAvailableForContact(contactNpub)
+      : 0;
+    const useCredoAmount = Math.min(availableCredo, amountSat);
+    const remainingAfterCredo = Math.max(0, amountSat - useCredoAmount);
+
+    if (effectiveMethod === "lightning") {
+      if (remainingAfterCredo > cashuBalance) {
+        setStatus(t("payInsufficient"));
+        return;
+      }
+    } else {
+      const cashuToSend = Math.min(cashuBalance, remainingAfterCredo);
+      const promiseAmount = Math.max(0, remainingAfterCredo - cashuToSend);
+      if (promiseAmount > 0) {
+        if (!allowPromisesEnabled) {
+          setStatus(t("payInsufficient"));
+          return;
+        }
+        if (totalCredoOutstandingOut + promiseAmount > PROMISE_TOTAL_CAP_SAT) {
+          setStatus(t("payPromiseLimit"));
+          return;
+        }
+      }
     }
 
     if (cashuIsBusy) return;
@@ -4275,141 +4567,178 @@ const App = () => {
 
     try {
       if (effectiveMethod === "cashu") {
-        if (!currentNsec) {
+        if (!currentNsec || !currentNpub) {
           setStatus(t("profileMissingNpub"));
           return;
         }
-
-        const amountSat = Number.parseInt(payAmount.trim(), 10);
-        if (!Number.isFinite(amountSat) || amountSat <= 0) {
-          setStatus(`${t("errorPrefix")}: ${t("payInvalidAmount")}`);
-          return;
-        }
-
-        if (amountSat > cashuBalance) {
-          setStatus(t("payInsufficient"));
+        if (!contactNpub) {
+          setStatus(t("chatMissingContactNpub"));
           return;
         }
 
         setStatus(t("payPaying"));
 
-        const mintGroups = new Map<string, { tokens: string[]; sum: number }>();
-        for (const row of cashuTokens) {
-          if (String(row.state ?? "") !== "accepted") continue;
-          const mint = String(row.mint ?? "").trim();
-          if (!mint) continue;
-          const tokenText = String(row.token ?? "").trim();
-          if (!tokenText) continue;
+        const cashuToSend = Math.min(cashuBalance, remainingAfterCredo);
+        const promiseAmount = Math.max(0, remainingAfterCredo - cashuToSend);
 
-          const amount = Number((row.amount ?? 0) as unknown as number) || 0;
-          const entry = mintGroups.get(mint) ?? { tokens: [], sum: 0 };
-          entry.tokens.push(tokenText);
-          entry.sum += amount;
-          mintGroups.set(mint, entry);
-        }
-
-        const preferredMint = normalizeMintUrl(defaultMintUrl ?? "");
-        const candidates = buildCashuMintCandidates(mintGroups, preferredMint);
-
-        if (candidates.length === 0) {
-          setStatus(t("payInsufficient"));
-          return;
-        }
-
-        let lastError: unknown = null;
-        let lastMint: string | null = null;
-        let remaining = amountSat;
         const sendBatches: Array<{
           token: string;
           amount: number;
           mint: string;
         }> = [];
 
-        for (const candidate of candidates) {
-          if (remaining <= 0) break;
-          const useAmount = Math.min(remaining, candidate.sum);
-          if (useAmount <= 0) continue;
+        let lastError: unknown = null;
+        let lastMint: string | null = null;
 
-          try {
-            const { createSendTokenWithTokensAtMint } =
-              await import("./cashuSend");
+        if (cashuToSend > 0) {
+          const mintGroups = new Map<
+            string,
+            { tokens: string[]; sum: number }
+          >();
+          for (const row of cashuTokens) {
+            if (String(row.state ?? "") !== "accepted") continue;
+            const mint = String(row.mint ?? "").trim();
+            if (!mint) continue;
+            const tokenText = String(row.token ?? "").trim();
+            if (!tokenText) continue;
 
-            const split = await createSendTokenWithTokensAtMint({
-              amount: useAmount,
-              mint: candidate.mint,
-              tokens: candidate.tokens,
-              unit: "sat",
-            });
+            const amount = Number((row.amount ?? 0) as unknown as number) || 0;
+            const entry = mintGroups.get(mint) ?? { tokens: [], sum: 0 };
+            entry.tokens.push(tokenText);
+            entry.sum += amount;
+            mintGroups.set(mint, entry);
+          }
 
-            if (!split.ok) {
-              lastError = split.error;
-              lastMint = candidate.mint;
-              continue;
-            }
+          const preferredMint = normalizeMintUrl(defaultMintUrl ?? "");
+          const candidates = buildCashuMintCandidates(
+            mintGroups,
+            preferredMint,
+          );
 
-            sendBatches.push({
-              token: split.sendToken,
-              amount: split.sendAmount,
-              mint: split.mint,
-            });
-            remaining -= split.sendAmount;
+          if (candidates.length === 0) {
+            setStatus(t("payInsufficient"));
+            return;
+          }
 
-            const remainingToken = split.remainingToken;
-            const remainingAmount = split.remainingAmount;
+          let remaining = cashuToSend;
 
-            // Persist remaining change first, then remove old rows for that mint.
-            if (remainingToken && remainingAmount > 0) {
-              const inserted = insert("cashuToken", {
-                token: remainingToken as typeof Evolu.NonEmptyString.Type,
-                rawToken: null,
-                mint: split.mint as typeof Evolu.NonEmptyString1000.Type,
-                unit: split.unit
-                  ? (split.unit as typeof Evolu.NonEmptyString100.Type)
-                  : null,
-                amount:
-                  remainingAmount > 0
-                    ? (remainingAmount as typeof Evolu.PositiveInt.Type)
-                    : null,
-                state: "accepted" as typeof Evolu.NonEmptyString100.Type,
-                error: null,
+          for (const candidate of candidates) {
+            if (remaining <= 0) break;
+            const useAmount = Math.min(remaining, candidate.sum);
+            if (useAmount <= 0) continue;
+
+            try {
+              const { createSendTokenWithTokensAtMint } =
+                await import("./cashuSend");
+
+              const split = await createSendTokenWithTokensAtMint({
+                amount: useAmount,
+                mint: candidate.mint,
+                tokens: candidate.tokens,
+                unit: "sat",
               });
-              if (!inserted.ok) throw inserted.error;
-            }
 
-            for (const row of cashuTokens) {
-              if (
-                String(row.state ?? "") === "accepted" &&
-                String(row.mint ?? "").trim() === candidate.mint
-              ) {
-                update("cashuToken", {
-                  id: row.id as CashuTokenId,
-                  isDeleted: Evolu.sqliteTrue,
-                });
+              if (!split.ok) {
+                lastError = split.error;
+                lastMint = candidate.mint;
+                continue;
               }
+
+              sendBatches.push({
+                token: split.sendToken,
+                amount: split.sendAmount,
+                mint: split.mint,
+              });
+              remaining -= split.sendAmount;
+
+              const remainingToken = split.remainingToken;
+              const remainingAmount = split.remainingAmount;
+
+              if (remainingToken && remainingAmount > 0) {
+                const inserted = insert("cashuToken", {
+                  token: remainingToken as typeof Evolu.NonEmptyString.Type,
+                  rawToken: null,
+                  mint: split.mint as typeof Evolu.NonEmptyString1000.Type,
+                  unit: split.unit
+                    ? (split.unit as typeof Evolu.NonEmptyString100.Type)
+                    : null,
+                  amount:
+                    remainingAmount > 0
+                      ? (remainingAmount as typeof Evolu.PositiveInt.Type)
+                      : null,
+                  state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+                  error: null,
+                });
+                if (!inserted.ok) throw inserted.error;
+              }
+
+              for (const row of cashuTokens) {
+                if (
+                  String(row.state ?? "") === "accepted" &&
+                  String(row.mint ?? "").trim() === candidate.mint
+                ) {
+                  update("cashuToken", {
+                    id: row.id as CashuTokenId,
+                    isDeleted: Evolu.sqliteTrue,
+                  });
+                }
+              }
+            } catch (e) {
+              lastError = e;
+              lastMint = candidate.mint;
             }
-          } catch (e) {
-            lastError = e;
-            lastMint = candidate.mint;
+          }
+
+          if (remaining > 0) {
+            logPaymentEvent({
+              direction: "out",
+              status: "error",
+              amount: amountSat,
+              fee: null,
+              mint: lastMint,
+              unit: "sat",
+              error: String(lastError ?? "insufficient funds"),
+              contactId: selectedContact.id,
+            });
+            setStatus(
+              lastError
+                ? `${t("payFailed")}: ${String(lastError)}`
+                : t("payInsufficient"),
+            );
+            return;
           }
         }
 
-        if (remaining > 0) {
-          logPaymentEvent({
-            direction: "out",
-            status: "error",
-            amount: amountSat,
-            fee: null,
-            mint: lastMint,
-            unit: "sat",
-            error: String(lastError ?? "insufficient funds"),
-            contactId: selectedContact.id,
-          });
-          setStatus(
-            lastError
-              ? `${t("payFailed")}: ${String(lastError)}`
-              : t("payInsufficient"),
-          );
-          return;
+        const settlementPlans: Array<{
+          row: unknown;
+          amount: number;
+        }> = [];
+
+        if (useCredoAmount > 0) {
+          const candidates = credoTokensActive
+            .filter((row) => {
+              const r = row as CredoTokenRow;
+              return (
+                String(r.direction ?? "") === "in" &&
+                String(r.issuer ?? "").trim() === contactNpub
+              );
+            })
+            .sort(
+              (a, b) =>
+                Number((a as CredoTokenRow).expiresAtSec ?? 0) -
+                Number((b as CredoTokenRow).expiresAtSec ?? 0),
+            );
+
+          let remaining = useCredoAmount;
+          for (const row of candidates) {
+            if (remaining <= 0) break;
+            const available = getCredoRemainingAmount(row);
+            if (available <= 0) continue;
+            const useAmount = Math.min(available, remaining);
+            if (useAmount <= 0) continue;
+            settlementPlans.push({ row, amount: useAmount });
+            remaining -= useAmount;
+          }
         }
 
         try {
@@ -4427,8 +4756,62 @@ const App = () => {
 
           const pool = await getSharedAppNostrPool();
 
+          const messageTexts: string[] = [];
+          const nowSec = Math.floor(Date.now() / 1000);
+
+          for (const plan of settlementPlans) {
+            const row = plan.row as CredoTokenRow;
+            const promiseId = String(row.promiseId ?? "").trim();
+            const issuer = String(row.issuer ?? "").trim();
+            const recipient = String(row.recipient ?? "").trim() || currentNpub;
+            if (!promiseId || !issuer || !recipient) continue;
+            const settlement = createCredoSettlementToken({
+              recipientNsec: privBytes,
+              promiseId,
+              issuerNpub: issuer,
+              recipientNpub: recipient,
+              amount: plan.amount,
+              unit: "sat",
+              settledAtSec: nowSec,
+            });
+            messageTexts.push(settlement.token);
+            applyCredoSettlement({
+              promiseId,
+              amount: plan.amount,
+              settledAtSec: nowSec,
+            });
+          }
+
+          if (promiseAmount > 0) {
+            const expiresAtSec = nowSec + PROMISE_EXPIRES_SEC;
+            const promiseCreated = createCredoPromiseToken({
+              issuerNpub: currentNpub,
+              issuerNsec: privBytes,
+              recipientNpub: contactNpub,
+              amount: promiseAmount,
+              unit: "sat",
+              expiresAtSec,
+              createdAtSec: nowSec,
+            });
+            messageTexts.push(promiseCreated.token);
+            insertCredoPromise({
+              promiseId: promiseCreated.promiseId,
+              token: promiseCreated.token,
+              issuer: currentNpub,
+              recipient: contactNpub,
+              amount: promiseAmount,
+              unit: "sat",
+              createdAtSec: nowSec,
+              expiresAtSec,
+              direction: "out",
+            });
+          }
+
           for (const batch of sendBatches) {
-            const messageText = String(batch.token ?? "").trim();
+            messageTexts.unshift(String(batch.token ?? "").trim());
+          }
+
+          for (const messageText of messageTexts) {
             const baseEvent = {
               created_at: Math.ceil(Date.now() / 1e3),
               kind: 14,
@@ -4479,18 +4862,19 @@ const App = () => {
             });
           }
 
-          const totalSent = sendBatches.reduce(
-            (sum, b) => sum + (Number(b.amount ?? 0) || 0),
-            0,
-          );
           const usedMints = Array.from(new Set(sendBatches.map((b) => b.mint)));
 
           logPaymentEvent({
             direction: "out",
             status: "ok",
-            amount: totalSent,
+            amount: amountSat,
             fee: null,
-            mint: usedMints.length === 1 ? usedMints[0] : "multi",
+            mint:
+              usedMints.length === 0
+                ? null
+                : usedMints.length === 1
+                  ? usedMints[0]
+                  : "multi",
             unit: "sat",
             error: null,
             contactId: selectedContact.id,
@@ -4503,7 +4887,7 @@ const App = () => {
 
           showPaidOverlay(
             t("paidSentTo")
-              .replace("{amount}", formatInteger(totalSent))
+              .replace("{amount}", formatInteger(amountSat))
               .replace("{unit}", displayUnit)
               .replace("{name}", displayName),
           );
@@ -4531,6 +4915,165 @@ const App = () => {
         return;
       }
 
+      if (remainingAfterCredo <= 0) {
+        try {
+          if (!currentNsec || !currentNpub || !contactNpub) {
+            setStatus(t("profileMissingNpub"));
+            return;
+          }
+
+          const settlementPlans: Array<{ row: unknown; amount: number }> = [];
+          if (useCredoAmount > 0) {
+            const candidates = credoTokensActive
+              .filter((row) => {
+                const r = row as CredoTokenRow;
+                return (
+                  String(r.direction ?? "") === "in" &&
+                  String(r.issuer ?? "").trim() === contactNpub
+                );
+              })
+              .sort(
+                (a, b) =>
+                  Number((a as CredoTokenRow).expiresAtSec ?? 0) -
+                  Number((b as CredoTokenRow).expiresAtSec ?? 0),
+              );
+
+            let remaining = useCredoAmount;
+            for (const row of candidates) {
+              if (remaining <= 0) break;
+              const available = getCredoRemainingAmount(row);
+              if (available <= 0) continue;
+              const useAmount = Math.min(available, remaining);
+              if (useAmount <= 0) continue;
+              settlementPlans.push({ row, amount: useAmount });
+              remaining -= useAmount;
+            }
+          }
+
+          const { nip19, getPublicKey } = await import("nostr-tools");
+          const { wrapEvent } = await import("nostr-tools/nip59");
+
+          const decodedMe = nip19.decode(currentNsec);
+          if (decodedMe.type !== "nsec") throw new Error("invalid nsec");
+          const privBytes = decodedMe.data as Uint8Array;
+          const myPubHex = getPublicKey(privBytes);
+
+          const decodedContact = nip19.decode(contactNpub);
+          if (decodedContact.type !== "npub") throw new Error("invalid npub");
+          const contactPubHex = decodedContact.data as string;
+
+          const pool = await getSharedAppNostrPool();
+          const nowSec = Math.floor(Date.now() / 1000);
+          const messageTexts: string[] = [];
+
+          for (const plan of settlementPlans) {
+            const row = plan.row as CredoTokenRow;
+            const promiseId = String(row.promiseId ?? "").trim();
+            const issuer = String(row.issuer ?? "").trim();
+            const recipient = String(row.recipient ?? "").trim() || currentNpub;
+            if (!promiseId || !issuer || !recipient) continue;
+            const settlement = createCredoSettlementToken({
+              recipientNsec: privBytes,
+              promiseId,
+              issuerNpub: issuer,
+              recipientNpub: recipient,
+              amount: plan.amount,
+              unit: "sat",
+              settledAtSec: nowSec,
+            });
+            messageTexts.push(settlement.token);
+            applyCredoSettlement({
+              promiseId,
+              amount: plan.amount,
+              settledAtSec: nowSec,
+            });
+          }
+
+          for (const messageText of messageTexts) {
+            const baseEvent = {
+              created_at: Math.ceil(Date.now() / 1e3),
+              kind: 14,
+              pubkey: myPubHex,
+              tags: [
+                ["p", contactPubHex],
+                ["p", myPubHex],
+              ],
+              content: messageText,
+            } satisfies UnsignedEvent;
+
+            const wrapForMe = wrapEvent(
+              baseEvent,
+              privBytes,
+              myPubHex,
+            ) as NostrToolsEvent;
+            const wrapForContact = wrapEvent(
+              baseEvent,
+              privBytes,
+              contactPubHex,
+            ) as NostrToolsEvent;
+
+            chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
+
+            const publishResults = await Promise.allSettled([
+              ...pool.publish(NOSTR_RELAYS, wrapForMe),
+              ...pool.publish(NOSTR_RELAYS, wrapForContact),
+            ]);
+
+            const anySuccess = publishResults.some(
+              (r) => r.status === "fulfilled",
+            );
+            if (!anySuccess) {
+              const firstError = publishResults.find(
+                (r): r is PromiseRejectedResult => r.status === "rejected",
+              )?.reason;
+              throw new Error(String(firstError ?? "publish failed"));
+            }
+
+            appendLocalNostrMessage({
+              contactId: String(selectedContact.id),
+              direction: "out",
+              content: messageText,
+              wrapId: String(wrapForMe.id ?? ""),
+              rumorId: null,
+              pubkey: myPubHex,
+              createdAtSec: baseEvent.created_at,
+            });
+          }
+
+          logPaymentEvent({
+            direction: "out",
+            status: "ok",
+            amount: amountSat,
+            fee: null,
+            mint: null,
+            unit: "sat",
+            error: null,
+            contactId: selectedContact.id,
+          });
+
+          const displayName =
+            String(selectedContact.name ?? "").trim() ||
+            String(selectedContact.lnAddress ?? "").trim() ||
+            t("appTitle");
+
+          showPaidOverlay(
+            t("paidSentTo")
+              .replace("{amount}", formatInteger(amountSat))
+              .replace("{unit}", displayUnit)
+              .replace("{name}", displayName),
+          );
+
+          setStatus(t("paySuccess"));
+          safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
+          setContactsOnboardingHasPaid(true);
+          navigateToChat(selectedContact.id);
+          return;
+        } catch (e) {
+          setStatus(`${t("payFailed")}: ${String(e ?? "unknown")}`);
+          return;
+        }
+      }
+
       setStatus(t("payFetchingInvoice"));
       let invoice: string;
       try {
@@ -4538,7 +5081,7 @@ const App = () => {
           await import("./lnurlPay");
         invoice = await fetchLnurlInvoiceForLightningAddress(
           lnAddress,
-          amountSat,
+          remainingAfterCredo,
         );
       } catch (e) {
         setStatus(`${t("payFailed")}: ${String(e)}`);
@@ -4676,10 +5219,137 @@ const App = () => {
             }
           }
 
+          if (useCredoAmount > 0) {
+            try {
+              if (!currentNsec || !currentNpub || !contactNpub) {
+                throw new Error("missing credo context");
+              }
+
+              const settlementPlans: Array<{ row: unknown; amount: number }> =
+                [];
+              const candidates = credoTokensActive
+                .filter((row) => {
+                  const r = row as CredoTokenRow;
+                  return (
+                    String(r.direction ?? "") === "in" &&
+                    String(r.issuer ?? "").trim() === contactNpub
+                  );
+                })
+                .sort(
+                  (a, b) =>
+                    Number((a as CredoTokenRow).expiresAtSec ?? 0) -
+                    Number((b as CredoTokenRow).expiresAtSec ?? 0),
+                );
+
+              let remaining = useCredoAmount;
+              for (const row of candidates) {
+                if (remaining <= 0) break;
+                const available = getCredoRemainingAmount(row);
+                if (available <= 0) continue;
+                const useAmount = Math.min(available, remaining);
+                if (useAmount <= 0) continue;
+                settlementPlans.push({ row, amount: useAmount });
+                remaining -= useAmount;
+              }
+
+              const { nip19, getPublicKey } = await import("nostr-tools");
+              const { wrapEvent } = await import("nostr-tools/nip59");
+
+              const decodedMe = nip19.decode(currentNsec);
+              if (decodedMe.type !== "nsec") throw new Error("invalid nsec");
+              const privBytes = decodedMe.data as Uint8Array;
+              const myPubHex = getPublicKey(privBytes);
+
+              const decodedContact = nip19.decode(contactNpub);
+              if (decodedContact.type !== "npub")
+                throw new Error("invalid npub");
+              const contactPubHex = decodedContact.data as string;
+
+              const pool = await getSharedAppNostrPool();
+              const nowSec = Math.floor(Date.now() / 1000);
+
+              for (const plan of settlementPlans) {
+                const row = plan.row as CredoTokenRow;
+                const promiseId = String(row.promiseId ?? "").trim();
+                const issuer = String(row.issuer ?? "").trim();
+                const recipient =
+                  String(row.recipient ?? "").trim() || currentNpub;
+                if (!promiseId || !issuer || !recipient) continue;
+                const settlement = createCredoSettlementToken({
+                  recipientNsec: privBytes,
+                  promiseId,
+                  issuerNpub: issuer,
+                  recipientNpub: recipient,
+                  amount: plan.amount,
+                  unit: "sat",
+                  settledAtSec: nowSec,
+                });
+
+                const messageText = settlement.token;
+                const baseEvent = {
+                  created_at: Math.ceil(Date.now() / 1e3),
+                  kind: 14,
+                  pubkey: myPubHex,
+                  tags: [
+                    ["p", contactPubHex],
+                    ["p", myPubHex],
+                  ],
+                  content: messageText,
+                } satisfies UnsignedEvent;
+
+                const wrapForMe = wrapEvent(
+                  baseEvent,
+                  privBytes,
+                  myPubHex,
+                ) as NostrToolsEvent;
+                const wrapForContact = wrapEvent(
+                  baseEvent,
+                  privBytes,
+                  contactPubHex,
+                ) as NostrToolsEvent;
+
+                chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
+
+                const publishResults = await Promise.allSettled([
+                  ...pool.publish(NOSTR_RELAYS, wrapForMe),
+                  ...pool.publish(NOSTR_RELAYS, wrapForContact),
+                ]);
+
+                const anySuccess = publishResults.some(
+                  (r) => r.status === "fulfilled",
+                );
+                if (!anySuccess) {
+                  const firstError = publishResults.find(
+                    (r): r is PromiseRejectedResult => r.status === "rejected",
+                  )?.reason;
+                  throw new Error(String(firstError ?? "publish failed"));
+                }
+
+                appendLocalNostrMessage({
+                  contactId: String(selectedContact.id),
+                  direction: "out",
+                  content: messageText,
+                  wrapId: String(wrapForMe.id ?? ""),
+                  rumorId: null,
+                  pubkey: myPubHex,
+                  createdAtSec: baseEvent.created_at,
+                });
+
+                applyCredoSettlement({
+                  promiseId,
+                  amount: plan.amount,
+                  settledAtSec: nowSec,
+                });
+              }
+            } catch (e) {
+              pushToast(`${t("payFailed")}: ${String(e ?? "unknown")}`);
+            }
+          }
+
           logPaymentEvent({
             direction: "out",
             status: "ok",
-            amount: result.paidAmount,
+            amount: amountSat,
             fee: (() => {
               const feePaid = Number(
                 (result as unknown as { feePaid?: unknown }).feePaid ?? 0,
@@ -4699,7 +5369,7 @@ const App = () => {
 
           showPaidOverlay(
             t("paidSentTo")
-              .replace("{amount}", formatInteger(result.paidAmount))
+              .replace("{amount}", formatInteger(amountSat))
               .replace("{unit}", displayUnit)
               .replace("{name}", displayName),
           );
@@ -5802,6 +6472,7 @@ const App = () => {
       enqueueCashuOp,
       formatInteger,
       insert,
+      isCashuTokenStored,
       logPaymentEvent,
       mintInfoByUrl,
       refreshMintInfo,
@@ -5857,6 +6528,9 @@ const App = () => {
   };
 
   const handleDeleteCashuToken = (id: CashuTokenId) => {
+    const row = cashuTokensAll.find(
+      (tkn) => String(tkn?.id ?? "") === String(id as unknown as string),
+    );
     const result = appOwnerId
       ? update(
           "cashuToken",
@@ -5865,6 +6539,16 @@ const App = () => {
         )
       : update("cashuToken", { id, isDeleted: Evolu.sqliteTrue });
     if (result.ok) {
+      const token = String(row?.token ?? "").trim();
+      const rawToken = String(row?.rawToken ?? "").trim();
+      if (token || rawToken) {
+        const remembered = String(
+          safeLocalStorageGet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY) ?? "",
+        ).trim();
+        if (remembered && (remembered === token || remembered === rawToken)) {
+          safeLocalStorageSet(LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY, "");
+        }
+      }
       setStatus(t("cashuDeleted"));
       setPendingCashuDeleteId(null);
       navigateToWallet();
@@ -6527,6 +7211,7 @@ const App = () => {
     const last = contactId ? lastMessageByContactId.get(contactId) : null;
     const lastText = String(last?.content ?? "").trim();
     const tokenInfo = lastText ? getCashuTokenMessageInfo(lastText) : null;
+    const credoInfo = lastText ? getCredoTokenMessageInfo(lastText) : null;
     const preview =
       lastText.length > 40 ? `${lastText.slice(0, 40)}…` : lastText;
     const lastTime = last
@@ -6597,7 +7282,58 @@ const App = () => {
                 </span>
               ) : null}
             </div>
-            {tokenInfo ? (
+            {credoInfo ? (
+              (() => {
+                const avatar = avatarUrl;
+                return (
+                  <div
+                    className="muted"
+                    style={{
+                      fontSize: 12,
+                      marginTop: 4,
+                      lineHeight: 1.2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    {directionSymbol ? <span>{directionSymbol}</span> : null}
+                    <span
+                      className={
+                        credoInfo.isValid
+                          ? "pill pill-credo"
+                          : "pill pill-muted"
+                      }
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "1px 4px",
+                        fontSize: 10,
+                        lineHeight: "10px",
+                      }}
+                      aria-label={`${formatInteger(credoInfo.amount ?? 0)} sat`}
+                    >
+                      {avatar ? (
+                        <img
+                          src={avatar}
+                          alt=""
+                          width={14}
+                          height={14}
+                          style={{
+                            borderRadius: 9999,
+                            objectFit: "cover",
+                          }}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : null}
+                      <span>{formatInteger(credoInfo.amount ?? 0)}</span>
+                    </span>
+                  </div>
+                );
+              })()
+            ) : tokenInfo ? (
               (() => {
                 const icon = getMintIconUrl(tokenInfo.mintUrl);
                 return (
@@ -8148,6 +8884,7 @@ const App = () => {
     if (route.kind === "lnAddressPay") return t("pay");
     if (route.kind === "cashuTokenNew") return t("cashuToken");
     if (route.kind === "cashuToken") return t("cashuToken");
+    if (route.kind === "credoToken") return t("credoTokenTitle");
     if (route.kind === "advanced") return t("advanced");
     if (route.kind === "paymentsHistory") return t("paymentsHistory");
     if (route.kind === "mints") return t("mints");
@@ -8776,6 +9513,50 @@ const App = () => {
     [cashuTokensAll, extractCashuTokenFromText],
   );
 
+  const getCredoTokenMessageInfo = React.useCallback(
+    (
+      text: string,
+    ): {
+      tokenRaw: string;
+      amount: number | null;
+      isValid: boolean;
+      kind: "promise" | "settlement";
+      issuer: string | null;
+      recipient: string | null;
+      expiresAtSec: number | null;
+    } | null => {
+      const parsed = parseCredoMessage(text);
+      if (!parsed) return null;
+      if (parsed.kind === "promise") {
+        const amount = Number(parsed.promise.amount ?? 0) || 0;
+        return {
+          tokenRaw: parsed.token,
+          amount: amount > 0 ? amount : null,
+          isValid: parsed.isValid,
+          kind: "promise",
+          issuer: String(parsed.promise.issuer ?? "").trim() || null,
+          recipient: String(parsed.promise.recipient ?? "").trim() || null,
+          expiresAtSec:
+            Number(parsed.promise.expires_at ?? 0) > 0
+              ? Number(parsed.promise.expires_at)
+              : null,
+        };
+      }
+
+      const amount = Number(parsed.settlement.amount ?? 0) || 0;
+      return {
+        tokenRaw: parsed.token,
+        amount: amount > 0 ? amount : null,
+        isValid: parsed.isValid,
+        kind: "settlement",
+        issuer: String(parsed.settlement.issuer ?? "").trim() || null,
+        recipient: String(parsed.settlement.recipient ?? "").trim() || null,
+        expiresAtSec: null,
+      };
+    },
+    [],
+  );
+
   React.useEffect(() => {
     // Best-effort: keep syncing NIP-17 inbox when not inside a chat so we can
     // show PWA notifications for new messages / incoming Cashu tokens.
@@ -8884,6 +9665,7 @@ const App = () => {
               void maybeShowPwaNotification(title, content, `msg_${otherPub}`);
 
               const tokenInfo = getCashuTokenMessageInfo(content);
+              const credoInfo = getCredoTokenMessageInfo(content);
               if (tokenInfo?.isValid) {
                 const body = tokenInfo.amount
                   ? `${tokenInfo.amount} sat`
@@ -8892,6 +9674,15 @@ const App = () => {
                   t("mints"),
                   body,
                   `cashu_${otherPub}`,
+                );
+              } else if (credoInfo?.isValid) {
+                const body = credoInfo.amount
+                  ? `${credoInfo.amount} sat`
+                  : t("credoPromisedToMe");
+                void maybeShowPwaNotification(
+                  t("credoPromisedToMe"),
+                  body,
+                  `credo_${otherPub}`,
                 );
               }
             }
@@ -8963,6 +9754,8 @@ const App = () => {
     contacts,
     currentNsec,
     getCashuTokenMessageInfo,
+    getCredoTokenMessageInfo,
+    appendLocalNostrMessage,
     insert,
     maybeShowPwaNotification,
     nostrFetchRelays,
@@ -9417,13 +10210,50 @@ const App = () => {
         (m as unknown as { content?: unknown } | null)?.content ?? "",
       );
       const info = getCashuTokenMessageInfo(content);
-      if (!info) continue;
+      const credoParsed = parseCredoMessage(content);
+      if (!info && !credoParsed) continue;
 
       // Mark it as processed so we don't keep retrying every render.
       autoAcceptedChatMessageIdsRef.current.add(id);
 
+      if (credoParsed && credoParsed.isValid) {
+        if (credoParsed.kind === "promise") {
+          if (!isCredoPromiseKnown(credoParsed.promiseId)) {
+            const promise = credoParsed.promise;
+            const issuer = String(promise.issuer ?? "").trim();
+            const recipient = String(promise.recipient ?? "").trim();
+            const direction =
+              currentNpub && issuer === currentNpub ? "out" : "in";
+            insertCredoPromise({
+              promiseId: credoParsed.promiseId,
+              token: credoParsed.token,
+              issuer,
+              recipient,
+              amount: Number(promise.amount ?? 0) || 0,
+              unit: String(promise.unit ?? "sat"),
+              createdAtSec: Number(promise.created_at ?? 0) || 0,
+              expiresAtSec: Number(promise.expires_at ?? 0) || 0,
+              direction,
+            });
+          }
+        } else if (credoParsed.kind === "settlement") {
+          const settlement = credoParsed.settlement;
+          applyCredoSettlement({
+            promiseId: String(settlement.promise_id ?? ""),
+            amount:
+              typeof settlement.amount === "number" && settlement.amount > 0
+                ? settlement.amount
+                : Number.MAX_SAFE_INTEGER,
+            settledAtSec: Number(settlement.settled_at ?? 0) || 0,
+          });
+        }
+      }
+
+      if (!info) continue;
+
       // Only accept if it's not already in our wallet.
       if (!info.isValid) continue;
+      if (isCashuTokenKnownAny(info.tokenRaw)) continue;
       if (isCashuTokenStored(info.tokenRaw)) continue;
 
       void saveCashuFromText(info.tokenRaw);
@@ -9432,8 +10262,13 @@ const App = () => {
   }, [
     cashuIsBusy,
     chatMessages,
+    currentNpub,
+    insertCredoPromise,
     getCashuTokenMessageInfo,
     isCashuTokenStored,
+    isCashuTokenKnownAny,
+    isCredoPromiseKnown,
+    applyCredoSettlement,
     route.kind,
     saveCashuFromText,
   ]);
@@ -9457,10 +10292,48 @@ const App = () => {
         (m as unknown as { content?: unknown } | null)?.content ?? "",
       );
       const info = getCashuTokenMessageInfo(content);
-      if (!info) continue;
+      const credoParsed = parseCredoMessage(content);
+      if (!info && !credoParsed) continue;
 
       autoAcceptedChatMessageIdsRef.current.add(id);
+
+      if (credoParsed && credoParsed.isValid) {
+        if (credoParsed.kind === "promise") {
+          if (!isCredoPromiseKnown(credoParsed.promiseId)) {
+            const promise = credoParsed.promise;
+            const issuer = String(promise.issuer ?? "").trim();
+            const recipient = String(promise.recipient ?? "").trim();
+            const direction =
+              currentNpub && issuer === currentNpub ? "out" : "in";
+            insertCredoPromise({
+              promiseId: credoParsed.promiseId,
+              token: credoParsed.token,
+              issuer,
+              recipient,
+              amount: Number(promise.amount ?? 0) || 0,
+              unit: String(promise.unit ?? "sat"),
+              createdAtSec: Number(promise.created_at ?? 0) || 0,
+              expiresAtSec: Number(promise.expires_at ?? 0) || 0,
+              direction,
+            });
+          }
+        } else if (credoParsed.kind === "settlement") {
+          const settlement = credoParsed.settlement;
+          applyCredoSettlement({
+            promiseId: String(settlement.promise_id ?? ""),
+            amount:
+              typeof settlement.amount === "number" && settlement.amount > 0
+                ? settlement.amount
+                : Number.MAX_SAFE_INTEGER,
+            settledAtSec: Number(settlement.settled_at ?? 0) || 0,
+          });
+        }
+      }
+
+      if (!info) continue;
+
       if (!info.isValid) continue;
+      if (isCashuTokenKnownAny(info.tokenRaw)) continue;
       if (isCashuTokenStored(info.tokenRaw)) continue;
 
       void saveCashuFromText(info.tokenRaw);
@@ -9469,9 +10342,14 @@ const App = () => {
   }, [
     cashuIsBusy,
     getCashuTokenMessageInfo,
+    insertCredoPromise,
+    isCredoPromiseKnown,
+    applyCredoSettlement,
     isCashuTokenStored,
+    isCashuTokenKnownAny,
     nostrMessagesRecent,
     saveCashuFromText,
+    currentNpub,
   ]);
 
   React.useEffect(() => {
@@ -9999,6 +10877,28 @@ const App = () => {
                 </div>
               </div>
 
+              <div className="settings-row">
+                <div className="settings-left">
+                  <span className="settings-icon" aria-hidden="true">
+                    ❤️
+                  </span>
+                  <span className="settings-label">{t("allowPromises")}</span>
+                </div>
+                <div className="settings-right">
+                  <label className="switch">
+                    <input
+                      className="switch-input"
+                      type="checkbox"
+                      aria-label={t("allowPromises")}
+                      checked={allowPromisesEnabled}
+                      onChange={(e) =>
+                        setAllowPromisesEnabled(e.target.checked)
+                      }
+                    />
+                  </label>
+                </div>
+              </div>
+
               <button
                 type="button"
                 className="settings-row settings-link"
@@ -10249,30 +11149,33 @@ const App = () => {
                       >
                         <div
                           className="settings-row"
-                          style={{ alignItems: "flex-start" }}
+                          style={{
+                            alignItems: "flex-start",
+                            display: "grid",
+                            gridTemplateColumns: "20px 1fr auto",
+                            columnGap: 10,
+                          }}
                         >
+                          <span
+                            role="img"
+                            aria-label={directionLabel}
+                            style={{
+                              gridColumn: "1",
+                              fontSize: 14,
+                              lineHeight: "18px",
+                              marginTop: 2,
+                            }}
+                          >
+                            {directionIcon}
+                          </span>
                           <div
                             className="settings-left"
-                            style={{ minWidth: 0 }}
+                            style={{ minWidth: 0, gridColumn: "2" }}
                           >
-                            <div
-                              style={{
-                                fontWeight: 800,
-                                color: "#e2e8f0",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                                fontSize: 13,
-                                lineHeight: 1.2,
-                              }}
-                              aria-label={directionLabel}
-                            >
-                              <span aria-hidden="true">{directionIcon}</span>
-                            </div>
                             <div
                               className="muted"
                               style={{
-                                marginTop: 2,
+                                marginTop: 1,
                                 lineHeight: 1.25,
                                 fontSize: 11,
                               }}
@@ -10296,7 +11199,11 @@ const App = () => {
 
                           <div
                             className="settings-right"
-                            style={{ textAlign: "right", minWidth: 80 }}
+                            style={{
+                              textAlign: "right",
+                              minWidth: 80,
+                              gridColumn: "3",
+                            }}
                           >
                             <div
                               style={{
@@ -11317,6 +12224,9 @@ const App = () => {
           {route.kind === "cashuTokenNew" && (
             <section className="panel">
               <div className="ln-list wallet-token-list">
+                <div className="list-header">
+                  <span>Cashu</span>
+                </div>
                 {cashuTokens.length === 0 ? (
                   <p className="muted">{t("cashuEmpty")}</p>
                 ) : (
@@ -11408,6 +12318,112 @@ const App = () => {
                         })()}
                       </button>
                     ))}
+                  </div>
+                )}
+
+                <div className="list-header" style={{ marginTop: 12 }}>
+                  <span>{t("credoOwe")}</span>
+                </div>
+                {credoOweTokens.length === 0 ? (
+                  <p className="muted">—</p>
+                ) : (
+                  <div className="ln-tags">
+                    {credoOweTokens.map((token) => {
+                      const row = token as CredoTokenRow;
+                      const amount = getCredoRemainingAmount(row);
+                      const npub = String(row.recipient ?? "").trim();
+                      const avatar = npub ? nostrPictureByNpub[npub] : null;
+                      return (
+                        <button
+                          key={row.id as unknown as CredoTokenId}
+                          className="pill pill-credo"
+                          onClick={() =>
+                            navigateToCredoToken(
+                              row.id as unknown as CredoTokenId,
+                            )
+                          }
+                          style={{ cursor: "pointer" }}
+                          aria-label={t("credoOwe")}
+                        >
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            {avatar ? (
+                              <img
+                                src={avatar}
+                                alt=""
+                                width={14}
+                                height={14}
+                                style={{
+                                  borderRadius: 9999,
+                                  objectFit: "cover",
+                                }}
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : null}
+                            <span>-{formatInteger(amount)}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="list-header" style={{ marginTop: 12 }}>
+                  <span>{t("credoPromisedToMe")}</span>
+                </div>
+                {credoPromisedTokens.length === 0 ? (
+                  <p className="muted">—</p>
+                ) : (
+                  <div className="ln-tags">
+                    {credoPromisedTokens.map((token) => {
+                      const row = token as CredoTokenRow;
+                      const amount = getCredoRemainingAmount(row);
+                      const npub = String(row.issuer ?? "").trim();
+                      const avatar = npub ? nostrPictureByNpub[npub] : null;
+                      return (
+                        <button
+                          key={row.id as unknown as CredoTokenId}
+                          className="pill pill-credo"
+                          onClick={() =>
+                            navigateToCredoToken(
+                              row.id as unknown as CredoTokenId,
+                            )
+                          }
+                          style={{ cursor: "pointer" }}
+                          aria-label={t("credoPromisedToMe")}
+                        >
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            {avatar ? (
+                              <img
+                                src={avatar}
+                                alt=""
+                                width={14}
+                                height={14}
+                                style={{
+                                  borderRadius: 9999,
+                                  objectFit: "cover",
+                                }}
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : null}
+                            <span>{formatInteger(amount)}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -11528,6 +12544,78 @@ const App = () => {
             </section>
           )}
 
+          {route.kind === "credoToken" && (
+            <section className="panel">
+              {(() => {
+                const row = credoTokensAll.find(
+                  (tkn) =>
+                    String(tkn?.id ?? "") ===
+                      String(route.id as unknown as string) && !tkn?.isDeleted,
+                );
+
+                if (!row) {
+                  return <p className="muted">{t("errorPrefix")}</p>;
+                }
+
+                const amount = getCredoRemainingAmount(row);
+                const direction = String(
+                  (row as CredoTokenRow)?.direction ?? "",
+                );
+                const isOwe = direction === "out";
+                const issuer = String(
+                  (row as CredoTokenRow)?.issuer ?? "",
+                ).trim();
+                const recipient = String(
+                  (row as CredoTokenRow)?.recipient ?? "",
+                ).trim();
+                const counterpartyNpub = isOwe ? recipient : issuer;
+                const counterparty = counterpartyNpub
+                  ? contacts.find(
+                      (c) => String(c.npub ?? "").trim() === counterpartyNpub,
+                    )
+                  : null;
+                const displayName = counterparty?.name
+                  ? String(counterparty.name ?? "").trim()
+                  : counterpartyNpub
+                    ? formatShortNpub(counterpartyNpub)
+                    : null;
+                const expiresAtSec =
+                  Number((row as CredoTokenRow)?.expiresAtSec ?? 0) || 0;
+                const nowSec = Math.floor(Date.now() / 1000);
+                const remainingSec = expiresAtSec - nowSec;
+                const expiryLabel =
+                  remainingSec <= 0
+                    ? t("credoExpired")
+                    : t("credoExpiresIn").replace(
+                        "{time}",
+                        formatDurationShort(remainingSec),
+                      );
+
+                return (
+                  <>
+                    <p className="muted" style={{ margin: "0 0 10px" }}>
+                      {isOwe ? t("credoOwe") : t("credoPromisedToMe")}
+                    </p>
+                    <div className="settings-row">
+                      <div className="settings-left">
+                        <span className="settings-label">
+                          {displayName ?? t("appTitle")}
+                        </span>
+                      </div>
+                      <div className="settings-right">
+                        <span className="badge-box">
+                          {(isOwe ? "-" : "") + formatInteger(amount)}{" "}
+                          {displayUnit}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="muted">{expiryLabel}</p>
+                  </>
+                );
+              })()}
+            </section>
+          )}
+
           {route.kind === "contact" && (
             <section className="panel">
               {!selectedContact ? (
@@ -11580,16 +12668,27 @@ const App = () => {
                       const ln = String(selectedContact.lnAddress ?? "").trim();
                       const npub = String(selectedContact.npub ?? "").trim();
                       const canPayThisContact =
-                        Boolean(ln) || (payWithCashuEnabled && Boolean(npub));
+                        Boolean(ln) ||
+                        ((payWithCashuEnabled || allowPromisesEnabled) &&
+                          Boolean(npub));
                       if (!canPayThisContact) return null;
+                      const availableCredo = npub
+                        ? getCredoAvailableForContact(npub)
+                        : 0;
+                      const canStartPay =
+                        (Boolean(ln) && cashuBalance > 0) ||
+                        (Boolean(npub) &&
+                          (cashuBalance > 0 ||
+                            availableCredo > 0 ||
+                            allowPromisesEnabled));
                       const isFeedbackContact = npub === FEEDBACK_CONTACT_NPUB;
                       return (
                         <button
                           className="btn-wide"
                           onClick={() => openContactPay(selectedContact.id)}
-                          disabled={cashuIsBusy || !canPayWithCashu}
+                          disabled={cashuIsBusy || !canStartPay}
                           title={
-                            !canPayWithCashu ? t("payInsufficient") : undefined
+                            !canStartPay ? t("payInsufficient") : undefined
                           }
                           data-guide="contact-pay"
                         >
@@ -11652,7 +12751,8 @@ const App = () => {
                         ).trim();
                         const npub = String(selectedContact.npub ?? "").trim();
                         const canUseCashu =
-                          payWithCashuEnabled && Boolean(npub);
+                          (payWithCashuEnabled || allowPromisesEnabled) &&
+                          Boolean(npub);
                         const canUseLightning = Boolean(ln);
                         const showToggle = canUseCashu && canUseLightning;
                         const icon =
@@ -11702,8 +12802,50 @@ const App = () => {
                         ) : null;
                       })()}
                       <p className="muted">
-                        {t("availablePrefix")} {formatInteger(cashuBalance)}{" "}
-                        {displayUnit}
+                        {(() => {
+                          const npub = String(
+                            selectedContact.npub ?? "",
+                          ).trim();
+                          const canUseCashu =
+                            payWithCashuEnabled && Boolean(npub);
+                          const method =
+                            contactPayMethod === "lightning" ||
+                            contactPayMethod === "cashu"
+                              ? contactPayMethod
+                              : canUseCashu
+                                ? "cashu"
+                                : "lightning";
+                          const amountSat = Number.parseInt(
+                            payAmount.trim(),
+                            10,
+                          );
+                          const validAmount =
+                            Number.isFinite(amountSat) && amountSat > 0
+                              ? amountSat
+                              : 0;
+                          const availableCredo = npub
+                            ? getCredoAvailableForContact(npub)
+                            : 0;
+                          const useCredo = Math.min(
+                            availableCredo,
+                            validAmount,
+                          );
+                          const remaining = Math.max(0, validAmount - useCredo);
+                          const promiseAmount =
+                            method === "cashu" && allowPromisesEnabled
+                              ? Math.max(0, remaining - cashuBalance)
+                              : 0;
+
+                          return (
+                            <>
+                              {t("availablePrefix")}{" "}
+                              {formatInteger(cashuBalance)} {displayUnit}
+                              {" · "}
+                              {t("promisedPrefix")}{" "}
+                              {formatInteger(promiseAmount)} {displayUnit}
+                            </>
+                          );
+                        })()}
                       </p>
                     </div>
                   </div>
@@ -11711,7 +12853,9 @@ const App = () => {
                   {(() => {
                     const ln = String(selectedContact.lnAddress ?? "").trim();
                     const npub = String(selectedContact.npub ?? "").trim();
-                    const canUseCashu = payWithCashuEnabled && Boolean(npub);
+                    const canUseCashu =
+                      (payWithCashuEnabled || allowPromisesEnabled) &&
+                      Boolean(npub);
                     const method =
                       contactPayMethod === "lightning" ||
                       contactPayMethod === "cashu"
@@ -11721,7 +12865,7 @@ const App = () => {
                           : "lightning";
 
                     if (method === "cashu") {
-                      if (!payWithCashuEnabled)
+                      if (!payWithCashuEnabled && !allowPromisesEnabled)
                         return (
                           <p className="muted">{t("payWithCashuDisabled")}</p>
                         );
@@ -11736,7 +12880,14 @@ const App = () => {
                         return <p className="muted">{t("payMissingLn")}</p>;
                     }
 
-                    if (!canPayWithCashu)
+                    const availableCredo = npub
+                      ? getCredoAvailableForContact(npub)
+                      : 0;
+                    const canCoverAnything =
+                      cashuBalance > 0 ||
+                      availableCredo > 0 ||
+                      (allowPromisesEnabled && method === "cashu");
+                    if (!canCoverAnything)
                       return <p className="muted">{t("payInsufficient")}</p>;
                     return null;
                   })()}
@@ -11819,7 +12970,9 @@ const App = () => {
                     {(() => {
                       const ln = String(selectedContact.lnAddress ?? "").trim();
                       const npub = String(selectedContact.npub ?? "").trim();
-                      const canUseCashu = payWithCashuEnabled && Boolean(npub);
+                      const canUseCashu =
+                        (payWithCashuEnabled || allowPromisesEnabled) &&
+                        Boolean(npub);
                       const method =
                         contactPayMethod === "lightning" ||
                         contactPayMethod === "cashu"
@@ -11828,12 +12981,31 @@ const App = () => {
                             ? "cashu"
                             : "lightning";
                       const amountSat = Number.parseInt(payAmount.trim(), 10);
+                      const validAmount =
+                        Number.isFinite(amountSat) && amountSat > 0
+                          ? amountSat
+                          : 0;
+                      const availableCredo = npub
+                        ? getCredoAvailableForContact(npub)
+                        : 0;
+                      const useCredo = Math.min(availableCredo, validAmount);
+                      const remaining = Math.max(0, validAmount - useCredo);
+                      const promiseAmount =
+                        method === "cashu"
+                          ? Math.max(0, remaining - cashuBalance)
+                          : 0;
+                      const promiseLimitExceeded =
+                        promiseAmount > 0 &&
+                        totalCredoOutstandingOut + promiseAmount >
+                          PROMISE_TOTAL_CAP_SAT;
                       const invalid =
                         (method === "lightning" ? !ln : !canUseCashu) ||
-                        !canPayWithCashu ||
                         !Number.isFinite(amountSat) ||
                         amountSat <= 0 ||
-                        amountSat > cashuBalance;
+                        (method === "lightning"
+                          ? remaining > cashuBalance
+                          : promiseAmount > 0 &&
+                            (!allowPromisesEnabled || promiseLimitExceeded));
                       return (
                         <div className="actions">
                           <button
@@ -11841,9 +13013,15 @@ const App = () => {
                             onClick={() => void paySelectedContact()}
                             disabled={cashuIsBusy || invalid}
                             title={
-                              amountSat > cashuBalance
+                              method === "lightning" && remaining > cashuBalance
                                 ? t("payInsufficient")
-                                : undefined
+                                : promiseAmount > 0 &&
+                                    (!allowPromisesEnabled ||
+                                      promiseLimitExceeded)
+                                  ? allowPromisesEnabled
+                                    ? t("payPromiseLimit")
+                                    : t("payInsufficient")
+                                  : undefined
                             }
                             data-guide="pay-send"
                           >
@@ -12060,6 +13238,7 @@ const App = () => {
                         }).format(d);
 
                         const tokenInfo = getCashuTokenMessageInfo(content);
+                        const credoInfo = getCredoTokenMessageInfo(content);
 
                         return (
                           <React.Fragment key={String(m.id)}>
@@ -12088,18 +13267,19 @@ const App = () => {
                                   isOut ? "chat-bubble out" : "chat-bubble in"
                                 }
                               >
-                                {tokenInfo
+                                {credoInfo
                                   ? (() => {
-                                      const icon = getMintIconUrl(
-                                        tokenInfo.mintUrl,
-                                      );
-                                      const showMintFallback =
-                                        icon.failed || !icon.url;
+                                      const npub = String(
+                                        selectedContact?.npub ?? "",
+                                      ).trim();
+                                      const avatar = npub
+                                        ? nostrPictureByNpub[npub]
+                                        : null;
                                       return (
                                         <span
                                           className={
-                                            tokenInfo.isValid
-                                              ? "pill"
+                                            credoInfo.isValid
+                                              ? "pill pill-credo"
                                               : "pill pill-muted"
                                           }
                                           style={{
@@ -12107,21 +13287,13 @@ const App = () => {
                                             alignItems: "center",
                                             gap: 6,
                                           }}
-                                          aria-label={
-                                            tokenInfo.mintDisplay
-                                              ? `${formatInteger(
-                                                  tokenInfo.amount ?? 0,
-                                                )} sat · ${
-                                                  tokenInfo.mintDisplay
-                                                }`
-                                              : `${formatInteger(
-                                                  tokenInfo.amount ?? 0,
-                                                )} sat`
-                                          }
+                                          aria-label={`${formatInteger(
+                                            credoInfo.amount ?? 0,
+                                          )} sat`}
                                         >
-                                          {icon.url ? (
+                                          {avatar ? (
                                             <img
-                                              src={icon.url}
+                                              src={avatar}
                                               alt=""
                                               width={14}
                                               height={14}
@@ -12131,85 +13303,138 @@ const App = () => {
                                               }}
                                               loading="lazy"
                                               referrerPolicy="no-referrer"
-                                              onLoad={() => {
-                                                if (icon.origin) {
-                                                  setMintIconUrlByMint(
-                                                    (prev) => ({
-                                                      ...prev,
-                                                      [icon.origin as string]:
-                                                        icon.url,
-                                                    }),
-                                                  );
-                                                }
-                                              }}
-                                              onError={(e) => {
-                                                (
-                                                  e.currentTarget as HTMLImageElement
-                                                ).style.display = "none";
-                                                if (icon.origin) {
-                                                  const duck = icon.host
-                                                    ? `https://icons.duckduckgo.com/ip3/${icon.host}.ico`
-                                                    : null;
-                                                  const favicon = `${icon.origin}/favicon.ico`;
-                                                  let next: string | null =
-                                                    null;
-                                                  if (
-                                                    duck &&
-                                                    icon.url !== duck
-                                                  ) {
-                                                    next = duck;
-                                                  } else if (
-                                                    icon.url !== favicon
-                                                  ) {
-                                                    next = favicon;
-                                                  }
-                                                  setMintIconUrlByMint(
-                                                    (prev) => ({
-                                                      ...prev,
-                                                      [icon.origin as string]:
-                                                        next ?? null,
-                                                    }),
-                                                  );
-                                                }
-                                              }}
                                             />
-                                          ) : null}
-                                          {showMintFallback && icon.host ? (
-                                            <span
-                                              className="muted"
-                                              style={{
-                                                fontSize: 10,
-                                                lineHeight: "14px",
-                                              }}
-                                            >
-                                              {icon.host}
-                                            </span>
-                                          ) : null}
-                                          {!showMintFallback &&
-                                          tokenInfo.mintDisplay ? (
-                                            <span
-                                              className="muted"
-                                              style={{
-                                                fontSize: 10,
-                                                lineHeight: "14px",
-                                                maxWidth: 140,
-                                                overflow: "hidden",
-                                                textOverflow: "ellipsis",
-                                                whiteSpace: "nowrap",
-                                              }}
-                                            >
-                                              {tokenInfo.mintDisplay}
-                                            </span>
                                           ) : null}
                                           <span>
                                             {formatInteger(
-                                              tokenInfo.amount ?? 0,
+                                              credoInfo.amount ?? 0,
                                             )}
                                           </span>
                                         </span>
                                       );
                                     })()
-                                  : content}
+                                  : tokenInfo
+                                    ? (() => {
+                                        const icon = getMintIconUrl(
+                                          tokenInfo.mintUrl,
+                                        );
+                                        const showMintFallback =
+                                          icon.failed || !icon.url;
+                                        return (
+                                          <span
+                                            className={
+                                              tokenInfo.isValid
+                                                ? "pill"
+                                                : "pill pill-muted"
+                                            }
+                                            style={{
+                                              display: "inline-flex",
+                                              alignItems: "center",
+                                              gap: 6,
+                                            }}
+                                            aria-label={
+                                              tokenInfo.mintDisplay
+                                                ? `${formatInteger(
+                                                    tokenInfo.amount ?? 0,
+                                                  )} sat · ${
+                                                    tokenInfo.mintDisplay
+                                                  }`
+                                                : `${formatInteger(
+                                                    tokenInfo.amount ?? 0,
+                                                  )} sat`
+                                            }
+                                          >
+                                            {icon.url ? (
+                                              <img
+                                                src={icon.url}
+                                                alt=""
+                                                width={14}
+                                                height={14}
+                                                style={{
+                                                  borderRadius: 9999,
+                                                  objectFit: "cover",
+                                                }}
+                                                loading="lazy"
+                                                referrerPolicy="no-referrer"
+                                                onLoad={() => {
+                                                  if (icon.origin) {
+                                                    setMintIconUrlByMint(
+                                                      (prev) => ({
+                                                        ...prev,
+                                                        [icon.origin as string]:
+                                                          icon.url,
+                                                      }),
+                                                    );
+                                                  }
+                                                }}
+                                                onError={(e) => {
+                                                  (
+                                                    e.currentTarget as HTMLImageElement
+                                                  ).style.display = "none";
+                                                  if (icon.origin) {
+                                                    const duck = icon.host
+                                                      ? `https://icons.duckduckgo.com/ip3/${icon.host}.ico`
+                                                      : null;
+                                                    const favicon = `${icon.origin}/favicon.ico`;
+                                                    let next: string | null =
+                                                      null;
+                                                    if (
+                                                      duck &&
+                                                      icon.url !== duck
+                                                    ) {
+                                                      next = duck;
+                                                    } else if (
+                                                      icon.url !== favicon
+                                                    ) {
+                                                      next = favicon;
+                                                    }
+                                                    setMintIconUrlByMint(
+                                                      (prev) => ({
+                                                        ...prev,
+                                                        [icon.origin as string]:
+                                                          next ?? null,
+                                                      }),
+                                                    );
+                                                  }
+                                                }}
+                                              />
+                                            ) : null}
+                                            {showMintFallback && icon.host ? (
+                                              <span
+                                                className="muted"
+                                                style={{
+                                                  fontSize: 10,
+                                                  lineHeight: "14px",
+                                                }}
+                                              >
+                                                {icon.host}
+                                              </span>
+                                            ) : null}
+                                            {!showMintFallback &&
+                                            tokenInfo.mintDisplay ? (
+                                              <span
+                                                className="muted"
+                                                style={{
+                                                  fontSize: 10,
+                                                  lineHeight: "14px",
+                                                  maxWidth: 140,
+                                                  overflow: "hidden",
+                                                  textOverflow: "ellipsis",
+                                                  whiteSpace: "nowrap",
+                                                }}
+                                              >
+                                                {tokenInfo.mintDisplay}
+                                              </span>
+                                            ) : null}
+                                            <span>
+                                              {formatInteger(
+                                                tokenInfo.amount ?? 0,
+                                              )}
+                                            </span>
+                                          </span>
+                                        );
+                                      })()
+                                    : content}
                               </div>
 
                               {showTime ? (
@@ -12249,8 +13474,19 @@ const App = () => {
                       const ln = String(selectedContact.lnAddress ?? "").trim();
                       const npub = String(selectedContact.npub ?? "").trim();
                       const canPayThisContact =
-                        Boolean(ln) || (payWithCashuEnabled && Boolean(npub));
+                        Boolean(ln) ||
+                        ((payWithCashuEnabled || allowPromisesEnabled) &&
+                          Boolean(npub));
                       if (!canPayThisContact) return null;
+                      const availableCredo = npub
+                        ? getCredoAvailableForContact(npub)
+                        : 0;
+                      const canStartPay =
+                        (Boolean(ln) && cashuBalance > 0) ||
+                        (Boolean(npub) &&
+                          (cashuBalance > 0 ||
+                            availableCredo > 0 ||
+                            allowPromisesEnabled));
                       const isFeedbackContact = npub === FEEDBACK_CONTACT_NPUB;
                       return (
                         <button
@@ -12258,9 +13494,9 @@ const App = () => {
                           onClick={() =>
                             openContactPay(selectedContact.id, true)
                           }
-                          disabled={cashuIsBusy || !canPayWithCashu}
+                          disabled={cashuIsBusy || !canStartPay}
                           title={
-                            !canPayWithCashu ? t("payInsufficient") : undefined
+                            !canStartPay ? t("payInsufficient") : undefined
                           }
                           data-guide="chat-pay"
                         >

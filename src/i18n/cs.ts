@@ -324,9 +324,17 @@ export const cs = {
   cashuPasteManualHint: "Vložte sem Cashu token",
   cashuSave: "Uložit token",
 
+  allowPromises: "Povolit sliby",
+  credoTokenTitle: "Credo",
+  credoOwe: "Dlužím",
+  credoPromisedToMe: "Mám slíbeno",
+  credoExpiresIn: "Expiruje za {time}",
+  credoExpired: "Expirovalo",
+
   pay: "Zaplatit",
   payTo: "Platba pro",
   availablePrefix: "dostupné:",
+  promisedPrefix: "slíbeno:",
   payAmount: "Kolik poslat",
   paySend: "Zaplatit",
   payCancel: "Zrušit",
@@ -337,6 +345,7 @@ export const cs = {
   payPaying: "Platím…",
   paySuccess: "Zaplaceno.",
   payFailed: "Platba se nepovedla",
+  payPromiseLimit: "Dosažen limit slibů.",
 
   paidSent: "Odesláno {amount} {unit}.",
   paidSentTo: "Odesláno {amount} {unit} → {name}.",

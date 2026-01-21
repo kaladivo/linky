@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CashuTokenId, ContactId } from "../evolu";
+import type { CashuTokenId, ContactId, CredoTokenId } from "../evolu";
 import { parseRouteFromHash, type Route } from "../types/route";
 
 export const useRouting = () => {
@@ -37,7 +37,7 @@ export const navigateToMints = () => {
 
 export const navigateToMint = (mintUrl: string) => {
   window.location.assign(
-    `#advanced/mint/${encodeURIComponent(String(mintUrl ?? "").trim())}`
+    `#advanced/mint/${encodeURIComponent(String(mintUrl ?? "").trim())}`,
   );
 };
 
@@ -83,7 +83,13 @@ export const navigateToCashuTokenNew = () => {
 
 export const navigateToCashuToken = (id: CashuTokenId) => {
   window.location.assign(
-    `#wallet/token/${encodeURIComponent(String(id as unknown as string))}`
+    `#wallet/token/${encodeURIComponent(String(id as unknown as string))}`,
+  );
+};
+
+export const navigateToCredoToken = (id: CredoTokenId) => {
+  window.location.assign(
+    `#wallet/credo/${encodeURIComponent(String(id as unknown as string))}`,
   );
 };
 

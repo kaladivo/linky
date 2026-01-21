@@ -321,9 +321,17 @@ export const en = {
   cashuPasteManualHint: "Paste your Cashu token here",
   cashuSave: "Save token",
 
+  allowPromises: "Allow promises",
+  credoTokenTitle: "Credo",
+  credoOwe: "I owe",
+  credoPromisedToMe: "Promised to me",
+  credoExpiresIn: "Expires in {time}",
+  credoExpired: "Expired",
+
   pay: "Pay",
   payTo: "Pay to",
   availablePrefix: "available:",
+  promisedPrefix: "promised:",
   payAmount: "Amount",
   paySend: "Pay",
   payCancel: "Cancel",
@@ -334,6 +342,7 @@ export const en = {
   payPaying: "Paying…",
   paySuccess: "Paid.",
   payFailed: "Payment failed",
+  payPromiseLimit: "Promise limit reached.",
 
   paidSent: "Sent {amount} {unit}.",
   paidSentTo: "Sent {amount} {unit} to {name}.",

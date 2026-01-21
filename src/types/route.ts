@@ -1,4 +1,4 @@
-import type { CashuTokenId, ContactId } from "../evolu";
+import type { CashuTokenId, ContactId, CredoTokenId } from "../evolu";
 
 export type Route =
   | { kind: "contacts" }
@@ -13,6 +13,7 @@ export type Route =
   | { kind: "lnAddressPay"; lnAddress: string }
   | { kind: "cashuTokenNew" }
   | { kind: "cashuToken"; id: CashuTokenId }
+  | { kind: "credoToken"; id: CredoTokenId }
   | { kind: "nostrRelays" }
   | { kind: "nostrRelay"; id: string }
   | { kind: "nostrRelayNew" }
@@ -56,6 +57,13 @@ export const parseRouteFromHash = (): Route => {
     const rest = hash.slice(walletTokenPrefix.length);
     const id = decodeURIComponent(String(rest ?? "")).trim();
     if (id) return { kind: "cashuToken", id: id as CashuTokenId };
+  }
+
+  const credoTokenPrefix = "#wallet/credo/";
+  if (hash.startsWith(credoTokenPrefix)) {
+    const rest = hash.slice(credoTokenPrefix.length);
+    const id = decodeURIComponent(String(rest ?? "")).trim();
+    if (id) return { kind: "credoToken", id: id as CredoTokenId };
   }
   if (hash === "#nostr-relays") return { kind: "nostrRelays" };
   if (hash === "#nostr-relay/new") return { kind: "nostrRelayNew" };
