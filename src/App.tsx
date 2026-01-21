@@ -2410,6 +2410,12 @@ const App = () => {
     Record<string, { lastCheckedAtSec: number; latencyMs: number | null }>
   >(() => ({}));
 
+  const mintInfoCheckOnceRef = React.useRef<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    mintInfoCheckOnceRef.current = new Set();
+  }, [appOwnerId]);
+
   const getMintRuntime = React.useCallback(
     (mintUrl: string) => {
       const key = normalizeMintUrl(mintUrl);
@@ -2466,18 +2472,22 @@ const App = () => {
 
       if (isMintDeleted(cleaned)) return;
 
+      if (mintInfoCheckOnceRef.current.has(cleaned)) return;
+      mintInfoCheckOnceRef.current.add(cleaned);
+
       const ownerId = appOwnerIdRef.current;
       if (!ownerId) return;
 
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 8000);
+      const startedAt =
+        typeof performance !== "undefined" &&
+        typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+      const nowSec = Math.floor(Date.now() / 1000);
+      recordMintRuntime(cleaned, { lastCheckedAtSec: nowSec, latencyMs: null });
       try {
-        const startedAt =
-          typeof performance !== "undefined" &&
-          typeof performance.now === "function"
-            ? performance.now()
-            : Date.now();
-
         const tryUrls = [`${cleaned}/v1/info`, `${cleaned}/info`];
         let info: unknown = null;
         let lastErr: unknown = null;
@@ -2516,7 +2526,6 @@ const App = () => {
         const ppk = extractPpk(feesRaw) ?? extractPpk(info);
         const fees = ppk !== null ? { ppk, raw: feesRaw } : feesRaw;
 
-        const nowSec = Math.floor(Date.now() / 1000);
         const toJson = (value: unknown): string | null => {
           try {
             const s = JSON.stringify(value);
@@ -2610,7 +2619,27 @@ const App = () => {
         const latencyMs = Math.max(0, Math.round(finishedAt - startedAt));
         recordMintRuntime(cleaned, { lastCheckedAtSec: nowSec, latencyMs });
       } catch {
-        // ignore
+        recordMintRuntime(cleaned, {
+          lastCheckedAtSec: nowSec,
+          latencyMs: null,
+        });
+        setMintInfoAll((prev) => {
+          const next = [...prev];
+          const idx = next
+            .map((r) => ({ r, url: normalizeMintUrl(String(r.url ?? "")) }))
+            .findIndex((x) => x.url === cleaned);
+          if (idx >= 0) {
+            next[idx] = {
+              ...next[idx],
+              lastCheckedAtSec: nowSec,
+            };
+            safeLocalStorageSetJson(
+              `${LOCAL_MINT_INFO_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
+              next,
+            );
+          }
+          return next;
+        });
       } finally {
         window.clearTimeout(timeout);
       }
