@@ -1528,7 +1528,7 @@ button.icon {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 8px;
 }
 

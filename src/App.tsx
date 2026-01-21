@@ -940,9 +940,12 @@ const App = () => {
     [numberFormatter],
   );
 
+  const contactPayBackToChatRef = React.useRef<ContactId | null>(null);
+
   React.useEffect(() => {
     // Reset pay amount when leaving the pay page.
     if (route.kind !== "contactPay") {
+      contactPayBackToChatRef.current = null;
       setPayAmount("");
     }
   }, [route.kind]);
@@ -2897,6 +2900,19 @@ const App = () => {
       .slice(0, 100);
   }, [nostrMessagesLocal]);
 
+  const lastMessageByContactId = useMemo(() => {
+    const map = new Map<string, LocalNostrMessage>();
+    for (const msg of nostrMessagesLocal) {
+      const id = String(msg.contactId ?? "").trim();
+      if (!id) continue;
+      const createdAt = Number(msg.createdAtSec ?? 0) || 0;
+      const existing = map.get(id);
+      const existingAt = existing ? Number(existing.createdAtSec ?? 0) || 0 : 0;
+      if (!existing || createdAt >= existingAt) map.set(id, msg);
+    }
+    return map;
+  }, [nostrMessagesLocal]);
+
   const cashuBalance = useMemo(() => {
     return cashuTokens.reduce((sum, token) => {
       const state = String(token.state ?? "");
@@ -3887,7 +3903,40 @@ const App = () => {
       });
     })();
 
-    return [...filtered].sort((a, b) => {
+    const withConversation: (typeof contacts)[number][] = [];
+    const withoutConversation: (typeof contacts)[number][] = [];
+
+    for (const contact of filtered) {
+      const key = String(contact.id ?? "").trim();
+      if (key && lastMessageByContactId.has(key))
+        withConversation.push(contact);
+      else withoutConversation.push(contact);
+    }
+
+    const sortWithConversation = (
+      a: (typeof contacts)[number],
+      b: (typeof contacts)[number],
+    ) => {
+      const aKey = String(a.id ?? "");
+      const bKey = String(b.id ?? "");
+      const aAttention = aKey ? (contactAttentionById[aKey] ?? 0) : 0;
+      const bAttention = bKey ? (contactAttentionById[bKey] ?? 0) : 0;
+      if (aAttention !== bAttention) return bAttention - aAttention;
+      const aMsg = aKey ? lastMessageByContactId.get(aKey) : null;
+      const bMsg = bKey ? lastMessageByContactId.get(bKey) : null;
+      const aAt = aMsg ? Number(aMsg.createdAtSec ?? 0) || 0 : 0;
+      const bAt = bMsg ? Number(bMsg.createdAtSec ?? 0) || 0 : 0;
+      if (aAt !== bAt) return bAt - aAt;
+      return contactNameCollator.compare(
+        String(a.name ?? ""),
+        String(b.name ?? ""),
+      );
+    };
+
+    const sortWithoutConversation = (
+      a: (typeof contacts)[number],
+      b: (typeof contacts)[number],
+    ) => {
       const aKey = String(a.id ?? "");
       const bKey = String(b.id ?? "");
       const aAttention = aKey ? (contactAttentionById[aKey] ?? 0) : 0;
@@ -3897,8 +3946,19 @@ const App = () => {
         String(a.name ?? ""),
         String(b.name ?? ""),
       );
-    });
-  }, [activeGroup, contactAttentionById, contactNameCollator, contacts]);
+    };
+
+    return {
+      conversations: [...withConversation].sort(sortWithConversation),
+      others: [...withoutConversation].sort(sortWithoutConversation),
+    };
+  }, [
+    activeGroup,
+    contactAttentionById,
+    contactNameCollator,
+    contacts,
+    lastMessageByContactId,
+  ]);
 
   const selectedContact = useMemo(() => {
     const id =
@@ -4279,7 +4339,7 @@ const App = () => {
           const pool = await getSharedAppNostrPool();
 
           for (const batch of sendBatches) {
-            const messageText = `🥜 ${batch.token}`;
+            const messageText = String(batch.token ?? "").trim();
             const baseEvent = {
               created_at: Math.ceil(Date.now() / 1e3),
               kind: 14,
@@ -4362,7 +4422,7 @@ const App = () => {
           setStatus(t("paySuccess"));
           safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
           setContactsOnboardingHasPaid(true);
-          navigateToContact(selectedContact.id);
+          navigateToChat(selectedContact.id);
           return;
         } catch (e) {
           lastError = e;
@@ -4558,7 +4618,7 @@ const App = () => {
           setStatus(t("paySuccess"));
           safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
           setContactsOnboardingHasPaid(true);
-          navigateToContact(selectedContact.id);
+          navigateToChat(selectedContact.id);
           return;
         } catch (e) {
           lastError = e;
@@ -6341,6 +6401,11 @@ const App = () => {
     navigateToContact(existing.id);
   }, [contacts]);
 
+  const openContactPay = (contactId: ContactId, fromChat = false) => {
+    contactPayBackToChatRef.current = fromChat ? contactId : null;
+    navigateToContactPay(contactId);
+  };
+
   const openContactDetail = (contact: (typeof contacts)[number]) => {
     setPendingDeleteId(null);
     setContactAttentionById((prev) => {
@@ -6350,8 +6415,191 @@ const App = () => {
       delete next[key];
       return next;
     });
-    navigateToContact(contact.id);
+    contactPayBackToChatRef.current = null;
+    const npub = String(contact.npub ?? "").trim();
+    const ln = String(contact.lnAddress ?? "").trim();
+    if (!npub) {
+      if (ln) {
+        openContactPay(contact.id as ContactId);
+        return;
+      }
+      navigateToContact(contact.id);
+      return;
+    }
+    navigateToChat(contact.id);
   };
+
+  const renderContactCard = (contact: (typeof contacts)[number]) => {
+    const npub = String(contact.npub ?? "").trim();
+    const avatarUrl = npub ? nostrPictureByNpub[npub] : null;
+    const initials = getInitials(String(contact.name ?? ""));
+    const contactId = String(contact.id ?? "").trim();
+    const last = contactId ? lastMessageByContactId.get(contactId) : null;
+    const lastText = String(last?.content ?? "").trim();
+    const tokenInfo = lastText ? getCashuTokenMessageInfo(lastText) : null;
+    const preview =
+      lastText.length > 48 ? `${lastText.slice(0, 48)}…` : lastText;
+    const lastTime = last
+      ? formatContactMessageTimestamp(last.createdAtSec)
+      : "";
+    const hasAttention = Boolean(
+      contactAttentionById[String(contact.id ?? "")],
+    );
+    const directionSymbol = (() => {
+      const dir = String(last?.direction ?? "").trim();
+      if (dir === "out") return "↗";
+      if (dir === "in") return "↘";
+      return "";
+    })();
+    const previewText = preview
+      ? directionSymbol
+        ? `${directionSymbol} ${preview}`
+        : preview
+      : "";
+
+    return (
+      <article
+        key={contact.id}
+        className="contact-card is-clickable"
+        data-guide="contact-card"
+        data-guide-contact-id={String(contact.id)}
+        role="button"
+        tabIndex={0}
+        onClick={() => openContactDetail(contact)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openContactDetail(contact);
+          }
+        }}
+      >
+        <div className="card-header">
+          <div className="contact-avatar with-badge" aria-hidden="true">
+            <span className="contact-avatar-inner">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="contact-avatar-fallback">{initials}</span>
+              )}
+            </span>
+            {hasAttention ? (
+              <span className="contact-unread-dot" aria-hidden="true" />
+            ) : null}
+          </div>
+          <div className="card-main">
+            <div className="card-title-row">
+              {contact.name ? (
+                <h4 className="contact-title" style={{ flex: 1 }}>
+                  {contact.name}
+                </h4>
+              ) : null}
+              {lastTime ? (
+                <span
+                  className="muted"
+                  style={{ fontSize: 10, whiteSpace: "nowrap" }}
+                >
+                  {lastTime}
+                </span>
+              ) : null}
+            </div>
+            {tokenInfo ? (
+              (() => {
+                const icon = getMintIconUrl(tokenInfo.mintUrl);
+                return (
+                  <div
+                    className="muted"
+                    style={{
+                      fontSize: 12,
+                      marginTop: 4,
+                      lineHeight: 1.2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    {directionSymbol ? <span>{directionSymbol}</span> : null}
+                    <span
+                      className={tokenInfo.isValid ? "pill" : "pill pill-muted"}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "1px 4px",
+                        fontSize: 10,
+                        lineHeight: "10px",
+                      }}
+                      aria-label={`${formatInteger(tokenInfo.amount ?? 0)} sat`}
+                    >
+                      {icon.url ? (
+                        <img
+                          src={icon.url}
+                          alt=""
+                          width={14}
+                          height={14}
+                          style={{
+                            borderRadius: 9999,
+                            objectFit: "cover",
+                          }}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          onLoad={() => {
+                            if (icon.origin) {
+                              setMintIconUrlByMint((prev) => ({
+                                ...prev,
+                                [icon.origin as string]: icon.url,
+                              }));
+                            }
+                          }}
+                          onError={(e) => {
+                            (
+                              e.currentTarget as HTMLImageElement
+                            ).style.display = "none";
+                            if (icon.origin) {
+                              const duck = icon.host
+                                ? `https://icons.duckduckgo.com/ip3/${icon.host}.ico`
+                                : null;
+                              const favicon = `${icon.origin}/favicon.ico`;
+                              let next: string | null = null;
+                              if (duck && icon.url !== duck) {
+                                next = duck;
+                              } else if (icon.url !== favicon) {
+                                next = favicon;
+                              }
+                              setMintIconUrlByMint((prev) => ({
+                                ...prev,
+                                [icon.origin as string]: next ?? null,
+                              }));
+                            }
+                          }}
+                        />
+                      ) : null}
+                      <span>{formatInteger(tokenInfo.amount ?? 0)}</span>
+                    </span>
+                  </div>
+                );
+              })()
+            ) : previewText ? (
+              <div
+                className="muted"
+                style={{ fontSize: 12, marginTop: 4, lineHeight: 1.2 }}
+              >
+                {previewText}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </article>
+    );
+  };
+
+  const conversationsLabel = lang === "cs" ? "Konverzace" : "Conversations";
+  const otherContactsLabel =
+    lang === "cs" ? "Ostatní kontakty" : "Other contacts";
 
   React.useEffect(() => {
     if (route.kind === "contactNew") {
@@ -7505,6 +7753,28 @@ const App = () => {
   const showGroupFilter = route.kind === "contacts" && groupNames.length > 0;
   const showNoGroupFilter = ungroupedCount > 0;
 
+  const formatContactMessageTimestamp = (createdAtSec: number): string => {
+    const ms = Number(createdAtSec ?? 0) * 1000;
+    if (!Number.isFinite(ms) || ms <= 0) return "";
+    const d = new Date(ms);
+    const now = new Date();
+    const sameDay =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+    const locale = lang === "cs" ? "cs-CZ" : "en-US";
+    if (sameDay) {
+      return new Intl.DateTimeFormat(locale, {
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(d);
+    }
+    return new Intl.DateTimeFormat(locale, {
+      day: "2-digit",
+      month: "2-digit",
+    }).format(d);
+  };
+
   const topbar = (() => {
     if (route.kind === "advanced") {
       return {
@@ -7642,7 +7912,7 @@ const App = () => {
       };
     }
 
-    if (route.kind === "contactEdit" || route.kind === "contactPay") {
+    if (route.kind === "contactEdit") {
       return {
         icon: "<",
         label: t("close"),
@@ -7650,11 +7920,33 @@ const App = () => {
       };
     }
 
+    if (route.kind === "contactPay") {
+      const contactId = route.id as ContactId | undefined;
+      const backToChat =
+        contactId &&
+        String(contactPayBackToChatRef.current ?? "") === String(contactId);
+      return {
+        icon: "<",
+        label: t("close"),
+        onClick: () => {
+          if (backToChat && contactId) {
+            navigateToChat(contactId);
+            return;
+          }
+          if (contactId) {
+            navigateToContact(contactId);
+            return;
+          }
+          navigateToContacts();
+        },
+      };
+    }
+
     if (route.kind === "chat") {
       return {
         icon: "<",
         label: t("close"),
-        onClick: () => navigateToContact(route.id),
+        onClick: navigateToContacts,
       };
     }
 
@@ -7725,13 +8017,21 @@ const App = () => {
 
     if (route.kind === "wallet") {
       return {
-        icon: "+",
+        icon: "🪙",
         label: t("cashuAddToken"),
         onClick: navigateToCashuTokenNew,
       };
     }
 
     if (route.kind === "contact" && selectedContact) {
+      return {
+        icon: "✎",
+        label: t("editContact"),
+        onClick: () => navigateToContactEdit(selectedContact.id),
+      };
+    }
+
+    if (route.kind === "chat" && selectedContact) {
       return {
         icon: "✎",
         label: t("editContact"),
@@ -10587,102 +10887,6 @@ const App = () => {
                   </div>
                 </div>
               </div>
-              <div className="ln-list wallet-token-list">
-                {cashuTokens.length === 0 ? (
-                  <p className="muted">{t("cashuEmpty")}</p>
-                ) : (
-                  <div className="ln-tags">
-                    {cashuTokens.map((token) => (
-                      <button
-                        key={token.id as unknown as CashuTokenId}
-                        className={
-                          String(token.state ?? "") === "error"
-                            ? "pill pill-error"
-                            : "pill"
-                        }
-                        onClick={() =>
-                          navigateToCashuToken(
-                            token.id as unknown as CashuTokenId,
-                          )
-                        }
-                        style={{ cursor: "pointer" }}
-                        aria-label={t("cashuToken")}
-                      >
-                        {(() => {
-                          const amount =
-                            Number((token.amount ?? 0) as unknown as number) ||
-                            0;
-                          const icon = getMintIconUrl(token.mint);
-                          const showMintFallback = icon.failed || !icon.url;
-                          return (
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 6,
-                              }}
-                            >
-                              {icon.url ? (
-                                <img
-                                  src={icon.url}
-                                  alt=""
-                                  width={14}
-                                  height={14}
-                                  style={{
-                                    borderRadius: 9999,
-                                    objectFit: "cover",
-                                  }}
-                                  loading="lazy"
-                                  referrerPolicy="no-referrer"
-                                  onLoad={() => {
-                                    if (icon.origin) {
-                                      setMintIconUrlByMint((prev) => ({
-                                        ...prev,
-                                        [icon.origin as string]: icon.url,
-                                      }));
-                                    }
-                                  }}
-                                  onError={(e) => {
-                                    (
-                                      e.currentTarget as HTMLImageElement
-                                    ).style.display = "none";
-                                    if (icon.origin) {
-                                      const duck = icon.host
-                                        ? `https://icons.duckduckgo.com/ip3/${icon.host}.ico`
-                                        : null;
-                                      const favicon = `${icon.origin}/favicon.ico`;
-                                      let next: string | null = null;
-                                      if (duck && icon.url !== duck) {
-                                        next = duck;
-                                      } else if (icon.url !== favicon) {
-                                        next = favicon;
-                                      }
-                                      setMintIconUrlByMint((prev) => ({
-                                        ...prev,
-                                        [icon.origin as string]: next ?? null,
-                                      }));
-                                    }
-                                  }}
-                                />
-                              ) : null}
-                              {showMintFallback && icon.host ? (
-                                <span
-                                  className="muted"
-                                  style={{ fontSize: 10, lineHeight: "14px" }}
-                                >
-                                  {icon.host}
-                                </span>
-                              ) : null}
-                              <span>{formatInteger(amount)}</span>
-                            </span>
-                          );
-                        })()}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
               <div className="contacts-qr-bar" role="region">
                 <div className="contacts-qr-inner">
                   <button
@@ -10973,6 +11177,102 @@ const App = () => {
 
           {route.kind === "cashuTokenNew" && (
             <section className="panel">
+              <div className="ln-list wallet-token-list">
+                {cashuTokens.length === 0 ? (
+                  <p className="muted">{t("cashuEmpty")}</p>
+                ) : (
+                  <div className="ln-tags">
+                    {cashuTokens.map((token) => (
+                      <button
+                        key={token.id as unknown as CashuTokenId}
+                        className={
+                          String(token.state ?? "") === "error"
+                            ? "pill pill-error"
+                            : "pill"
+                        }
+                        onClick={() =>
+                          navigateToCashuToken(
+                            token.id as unknown as CashuTokenId,
+                          )
+                        }
+                        style={{ cursor: "pointer" }}
+                        aria-label={t("cashuToken")}
+                      >
+                        {(() => {
+                          const amount =
+                            Number((token.amount ?? 0) as unknown as number) ||
+                            0;
+                          const icon = getMintIconUrl(token.mint);
+                          const showMintFallback = icon.failed || !icon.url;
+                          return (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                              }}
+                            >
+                              {icon.url ? (
+                                <img
+                                  src={icon.url}
+                                  alt=""
+                                  width={14}
+                                  height={14}
+                                  style={{
+                                    borderRadius: 9999,
+                                    objectFit: "cover",
+                                  }}
+                                  loading="lazy"
+                                  referrerPolicy="no-referrer"
+                                  onLoad={() => {
+                                    if (icon.origin) {
+                                      setMintIconUrlByMint((prev) => ({
+                                        ...prev,
+                                        [icon.origin as string]: icon.url,
+                                      }));
+                                    }
+                                  }}
+                                  onError={(e) => {
+                                    (
+                                      e.currentTarget as HTMLImageElement
+                                    ).style.display = "none";
+                                    if (icon.origin) {
+                                      const duck = icon.host
+                                        ? `https://icons.duckduckgo.com/ip3/${icon.host}.ico`
+                                        : null;
+                                      const favicon = `${icon.origin}/favicon.ico`;
+                                      let next: string | null = null;
+                                      if (duck && icon.url !== duck) {
+                                        next = duck;
+                                      } else if (icon.url !== favicon) {
+                                        next = favicon;
+                                      }
+                                      setMintIconUrlByMint((prev) => ({
+                                        ...prev,
+                                        [icon.origin as string]: next ?? null,
+                                      }));
+                                    }
+                                  }}
+                                />
+                              ) : null}
+                              {showMintFallback && icon.host ? (
+                                <span
+                                  className="muted"
+                                  style={{ fontSize: 10, lineHeight: "14px" }}
+                                >
+                                  {icon.host}
+                                </span>
+                              ) : null}
+                              <span>{formatInteger(amount)}</span>
+                            </span>
+                          );
+                        })()}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <label>{t("cashuToken")}</label>
               <textarea
                 ref={cashuDraftRef}
@@ -11147,9 +11447,7 @@ const App = () => {
                       return (
                         <button
                           className="btn-wide"
-                          onClick={() =>
-                            navigateToContactPay(selectedContact.id)
-                          }
+                          onClick={() => openContactPay(selectedContact.id)}
                           disabled={cashuIsBusy || !canPayWithCashu}
                           title={
                             !canPayWithCashu ? t("payInsufficient") : undefined
@@ -11808,6 +12106,29 @@ const App = () => {
                     >
                       {chatSendIsBusy ? `${t("send")}…` : t("send")}
                     </button>
+                    {(() => {
+                      const ln = String(selectedContact.lnAddress ?? "").trim();
+                      const npub = String(selectedContact.npub ?? "").trim();
+                      const canPayThisContact =
+                        Boolean(ln) || (payWithCashuEnabled && Boolean(npub));
+                      if (!canPayThisContact) return null;
+                      const isFeedbackContact = npub === FEEDBACK_CONTACT_NPUB;
+                      return (
+                        <button
+                          className="btn-wide secondary"
+                          onClick={() =>
+                            openContactPay(selectedContact.id, true)
+                          }
+                          disabled={cashuIsBusy || !canPayWithCashu}
+                          title={
+                            !canPayWithCashu ? t("payInsufficient") : undefined
+                          }
+                          data-guide="chat-pay"
+                        >
+                          {isFeedbackContact ? "Donate" : t("pay")}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </>
               ) : null}
@@ -12137,72 +12458,53 @@ const App = () => {
 
               <section className="panel panel-plain">
                 <div className="contact-list">
-                  {contacts.length === 0 && (
-                    <p className="muted">{t("noContactsYet")}</p>
-                  )}
-                  {visibleContacts.map((contact) => {
-                    const npub = String(contact.npub ?? "").trim();
-                    const avatarUrl = npub ? nostrPictureByNpub[npub] : null;
-                    const initials = getInitials(String(contact.name ?? ""));
-                    const hasAttention = Boolean(
-                      contactAttentionById[String(contact.id ?? "")],
-                    );
-
+                  {(() => {
+                    const totalVisible =
+                      visibleContacts.conversations.length +
+                      visibleContacts.others.length;
+                    if (contacts.length === 0 || totalVisible === 0) {
+                      return <p className="muted">{t("noContactsYet")}</p>;
+                    }
                     return (
-                      <article
-                        key={contact.id}
-                        className="contact-card is-clickable"
-                        data-guide="contact-card"
-                        data-guide-contact-id={String(contact.id)}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => openContactDetail(contact)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            openContactDetail(contact);
-                          }
-                        }}
-                      >
-                        <div className="card-header">
-                          <div
-                            className="contact-avatar with-badge"
-                            aria-hidden="true"
-                          >
-                            <span className="contact-avatar-inner">
-                              {avatarUrl ? (
-                                <img
-                                  src={avatarUrl}
-                                  alt=""
-                                  loading="lazy"
-                                  referrerPolicy="no-referrer"
-                                />
-                              ) : (
-                                <span className="contact-avatar-fallback">
-                                  {initials}
-                                </span>
-                              )}
-                            </span>
-                            {hasAttention ? (
-                              <span
-                                className="contact-unread-dot"
-                                aria-hidden="true"
-                              />
-                            ) : null}
-                          </div>
-                          <div className="card-main">
-                            <div className="card-title-row">
-                              {contact.name ? (
-                                <h4 className="contact-title">
-                                  {contact.name}
-                                </h4>
-                              ) : null}
+                      <>
+                        {visibleContacts.conversations.length > 0 ? (
+                          <>
+                            <div
+                              className="muted"
+                              style={{
+                                fontSize: 11,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.08em",
+                                margin: "6px 0 6px",
+                              }}
+                            >
+                              {conversationsLabel}
                             </div>
-                          </div>
-                        </div>
-                      </article>
+                            {visibleContacts.conversations.map(
+                              renderContactCard,
+                            )}
+                          </>
+                        ) : null}
+
+                        {visibleContacts.others.length > 0 ? (
+                          <>
+                            <div
+                              className="muted"
+                              style={{
+                                fontSize: 11,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.08em",
+                                margin: "10px 0 6px",
+                              }}
+                            >
+                              {otherContactsLabel}
+                            </div>
+                            {visibleContacts.others.map(renderContactCard)}
+                          </>
+                        ) : null}
+                      </>
                     );
-                  })}
+                  })()}
                 </div>
               </section>
 

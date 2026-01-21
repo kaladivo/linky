@@ -2,7 +2,7 @@
 
 > ⚠️ Hobby tool without any guarantees. Use at your own risk.
 
-Linky is a simple mobile-first PWA for managing contacts and sending Lightning payments using Cashu tokens.
+Linky is a simple mobile-first PWA for managing contacts, messaging via Nostr, and sending Lightning payments using Cashu tokens.
 It is local-first: your data is stored locally and the app works offline.
 
 ## What it does
@@ -11,11 +11,21 @@ It is local-first: your data is stored locally and the app works offline.
   - Stores a name, Lightning address (LNURL-pay via lightning address), and optional Nostr `npub`.
   - Optional groups with a bottom group filter.
   - Contact details include edit and delete (delete requires a second click to confirm).
+  - Contact list is split into Conversations and Other contacts with a message preview and last activity time.
+  - Contact click behavior:
+    - If `npub` exists → opens chat.
+    - If only Lightning address exists → opens pay screen.
+    - If neither exists → opens contact card.
+- Messages (Nostr)
+  - Chat view with message history and timestamps.
+  - Last message preview (direction arrow) in the contact list, including Cashu token messages.
+  - Edit contact available from chat topbar.
 - Wallet
   - Paste Cashu tokens; the app receives/splits them and stores accepted tokens.
-  - Shows balance and a list of tokens (copy token / delete token).
+  - Shows balance and token details (copy token / delete token).
 - Payments
   - If a contact has a Lightning address and you have balance, you can create an invoice via LNURL-pay and pay it via Cashu melt.
+  - Pay is available from chat; returning from pay goes back to chat.
 - Settings
   - Language: Czech / English.
   - Unit toggle: switches the displayed unit label between `sat` and `₿`.
