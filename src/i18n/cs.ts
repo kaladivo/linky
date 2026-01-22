@@ -172,6 +172,8 @@ export const cs = {
 
   list: "Seznam",
   contactsTitle: "Kontakty",
+  contactsSearchPlaceholder: "Vyhledat kontakt",
+  contactsSearchClear: "Vymazat vyhledávání",
   contactsOnboardingTitle: "Začínáme",
   contactsOnboardingProgress: "Splněno {done}/{total}",
   contactsOnboardingDismiss: "Skrýt checklist",
@@ -227,6 +229,7 @@ export const cs = {
   contactsOnboardingTaskPay: "Zaplatit",
   contactsOnboardingTaskMessage: "Poslat zprávu",
   addContact: "Přidat kontakt",
+  contactLoadQr: "Načíst QR",
   noContactsYet: "Zatím žádné kontakty.",
 
   edit: "Upravit",

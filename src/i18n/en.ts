@@ -171,6 +171,8 @@ export const en = {
 
   list: "List",
   contactsTitle: "Contacts",
+  contactsSearchPlaceholder: "Search contacts",
+  contactsSearchClear: "Clear search",
   contactsOnboardingTitle: "Getting started",
   contactsOnboardingProgress: "Completed {done}/{total}",
   contactsOnboardingDismiss: "Hide checklist",
@@ -226,6 +228,7 @@ export const en = {
   contactsOnboardingTaskPay: "Pay",
   contactsOnboardingTaskMessage: "Send a message",
   addContact: "Add contact",
+  contactLoadQr: "Load QR",
   noContactsYet: "No contacts yet.",
 
   edit: "Edit",

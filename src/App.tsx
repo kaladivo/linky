@@ -456,6 +456,17 @@ const App = () => {
   const [logoutArmed, setLogoutArmed] = useState(false);
   const [dedupeContactsIsBusy, setDedupeContactsIsBusy] = useState(false);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const [contactsSearch, setContactsSearch] = useState("");
+  const [contactsHeaderVisible, setContactsHeaderVisible] = useState(false);
+  const [contactsPullProgress, setContactsPullProgress] = useState(0);
+  const contactsSearchInputRef = React.useRef<HTMLInputElement | null>(null);
+  const contactsPullDistanceRef = React.useRef(0);
+  const swipeNavRef = React.useRef({
+    x: 0,
+    y: 0,
+    time: 0,
+    active: false,
+  });
 
   const [contactsOnboardingDismissed, setContactsOnboardingDismissed] =
     useState<boolean>(
@@ -1002,7 +1013,7 @@ const App = () => {
       contactPayBackToChatRef.current = null;
       setPayAmount("");
     }
-  }, [route.kind]);
+  }, [contactsHeaderVisible, route.kind]);
 
   React.useEffect(() => {
     // Reset topup state when leaving the topup flow.
@@ -4281,7 +4292,197 @@ const App = () => {
     if (!groupNames.includes(activeGroup)) setActiveGroup(null);
   }, [activeGroup, groupNames]);
 
+  React.useEffect(() => {
+    if (route.kind !== "contacts") {
+      setContactsHeaderVisible(false);
+      contactsPullDistanceRef.current = 0;
+      setContactsPullProgress(0);
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    const pullThreshold = 36;
+    let touchStartY = 0;
+    let trackingTouch = false;
+
+    const resetPull = () => {
+      contactsPullDistanceRef.current = 0;
+    };
+
+    const onScroll = () => {
+      if (window.scrollY > 0) {
+        resetPull();
+        if (contactsHeaderVisible) setContactsHeaderVisible(false);
+        if (contactsPullProgress > 0) setContactsPullProgress(0);
+      }
+    };
+
+    const onWheel = (event: WheelEvent) => {
+      if (window.scrollY > 0) return;
+      if (event.deltaY < 0) {
+        contactsPullDistanceRef.current = Math.min(
+          contactsPullDistanceRef.current + Math.abs(event.deltaY),
+          pullThreshold * 3,
+        );
+        const progress = Math.min(
+          contactsPullDistanceRef.current / pullThreshold,
+          1,
+        );
+        setContactsPullProgress(progress);
+        if (progress >= 1) setContactsHeaderVisible(true);
+        return;
+      }
+      if (event.deltaY > 0) {
+        resetPull();
+        if (contactsHeaderVisible) setContactsHeaderVisible(false);
+        if (contactsPullProgress > 0) setContactsPullProgress(0);
+      }
+    };
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (window.scrollY > 0) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      trackingTouch = true;
+      touchStartY = touch.clientY;
+      resetPull();
+    };
+
+    const onTouchMove = (event: TouchEvent) => {
+      if (!trackingTouch || window.scrollY > 0) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      const delta = touch.clientY - touchStartY;
+      if (delta <= 0) {
+        resetPull();
+        if (contactsHeaderVisible) setContactsHeaderVisible(false);
+        if (contactsPullProgress > 0) setContactsPullProgress(0);
+        return;
+      }
+      contactsPullDistanceRef.current = delta;
+      const progress = Math.min(delta / pullThreshold, 1);
+      setContactsPullProgress(progress);
+      if (progress >= 1) setContactsHeaderVisible(true);
+    };
+
+    const onTouchEnd = () => {
+      trackingTouch = false;
+      if (!contactsHeaderVisible) {
+        resetPull();
+        if (contactsPullProgress > 0) setContactsPullProgress(0);
+      } else {
+        setContactsPullProgress(1);
+      }
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("wheel", onWheel, { passive: true });
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+    window.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [contactsHeaderVisible, contactsPullProgress, route.kind]);
+
+  const contactsSearchParts = useMemo(() => {
+    const normalized = String(contactsSearch ?? "")
+      .trim()
+      .toLowerCase();
+    if (!normalized) return [] as string[];
+    return normalized.split(/\s+/).filter(Boolean);
+  }, [contactsSearch]);
+
+  React.useEffect(() => {
+    if (route.kind !== "wallet") return;
+    if (typeof document === "undefined") return;
+
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+    };
+  }, [route.kind]);
+
+  const handleBottomSwipeStart =
+    route.kind === "contacts" || route.kind === "wallet"
+      ? (event: React.TouchEvent<HTMLDivElement>) => {
+          if (event.touches.length !== 1) return;
+          const target = event.target as HTMLElement | null;
+          if (
+            target?.closest("input, textarea, select, [contenteditable='true']")
+          )
+            return;
+          const touch = event.touches[0];
+          if (!touch) return;
+          swipeNavRef.current = {
+            x: touch.clientX,
+            y: touch.clientY,
+            time: Date.now(),
+            active: true,
+          };
+        }
+      : undefined;
+
+  const handleBottomSwipeEnd =
+    route.kind === "contacts" || route.kind === "wallet"
+      ? (event: React.TouchEvent<HTMLDivElement>) => {
+          const state = swipeNavRef.current;
+          if (!state.active) return;
+          state.active = false;
+          const touch = event.changedTouches[0];
+          if (!touch) return;
+          const dx = touch.clientX - state.x;
+          const dy = touch.clientY - state.y;
+          const absX = Math.abs(dx);
+          const absY = Math.abs(dy);
+          const dt = Date.now() - state.time;
+
+          if (dt > 800) return;
+          if (absX < 60 || absX < absY * 1.5) return;
+
+          if (dx < 0 && route.kind === "contacts") {
+            navigateToWallet();
+            return;
+          }
+          if (dx > 0 && route.kind === "wallet") {
+            navigateToContacts();
+          }
+        }
+      : undefined;
+
   const visibleContacts = useMemo(() => {
+    const matchesSearch = (contact: (typeof contacts)[number]) => {
+      if (contactsSearchParts.length === 0) return true;
+      const haystack = [
+        contact.name,
+        contact.npub,
+        contact.lnAddress,
+        contact.groupName,
+      ]
+        .map((v) =>
+          String(v ?? "")
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean)
+        .join(" ");
+      return contactsSearchParts.every((part) => haystack.includes(part));
+    };
+
     const filtered = (() => {
       if (!activeGroup) return contacts;
       if (activeGroup === NO_GROUP_FILTER) {
@@ -4296,10 +4497,14 @@ const App = () => {
       });
     })();
 
+    const searchFiltered = contactsSearchParts.length
+      ? filtered.filter(matchesSearch)
+      : filtered;
+
     const withConversation: (typeof contacts)[number][] = [];
     const withoutConversation: (typeof contacts)[number][] = [];
 
-    for (const contact of filtered) {
+    for (const contact of searchFiltered) {
       const key = String(contact.id ?? "").trim();
       if (key && lastMessageByContactId.has(key))
         withConversation.push(contact);
@@ -4350,6 +4555,7 @@ const App = () => {
     contactAttentionById,
     contactNameCollator,
     contacts,
+    contactsSearchParts,
     lastMessageByContactId,
   ]);
 
@@ -5951,7 +6157,7 @@ const App = () => {
       },
     ] as const;
 
-    const done = tasks.reduce((sum, t) => sum + (t.done ? 1 : 0), 0);
+    const done = tasks.reduce((sum, task) => sum + (task.done ? 1 : 0), 0);
     const total = tasks.length;
     const percent = total > 0 ? Math.round((done / total) * 100) : 0;
     return { tasks, done, total, percent };
@@ -8671,8 +8877,22 @@ const App = () => {
     }
   };
 
-  const showGroupFilter = route.kind === "contacts" && groupNames.length > 0;
+  const contactsToolbarProgress =
+    route.kind === "contacts"
+      ? contactsHeaderVisible
+        ? 1
+        : contactsPullProgress
+      : 0;
+  const showContactsToolbar = contactsToolbarProgress > 0;
+  const showGroupFilter = showContactsToolbar && groupNames.length > 0;
   const showNoGroupFilter = ungroupedCount > 0;
+
+  const contactsToolbarStyle = {
+    opacity: contactsToolbarProgress,
+    maxHeight: `${Math.round(220 * contactsToolbarProgress)}px`,
+    transform: `translateY(${(1 - contactsToolbarProgress) * -12}px)`,
+    pointerEvents: contactsToolbarProgress > 0.02 ? "auto" : "none",
+  } satisfies React.CSSProperties;
 
   const formatContactMessageTimestamp = (createdAtSec: number): string => {
     const ms = Number(createdAtSec ?? 0) * 1000;
@@ -8879,11 +9099,7 @@ const App = () => {
       };
     }
 
-    return {
-      icon: "☰",
-      label: t("menu"),
-      onClick: toggleMenu,
-    };
+    return null;
   })();
 
   const toggleProfileEditing = () => {
@@ -8920,14 +9136,6 @@ const App = () => {
   };
 
   const topbarRight = (() => {
-    if (route.kind === "contacts") {
-      return {
-        icon: "+",
-        label: t("addContact"),
-        onClick: openNewContactPage,
-      };
-    }
-
     if (route.kind === "nostrRelays") {
       return {
         icon: "+",
@@ -8941,14 +9149,6 @@ const App = () => {
         icon: "+",
         label: t("evoluAddServerLabel"),
         onClick: navigateToNewEvoluServer,
-      };
-    }
-
-    if (route.kind === "wallet") {
-      return {
-        icon: "🪙",
-        label: t("cashuAddToken"),
-        onClick: navigateToCashuTokenNew,
       };
     }
 
@@ -8976,7 +9176,11 @@ const App = () => {
       };
     }
 
-    return null;
+    return {
+      icon: "☰",
+      label: t("menu"),
+      onClick: toggleMenu,
+    };
   })();
 
   const topbarTitle = (() => {
@@ -10520,7 +10724,11 @@ const App = () => {
   }, [route.kind, selectedContact, chatMessages]);
 
   return (
-    <div className={showGroupFilter ? "page has-group-filter" : "page"}>
+    <div
+      className={showGroupFilter ? "page has-group-filter" : "page"}
+      onTouchStart={handleBottomSwipeStart}
+      onTouchEnd={handleBottomSwipeEnd}
+    >
       {recentlyReceivedToken?.token ? (
         <div className="toast-container" aria-live="polite">
           <div
@@ -10676,15 +10884,43 @@ const App = () => {
       {currentNsec ? (
         <>
           <header className="topbar">
-            <button
-              className="topbar-btn"
-              onClick={topbar.onClick}
-              aria-label={topbar.label}
-              title={topbar.label}
-              data-guide={route.kind === "contacts" ? "topbar-menu" : undefined}
-            >
-              <span aria-hidden="true">{topbar.icon}</span>
-            </button>
+            <div className="topbar-left">
+              {route.kind === "contacts" || route.kind === "wallet" ? (
+                <button
+                  className="topbar-btn topbar-profile-btn"
+                  onClick={openProfileQr}
+                  aria-label={t("profile")}
+                  title={t("profile")}
+                >
+                  {effectiveProfilePicture ? (
+                    <img
+                      src={effectiveProfilePicture}
+                      alt=""
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span className="topbar-profile-fallback">
+                      {getInitials(
+                        effectiveProfileName ??
+                          (currentNpub ? formatShortNpub(currentNpub) : "?"),
+                      )}
+                    </span>
+                  )}
+                </button>
+              ) : null}
+
+              {topbar ? (
+                <button
+                  className="topbar-btn"
+                  onClick={topbar.onClick}
+                  aria-label={topbar.label}
+                  title={topbar.label}
+                >
+                  <span aria-hidden="true">{topbar.icon}</span>
+                </button>
+              ) : null}
+            </div>
 
             {chatTopbarContact ? (
               <div className="topbar-chat" aria-label={t("messagesTitle")}>
@@ -10725,9 +10961,6 @@ const App = () => {
                 onClick={topbarRight.onClick}
                 aria-label={topbarRight.label}
                 title={topbarRight.label}
-                data-guide={
-                  route.kind === "contacts" ? "contacts-add" : undefined
-                }
               >
                 <span aria-hidden="true">{topbarRight.icon}</span>
               </button>
@@ -12031,103 +12264,168 @@ const App = () => {
                     </span>
                     <span className="balance-unit">{displayUnit}</span>
                   </div>
+                  <button
+                    type="button"
+                    className="wallet-tokens-link"
+                    onClick={navigateToCashuTokenNew}
+                  >
+                    {t("tokens")}
+                  </button>
+                  <div className="wallet-actions">
+                    <button
+                      className="contacts-qr-btn secondary"
+                      onClick={navigateToTopup}
+                      data-guide="wallet-topup"
+                    >
+                      <span className="contacts-qr-btn-icon" aria-hidden="true">
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M12 3v10"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M8 9l4 4 4-4"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M4 14h16v6H4v-6Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </span>
+                      <span className="contacts-qr-btn-label">
+                        {t("walletReceive")}
+                      </span>
+                    </button>
+
+                    <button
+                      className="contacts-qr-btn secondary"
+                      onClick={openScan}
+                      disabled={scanIsOpen}
+                    >
+                      <span className="contacts-qr-btn-icon" aria-hidden="true">
+                        <span className="contacts-qr-scanIcon" />
+                      </span>
+                      <span className="contacts-qr-btn-label">
+                        {t("walletSend")}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="contacts-qr-bar" role="region">
-                <div className="contacts-qr-inner">
-                  <button
-                    className="contacts-qr-btn secondary"
-                    onClick={navigateToTopup}
-                    data-guide="wallet-topup"
-                  >
-                    <span className="contacts-qr-btn-icon" aria-hidden="true">
-                      <svg
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M12 3v10"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                        <path
-                          d="M8 9l4 4 4-4"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                        <path
-                          d="M4 14h16v6H4v-6Z"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </span>
-                    <span className="contacts-qr-btn-label">
-                      {t("walletReceive")}
-                    </span>
-                  </button>
+                <div
+                  className="bottom-tabs-bar"
+                  role="tablist"
+                  aria-label={t("list")}
+                >
+                  <div className="bottom-tabs">
+                    <button
+                      type="button"
+                      className={
+                        route.kind === "contacts"
+                          ? "bottom-tab is-active"
+                          : "bottom-tab"
+                      }
+                      onClick={navigateToContacts}
+                      aria-current={
+                        route.kind === "contacts" ? "page" : undefined
+                      }
+                    >
+                      <span className="bottom-tab-icon" aria-hidden="true">
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M16 11c1.657 0 3-1.567 3-3.5S17.657 4 16 4s-3 1.567-3 3.5S14.343 11 16 11Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          />
+                          <path
+                            d="M8 12c2.209 0 4-1.791 4-4S10.209 4 8 4 4 5.791 4 8s1.791 4 4 4Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          />
+                          <path
+                            d="M2 20c0-3.314 2.686-6 6-6s6 2.686 6 6"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M13 20c0-2.761 2.239-5 5-5s5 2.239 5 5"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </span>
+                      <span className="bottom-tab-label">
+                        {t("contactsTitle")}
+                      </span>
+                    </button>
 
-                  <button
-                    type="button"
-                    className="contacts-qr-btn is-round"
-                    onClick={navigateToContacts}
-                    aria-label={t("contactsTitle")}
-                    title={t("contactsTitle")}
-                  >
-                    <span className="contacts-qr-btn-icon" aria-hidden="true">
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M16 11c1.657 0 3-1.567 3-3.5S17.657 4 16 4s-3 1.567-3 3.5S14.343 11 16 11Z"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        />
-                        <path
-                          d="M8 12c2.209 0 4-1.791 4-4S10.209 4 8 4 4 5.791 4 8s1.791 4 4 4Z"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        />
-                        <path
-                          d="M2 20c0-3.314 2.686-6 6-6s6 2.686 6 6"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                        <path
-                          d="M13 20c0-2.761 2.239-5 5-5s5 2.239 5 5"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </span>
-                  </button>
-
-                  <button
-                    className="contacts-qr-btn secondary"
-                    onClick={openScan}
-                    disabled={scanIsOpen}
-                  >
-                    <span className="contacts-qr-btn-icon" aria-hidden="true">
-                      <span className="contacts-qr-scanIcon" />
-                    </span>
-                    <span className="contacts-qr-btn-label">
-                      {t("walletSend")}
-                    </span>
-                  </button>
+                    <button
+                      type="button"
+                      className={
+                        route.kind === "wallet"
+                          ? "bottom-tab is-active"
+                          : "bottom-tab"
+                      }
+                      onClick={navigateToWallet}
+                      aria-current={
+                        route.kind === "wallet" ? "page" : undefined
+                      }
+                    >
+                      <span className="bottom-tab-icon" aria-hidden="true">
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M3 7.5C3 6.12 4.12 5 5.5 5H18.5C19.88 5 21 6.12 21 7.5V16.5C21 17.88 19.88 19 18.5 19H5.5C4.12 19 3 17.88 3 16.5V7.5Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M17 12H21"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M15.5 10.5H18.5C19.33 10.5 20 11.17 20 12C20 12.83 19.33 13.5 18.5 13.5H15.5C14.67 13.5 14 12.83 14 12C14 11.17 14.67 10.5 15.5 10.5Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          />
+                        </svg>
+                      </span>
+                      <span className="bottom-tab-label">{t("wallet")}</span>
+                    </button>
+                  </div>
                 </div>
+                <div className="contacts-qr-inner"></div>
               </div>
             </section>
           )}
@@ -13809,6 +14107,15 @@ const App = () => {
                     <button onClick={handleSaveContact}>
                       {t("saveContact")}
                     </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={openScan}
+                      disabled={scanIsOpen}
+                      data-guide="scan-contact-button"
+                    >
+                      {t("contactLoadQr")}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -13907,51 +14214,79 @@ const App = () => {
 
           {route.kind === "contacts" && (
             <>
-              {showGroupFilter && (
-                <nav className="group-filter-bar" aria-label={t("group")}>
-                  <div className="group-filter-inner">
+              <div className="contacts-toolbar" style={contactsToolbarStyle}>
+                <div className="contacts-search-bar" role="search">
+                  <input
+                    ref={contactsSearchInputRef}
+                    type="search"
+                    placeholder={t("contactsSearchPlaceholder")}
+                    value={contactsSearch}
+                    onChange={(e) => setContactsSearch(e.target.value)}
+                    autoComplete="off"
+                  />
+                  {contactsSearch.trim() ? (
                     <button
                       type="button"
-                      className={
-                        activeGroup === null
-                          ? "group-filter-btn is-active"
-                          : "group-filter-btn"
-                      }
-                      onClick={() => setActiveGroup(null)}
+                      className="contacts-search-clear"
+                      aria-label={t("contactsSearchClear")}
+                      onClick={() => {
+                        setContactsSearch("");
+                        requestAnimationFrame(() => {
+                          contactsSearchInputRef.current?.focus();
+                        });
+                      }}
                     >
-                      {t("all")}
+                      ×
                     </button>
-                    {showNoGroupFilter ? (
+                  ) : null}
+                </div>
+
+                {showGroupFilter ? (
+                  <nav className="group-filter-bar" aria-label={t("group")}>
+                    <div className="group-filter-inner">
                       <button
                         type="button"
                         className={
-                          activeGroup === NO_GROUP_FILTER
+                          activeGroup === null
                             ? "group-filter-btn is-active"
                             : "group-filter-btn"
                         }
-                        onClick={() => setActiveGroup(NO_GROUP_FILTER)}
+                        onClick={() => setActiveGroup(null)}
                       >
-                        {t("noGroup")}
+                        {t("all")}
                       </button>
-                    ) : null}
-                    {groupNames.map((group) => (
-                      <button
-                        key={group}
-                        type="button"
-                        className={
-                          activeGroup === group
-                            ? "group-filter-btn is-active"
-                            : "group-filter-btn"
-                        }
-                        onClick={() => setActiveGroup(group)}
-                        title={group}
-                      >
-                        {group}
-                      </button>
-                    ))}
-                  </div>
-                </nav>
-              )}
+                      {showNoGroupFilter ? (
+                        <button
+                          type="button"
+                          className={
+                            activeGroup === NO_GROUP_FILTER
+                              ? "group-filter-btn is-active"
+                              : "group-filter-btn"
+                          }
+                          onClick={() => setActiveGroup(NO_GROUP_FILTER)}
+                        >
+                          {t("noGroup")}
+                        </button>
+                      ) : null}
+                      {groupNames.map((group) => (
+                        <button
+                          key={group}
+                          type="button"
+                          className={
+                            activeGroup === group
+                              ? "group-filter-btn is-active"
+                              : "group-filter-btn"
+                          }
+                          onClick={() => setActiveGroup(group)}
+                          title={group}
+                        >
+                          {group}
+                        </button>
+                      ))}
+                    </div>
+                  </nav>
+                ) : null}
+              </div>
 
               <section className="panel panel-plain">
                 <div className="contact-list">
@@ -14006,133 +14341,115 @@ const App = () => {
               </section>
 
               <div className="contacts-qr-bar" role="region">
-                <div className="contacts-qr-inner">
-                  <button
-                    type="button"
-                    className="contacts-qr-btn secondary"
-                    onClick={openProfileQr}
-                    disabled={!currentNpub}
-                    data-guide="profile-qr-button"
-                  >
-                    {contacts.length === 0 ? (
-                      <div className="contacts-empty-hint" aria-hidden="true">
-                        <div className="contacts-empty-hint-text">
-                          {t("profileNavigationHint")}
-                        </div>
+                <div
+                  className="bottom-tabs-bar"
+                  role="tablist"
+                  aria-label={t("list")}
+                >
+                  <div className="bottom-tabs">
+                    <button
+                      type="button"
+                      className={
+                        route.kind === "contacts"
+                          ? "bottom-tab is-active"
+                          : "bottom-tab"
+                      }
+                      onClick={navigateToContacts}
+                      aria-current={
+                        route.kind === "contacts" ? "page" : undefined
+                      }
+                    >
+                      <span className="bottom-tab-icon" aria-hidden="true">
                         <svg
-                          className="contacts-empty-hint-arrow"
-                          width="120"
-                          height="70"
-                          viewBox="0 0 120 70"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                          aria-hidden="true"
-                        >
-                          <path
-                            d="M14 14C36 10 52 14 64 24C78 36 60 44 60 52"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                            strokeLinecap="round"
-                          />
-                          <path
-                            d="M60 52L60 60L50 52M60 60L70 52"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </div>
-                    ) : null}
-                    <span className="contacts-qr-btn-icon" aria-hidden="true">
-                      {myProfilePicture ? (
-                        <img
-                          className="contacts-qr-avatar"
-                          src={myProfilePicture}
-                          alt=""
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <svg
-                          width="16"
-                          height="16"
+                          width="18"
+                          height="18"
                           viewBox="0 0 24 24"
                           fill="none"
                           xmlns="http://www.w3.org/2000/svg"
                         >
                           <path
-                            d="M12 12c2.761 0 5-2.239 5-5S14.761 2 12 2 7 4.239 7 7s2.239 5 5 5Z"
+                            d="M16 11c1.657 0 3-1.567 3-3.5S17.657 4 16 4s-3 1.567-3 3.5S14.343 11 16 11Z"
                             stroke="currentColor"
                             strokeWidth="2"
                           />
                           <path
-                            d="M4 22c0-4.418 3.582-8 8-8s8 3.582 8 8"
+                            d="M8 12c2.209 0 4-1.791 4-4S10.209 4 8 4 4 5.791 4 8s1.791 4 4 4Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          />
+                          <path
+                            d="M2 20c0-3.314 2.686-6 6-6s6 2.686 6 6"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M13 20c0-2.761 2.239-5 5-5s5 2.239 5 5"
                             stroke="currentColor"
                             strokeWidth="2"
                             strokeLinecap="round"
                           />
                         </svg>
-                      )}
-                    </span>
-                    <span className="contacts-qr-btn-label">
-                      {t("contactsShowProfileQr")}
-                    </span>
-                  </button>
+                      </span>
+                      <span className="bottom-tab-label">
+                        {t("contactsTitle")}
+                      </span>
+                    </button>
 
-                  <button
-                    type="button"
-                    className="contacts-qr-btn is-round"
-                    onClick={navigateToWallet}
-                    aria-label={t("wallet")}
-                    title={t("wallet")}
-                    data-guide="open-wallet"
-                  >
-                    <span className="contacts-qr-btn-icon" aria-hidden="true">
-                      <svg
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M3 7.5C3 6.12 4.12 5 5.5 5H18.5C19.88 5 21 6.12 21 7.5V16.5C21 17.88 19.88 19 18.5 19H5.5C4.12 19 3 17.88 3 16.5V7.5Z"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinejoin="round"
-                        />
-                        <path
-                          d="M17 12H21"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                        <path
-                          d="M15.5 10.5H18.5C19.33 10.5 20 11.17 20 12C20 12.83 19.33 13.5 18.5 13.5H15.5C14.67 13.5 14 12.83 14 12C14 11.17 14.67 10.5 15.5 10.5Z"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        />
-                      </svg>
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="contacts-qr-btn secondary"
-                    onClick={openScan}
-                    disabled={scanIsOpen}
-                    data-guide="scan-contact-button"
-                  >
-                    <span className="contacts-qr-btn-icon" aria-hidden="true">
-                      <span className="contacts-qr-scanIcon" />
-                    </span>
-                    <span className="contacts-qr-btn-label">
-                      {t("contactsScanContactQr")}
-                    </span>
-                  </button>
+                    <button
+                      type="button"
+                      className={
+                        route.kind === "wallet"
+                          ? "bottom-tab is-active"
+                          : "bottom-tab"
+                      }
+                      onClick={navigateToWallet}
+                      aria-current={
+                        route.kind === "wallet" ? "page" : undefined
+                      }
+                    >
+                      <span className="bottom-tab-icon" aria-hidden="true">
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M3 7.5C3 6.12 4.12 5 5.5 5H18.5C19.88 5 21 6.12 21 7.5V16.5C21 17.88 19.88 19 18.5 19H5.5C4.12 19 3 17.88 3 16.5V7.5Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M17 12H21"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M15.5 10.5H18.5C19.33 10.5 20 11.17 20 12C20 12.83 19.33 13.5 18.5 13.5H15.5C14.67 13.5 14 12.83 14 12C14 11.17 14.67 10.5 15.5 10.5Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          />
+                        </svg>
+                      </span>
+                      <span className="bottom-tab-label">{t("wallet")}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              <button
+                type="button"
+                className="contacts-fab"
+                onClick={openNewContactPage}
+                aria-label={t("addContact")}
+                title={t("addContact")}
+              >
+                <span aria-hidden="true">+</span>
+              </button>
             </>
           )}
 
