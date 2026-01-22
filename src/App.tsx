@@ -8886,6 +8886,8 @@ const App = () => {
   const showContactsToolbar = contactsToolbarProgress > 0;
   const showGroupFilter = showContactsToolbar && groupNames.length > 0;
   const showNoGroupFilter = ungroupedCount > 0;
+  const mainTab = route.kind === "wallet" ? "wallet" : "contacts";
+  const isWalletTab = mainTab === "wallet";
 
   const contactsToolbarStyle = {
     opacity: contactsToolbarProgress,
@@ -12336,14 +12338,12 @@ const App = () => {
                     <button
                       type="button"
                       className={
-                        route.kind === "contacts"
-                          ? "bottom-tab is-active"
-                          : "bottom-tab"
+                        isWalletTab
+                          ? "bottom-tab"
+                          : "bottom-tab is-active"
                       }
                       onClick={navigateToContacts}
-                      aria-current={
-                        route.kind === "contacts" ? "page" : undefined
-                      }
+                      aria-current={!isWalletTab ? "page" : undefined}
                     >
                       <span className="bottom-tab-icon" aria-hidden="true">
                         <svg
@@ -12385,14 +12385,12 @@ const App = () => {
                     <button
                       type="button"
                       className={
-                        route.kind === "wallet"
+                        isWalletTab
                           ? "bottom-tab is-active"
                           : "bottom-tab"
                       }
                       onClick={navigateToWallet}
-                      aria-current={
-                        route.kind === "wallet" ? "page" : undefined
-                      }
+                      aria-current={isWalletTab ? "page" : undefined}
                     >
                       <span className="bottom-tab-icon" aria-hidden="true">
                         <svg
@@ -14350,14 +14348,12 @@ const App = () => {
                     <button
                       type="button"
                       className={
-                        route.kind === "contacts"
-                          ? "bottom-tab is-active"
-                          : "bottom-tab"
+                        isWalletTab
+                          ? "bottom-tab"
+                          : "bottom-tab is-active"
                       }
                       onClick={navigateToContacts}
-                      aria-current={
-                        route.kind === "contacts" ? "page" : undefined
-                      }
+                      aria-current={!isWalletTab ? "page" : undefined}
                     >
                       <span className="bottom-tab-icon" aria-hidden="true">
                         <svg
@@ -14399,14 +14395,12 @@ const App = () => {
                     <button
                       type="button"
                       className={
-                        route.kind === "wallet"
+                        isWalletTab
                           ? "bottom-tab is-active"
                           : "bottom-tab"
                       }
                       onClick={navigateToWallet}
-                      aria-current={
-                        route.kind === "wallet" ? "page" : undefined
-                      }
+                      aria-current={isWalletTab ? "page" : undefined}
                     >
                       <span className="bottom-tab-icon" aria-hidden="true">
                         <svg
