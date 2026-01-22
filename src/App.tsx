@@ -6,6 +6,8 @@ import type { Event as NostrToolsEvent, UnsignedEvent } from "nostr-tools";
 import React, { useMemo, useState } from "react";
 import "./App.css";
 import { parseCashuToken } from "./cashu";
+import { acceptCashuToken } from "./cashuAccept";
+import { createSendTokenWithTokensAtMint } from "./cashuSend";
 import {
   createCredoPromiseToken,
   createCredoSettlementToken,
@@ -3553,7 +3555,6 @@ const App = () => {
 
           const ownerId = await resolveOwnerIdForWrite();
 
-          const { acceptCashuToken } = await import("./cashuAccept");
           const accepted = await acceptCashuToken(tokenRaw);
 
           const result = ownerId
@@ -4660,9 +4661,6 @@ const App = () => {
             if (useAmount <= 0) continue;
 
             try {
-              const { createSendTokenWithTokensAtMint } =
-                await import("./cashuSend");
-
               const split = await createSendTokenWithTokensAtMint({
                 amount: useAmount,
                 mint: candidate.mint,
@@ -6339,7 +6337,6 @@ const App = () => {
         try {
           const ownerId = await resolveOwnerIdForWrite();
 
-          const { acceptCashuToken } = await import("./cashuAccept");
           const accepted = await acceptCashuToken(tokenRaw);
 
           const result = ownerId
