@@ -4876,22 +4876,30 @@ const App = () => {
             const anySuccess = publishResults.some(
               (r) => r.status === "fulfilled",
             );
+            const isCredoMessage = messageText.startsWith("credoA");
             if (!anySuccess) {
               const firstError = publishResults.find(
                 (r): r is PromiseRejectedResult => r.status === "rejected",
               )?.reason;
-              throw new Error(String(firstError ?? "publish failed"));
+              if (!isCredoMessage) {
+                throw new Error(String(firstError ?? "publish failed"));
+              }
+              pushToast(
+                `${t("payFailed")}: ${String(firstError ?? "publish failed")}`,
+              );
             }
 
-            appendLocalNostrMessage({
-              contactId: String(selectedContact.id),
-              direction: "out",
-              content: messageText,
-              wrapId: String(wrapForMe.id ?? ""),
-              rumorId: null,
-              pubkey: myPubHex,
-              createdAtSec: baseEvent.created_at,
-            });
+            if (anySuccess || isCredoMessage) {
+              appendLocalNostrMessage({
+                contactId: String(selectedContact.id),
+                direction: "out",
+                content: messageText,
+                wrapId: String(wrapForMe.id ?? ""),
+                rumorId: null,
+                pubkey: myPubHex,
+                createdAtSec: baseEvent.created_at,
+              });
+            }
           }
 
           const usedMints = Array.from(new Set(sendBatches.map((b) => b.mint)));
@@ -5058,7 +5066,9 @@ const App = () => {
               const firstError = publishResults.find(
                 (r): r is PromiseRejectedResult => r.status === "rejected",
               )?.reason;
-              throw new Error(String(firstError ?? "publish failed"));
+              pushToast(
+                `${t("payFailed")}: ${String(firstError ?? "publish failed")}`,
+              );
             }
 
             appendLocalNostrMessage({
@@ -5354,7 +5364,9 @@ const App = () => {
                   const firstError = publishResults.find(
                     (r): r is PromiseRejectedResult => r.status === "rejected",
                   )?.reason;
-                  throw new Error(String(firstError ?? "publish failed"));
+                  pushToast(
+                    `${t("payFailed")}: ${String(firstError ?? "publish failed")}`,
+                  );
                 }
 
                 appendLocalNostrMessage({
