@@ -322,6 +322,7 @@ export const en = {
   cashuSave: "Save token",
 
   allowPromises: "Allow promises",
+  totalBalanceWithPromises: "Total balance (incl. promises)",
   credoTokenTitle: "Credo",
   credoOwe: "I owe",
   credoPromisedToMe: "Promised to me",

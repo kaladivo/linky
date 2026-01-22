@@ -1405,6 +1405,8 @@ button.icon {
   position: relative;
   width: fit-content;
   max-width: 100%;
+  padding-inline: 6px;
+  box-sizing: border-box;
 }
 
 .contacts-qr-btn {

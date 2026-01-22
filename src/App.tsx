@@ -3248,6 +3248,14 @@ const App = () => {
     }, 0);
   }, [credoTokensActive, getCredoRemainingAmount]);
 
+  const totalCredoOutstandingIn = useMemo(() => {
+    return credoTokensActive.reduce((sum, row) => {
+      const dir = String((row as CredoTokenRow)?.direction ?? "");
+      if (dir !== "in") return sum;
+      return sum + getCredoRemainingAmount(row);
+    }, 0);
+  }, [credoTokensActive, getCredoRemainingAmount]);
+
   const credoOweTokens = useMemo(
     () =>
       credoTokensActive.filter(
@@ -3280,6 +3288,30 @@ const App = () => {
         if (dir !== "in" || issuer !== npub) return sum;
         return sum + getCredoRemainingAmount(row);
       }, 0);
+    },
+    [credoTokensActive, getCredoRemainingAmount],
+  );
+
+  const getCredoNetForContact = React.useCallback(
+    (contactNpub: string): number => {
+      const npub = String(contactNpub ?? "").trim();
+      if (!npub) return 0;
+      const nowSec = Math.floor(Date.now() / 1000);
+      let promised = 0;
+      let owe = 0;
+      for (const row of credoTokensActive) {
+        const r = row as CredoTokenRow;
+        const dir = String(r.direction ?? "");
+        const issuer = String(r.issuer ?? "").trim();
+        const recipient = String(r.recipient ?? "").trim();
+        const expiresAt = Number(r.expiresAtSec ?? 0) || 0;
+        if (expiresAt && nowSec >= expiresAt) continue;
+        const remaining = getCredoRemainingAmount(row);
+        if (remaining <= 0) continue;
+        if (dir === "in" && issuer === npub) promised += remaining;
+        if (dir === "out" && recipient === npub) owe += remaining;
+      }
+      return promised - owe;
     },
     [credoTokensActive, getCredoRemainingAmount],
   );
@@ -7217,6 +7249,7 @@ const App = () => {
     const lastTime = last
       ? formatContactMessageTimestamp(last.createdAtSec)
       : "";
+    const promiseNet = npub ? getCredoNetForContact(npub) : 0;
     const hasAttention = Boolean(
       contactAttentionById[String(contact.id ?? "")],
     );
@@ -7273,12 +7306,35 @@ const App = () => {
                   {contact.name}
                 </h4>
               ) : null}
-              {lastTime ? (
+              {lastTime || promiseNet !== 0 ? (
                 <span
-                  className="muted"
-                  style={{ fontSize: 10, whiteSpace: "nowrap" }}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-end",
+                    gap: 2,
+                  }}
                 >
-                  {lastTime}
+                  {lastTime ? (
+                    <span
+                      className="muted"
+                      style={{ fontSize: 10, whiteSpace: "nowrap" }}
+                    >
+                      {lastTime}
+                    </span>
+                  ) : null}
+                  {promiseNet !== 0 ? (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        whiteSpace: "nowrap",
+                        color: promiseNet > 0 ? "#34d399" : "#f87171",
+                      }}
+                    >
+                      {promiseNet < 0 ? "- " : ""}
+                      {formatInteger(Math.abs(promiseNet))} {displayUnit}
+                    </span>
+                  ) : null}
                 </span>
               ) : null}
             </div>
@@ -8663,6 +8719,14 @@ const App = () => {
         icon: "<",
         label: t("close"),
         onClick: navigateToWallet,
+      };
+    }
+
+    if (route.kind === "credoToken") {
+      return {
+        icon: "<",
+        label: t("close"),
+        onClick: navigateToCashuTokenNew,
       };
     }
 
@@ -12225,7 +12289,20 @@ const App = () => {
             <section className="panel">
               <div className="ln-list wallet-token-list">
                 <div className="list-header">
-                  <span>Cashu</span>
+                  <span>{t("totalBalanceWithPromises")}</span>
+                  <span>
+                    {formatInteger(
+                      cashuBalance +
+                        totalCredoOutstandingIn -
+                        totalCredoOutstandingOut,
+                    )}{" "}
+                    {displayUnit}
+                  </span>
+                </div>
+                <div className="list-header">
+                  <span>
+                    Cashu · {formatInteger(cashuBalance)} {displayUnit}
+                  </span>
                 </div>
                 {cashuTokens.length === 0 ? (
                   <p className="muted">{t("cashuEmpty")}</p>
@@ -12322,7 +12399,10 @@ const App = () => {
                 )}
 
                 <div className="list-header" style={{ marginTop: 12 }}>
-                  <span>{t("credoOwe")}</span>
+                  <span>
+                    {t("credoOwe")} · {formatInteger(totalCredoOutstandingOut)}{" "}
+                    {displayUnit}
+                  </span>
                 </div>
                 {credoOweTokens.length === 0 ? (
                   <p className="muted">—</p>
@@ -12375,7 +12455,10 @@ const App = () => {
                 )}
 
                 <div className="list-header" style={{ marginTop: 12 }}>
-                  <span>{t("credoPromisedToMe")}</span>
+                  <span>
+                    {t("credoPromisedToMe")} ·{" "}
+                    {formatInteger(totalCredoOutstandingIn)} {displayUnit}
+                  </span>
                 </div>
                 {credoPromisedTokens.length === 0 ? (
                   <p className="muted">—</p>
