@@ -3213,6 +3213,37 @@ const App = () => {
       .slice(0, 100);
   }, [nostrMessagesLocal]);
 
+  React.useEffect(() => {
+    const pendingTokens = cashuTokensAll.filter((row) => {
+      const state = String((row as unknown as { state?: unknown }).state ?? "");
+      if (state !== "pending") return false;
+      const isDeleted = Boolean(
+        (row as unknown as { isDeleted?: unknown }).isDeleted,
+      );
+      return !isDeleted;
+    });
+    if (pendingTokens.length === 0) return;
+
+    for (const row of pendingTokens) {
+      const tokenText = String(
+        (row as unknown as { token?: unknown; rawToken?: unknown }).token ??
+          (row as unknown as { rawToken?: unknown }).rawToken ??
+          "",
+      ).trim();
+      if (!tokenText) continue;
+      const hasMessage = nostrMessagesLocal.some(
+        (m) =>
+          String(m.direction ?? "") === "out" &&
+          String(m.content ?? "").trim() === tokenText,
+      );
+      if (!hasMessage) continue;
+      update("cashuToken", {
+        id: row.id as CashuTokenId,
+        isDeleted: Evolu.sqliteTrue,
+      });
+    }
+  }, [cashuTokensAll, nostrMessagesLocal, update]);
+
   const lastMessageByContactId = useMemo(() => {
     const map = new Map<string, LocalNostrMessage>();
     for (const msg of nostrMessagesLocal) {
@@ -4715,8 +4746,8 @@ const App = () => {
     [mintInfoByUrl, normalizeMintUrl],
   );
 
-  const PUBLISH_RETRY_DELAY_MS = 4000;
-  const PUBLISH_MAX_ATTEMPTS = 3;
+  const PUBLISH_RETRY_DELAY_MS = 1500;
+  const PUBLISH_MAX_ATTEMPTS = 2;
 
   const publishToRelaysWithRetry = React.useCallback(
     async (
@@ -5200,7 +5231,7 @@ const App = () => {
                   meta.amount > 0
                     ? (meta.amount as typeof Evolu.PositiveInt.Type)
                     : null,
-                state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+                state: "pending" as typeof Evolu.NonEmptyString100.Type,
                 error: null,
               });
             }
