@@ -4715,6 +4715,58 @@ const App = () => {
     [mintInfoByUrl, normalizeMintUrl],
   );
 
+  const PUBLISH_RETRY_DELAY_MS = 4000;
+  const PUBLISH_MAX_ATTEMPTS = 3;
+
+  const publishToRelaysWithRetry = React.useCallback(
+    async (
+      pool: AppNostrPool,
+      relays: string[],
+      event: NostrToolsEvent,
+    ): Promise<{ anySuccess: boolean; error: unknown | null }> => {
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < PUBLISH_MAX_ATTEMPTS; attempt += 1) {
+        const publishResults = await Promise.allSettled(
+          pool.publish(relays, event),
+        );
+        const anySuccess = publishResults.some((r) => r.status === "fulfilled");
+        if (anySuccess) return { anySuccess: true, error: null };
+
+        lastError = publishResults.find(
+          (r): r is PromiseRejectedResult => r.status === "rejected",
+        )?.reason;
+        const message = String(lastError ?? "").toLowerCase();
+        const isTimeout =
+          message.includes("timed out") || message.includes("timeout");
+        if (!isTimeout || attempt >= PUBLISH_MAX_ATTEMPTS - 1) break;
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, PUBLISH_RETRY_DELAY_MS),
+        );
+      }
+      return { anySuccess: false, error: lastError };
+    },
+    [],
+  );
+
+  const publishWrappedWithRetry = React.useCallback(
+    async (
+      pool: AppNostrPool,
+      relays: string[],
+      wrapForMe: NostrToolsEvent,
+      wrapForContact: NostrToolsEvent,
+    ): Promise<{ anySuccess: boolean; error: unknown | null }> => {
+      const [me, contact] = await Promise.all([
+        publishToRelaysWithRetry(pool, relays, wrapForMe),
+        publishToRelaysWithRetry(pool, relays, wrapForContact),
+      ]);
+      return {
+        anySuccess: Boolean(me.anySuccess || contact.anySuccess),
+        error: me.error ?? contact.error ?? null,
+      };
+    },
+    [publishToRelaysWithRetry],
+  );
+
   const paySelectedContact = async () => {
     if (route.kind !== "contactPay") return;
     if (!selectedContact) return;
@@ -4816,7 +4868,13 @@ const App = () => {
           token: string;
           amount: number;
           mint: string;
+          unit: string | null;
         }> = [];
+        const tokensToDeleteByMint = new Map<string, CashuTokenId[]>();
+        const sendTokenMetaByText = new Map<
+          string,
+          { mint: string; unit: string | null; amount: number }
+        >();
 
         let lastError: unknown = null;
         let lastMint: string | null = null;
@@ -4876,6 +4934,12 @@ const App = () => {
                 token: split.sendToken,
                 amount: split.sendAmount,
                 mint: split.mint,
+                unit: split.unit ?? null,
+              });
+              sendTokenMetaByText.set(split.sendToken, {
+                mint: split.mint,
+                unit: split.unit ?? null,
+                amount: split.sendAmount,
               });
               remaining -= split.sendAmount;
 
@@ -4900,16 +4964,15 @@ const App = () => {
                 if (!inserted.ok) throw inserted.error;
               }
 
-              for (const row of cashuTokens) {
-                if (
-                  String(row.state ?? "") === "accepted" &&
-                  String(row.mint ?? "").trim() === candidate.mint
-                ) {
-                  update("cashuToken", {
-                    id: row.id as CashuTokenId,
-                    isDeleted: Evolu.sqliteTrue,
-                  });
-                }
+              if (!tokensToDeleteByMint.has(candidate.mint)) {
+                const ids = cashuTokens
+                  .filter(
+                    (row) =>
+                      String(row.state ?? "") === "accepted" &&
+                      String(row.mint ?? "").trim() === candidate.mint,
+                  )
+                  .map((row) => row.id as CashuTokenId);
+                tokensToDeleteByMint.set(candidate.mint, ids);
               }
             } catch (e) {
               lastError = e;
@@ -5050,6 +5113,9 @@ const App = () => {
             });
           }
 
+          const publishedSendTokens = new Set<string>();
+          let publishFailedError: unknown = null;
+
           for (const plan of messagePlans) {
             const messageText = plan.text;
             const baseEvent = {
@@ -5076,28 +5142,32 @@ const App = () => {
 
             chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
 
-            const publishResults = await Promise.allSettled([
-              ...pool.publish(NOSTR_RELAYS, wrapForMe),
-              ...pool.publish(NOSTR_RELAYS, wrapForContact),
-            ]);
-
-            const anySuccess = publishResults.some(
-              (r) => r.status === "fulfilled",
+            const publishOutcome = await publishWrappedWithRetry(
+              pool,
+              NOSTR_RELAYS,
+              wrapForMe,
+              wrapForContact,
             );
+
+            const anySuccess = publishOutcome.anySuccess;
             const isCredoMessage = messageText.startsWith("credoA");
             if (!anySuccess) {
-              const firstError = publishResults.find(
-                (r): r is PromiseRejectedResult => r.status === "rejected",
-              )?.reason;
+              const firstError = publishOutcome.error;
               if (!isCredoMessage) {
-                throw new Error(String(firstError ?? "publish failed"));
+                publishFailedError = firstError ?? new Error("publish failed");
+                break;
               }
               pushToast(
                 `${t("payFailed")}: ${String(firstError ?? "publish failed")}`,
               );
             }
 
-            if (anySuccess) plan.onSuccess?.();
+            if (anySuccess) {
+              plan.onSuccess?.();
+              if (sendTokenMetaByText.has(messageText)) {
+                publishedSendTokens.add(messageText);
+              }
+            }
 
             if (anySuccess || isCredoMessage) {
               appendLocalNostrMessage({
@@ -5110,6 +5180,43 @@ const App = () => {
                 createdAtSec: baseEvent.created_at,
               });
             }
+          }
+
+          if (sendTokenMetaByText.size > 0) {
+            const unsentTokens = Array.from(sendTokenMetaByText.keys()).filter(
+              (token) => !publishedSendTokens.has(token),
+            );
+            for (const tokenText of unsentTokens) {
+              const meta = sendTokenMetaByText.get(tokenText);
+              if (!meta) continue;
+              insert("cashuToken", {
+                token: tokenText as typeof Evolu.NonEmptyString.Type,
+                rawToken: null,
+                mint: meta.mint as typeof Evolu.NonEmptyString1000.Type,
+                unit: meta.unit
+                  ? (meta.unit as typeof Evolu.NonEmptyString100.Type)
+                  : null,
+                amount:
+                  meta.amount > 0
+                    ? (meta.amount as typeof Evolu.PositiveInt.Type)
+                    : null,
+                state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+                error: null,
+              });
+            }
+
+            for (const ids of tokensToDeleteByMint.values()) {
+              for (const id of ids) {
+                update("cashuToken", {
+                  id,
+                  isDeleted: Evolu.sqliteTrue,
+                });
+              }
+            }
+          }
+
+          if (publishFailedError) {
+            throw publishFailedError;
           }
 
           const usedMints = Array.from(new Set(sendBatches.map((b) => b.mint)));
@@ -5271,18 +5378,16 @@ const App = () => {
 
             chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
 
-            const publishResults = await Promise.allSettled([
-              ...pool.publish(NOSTR_RELAYS, wrapForMe),
-              ...pool.publish(NOSTR_RELAYS, wrapForContact),
-            ]);
-
-            const anySuccess = publishResults.some(
-              (r) => r.status === "fulfilled",
+            const publishOutcome = await publishWrappedWithRetry(
+              pool,
+              NOSTR_RELAYS,
+              wrapForMe,
+              wrapForContact,
             );
+
+            const anySuccess = publishOutcome.anySuccess;
             if (!anySuccess) {
-              const firstError = publishResults.find(
-                (r): r is PromiseRejectedResult => r.status === "rejected",
-              )?.reason;
+              const firstError = publishOutcome.error;
               pushToast(
                 `${t("payFailed")}: ${String(firstError ?? "publish failed")}`,
               );
@@ -5571,18 +5676,16 @@ const App = () => {
 
                 chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
 
-                const publishResults = await Promise.allSettled([
-                  ...pool.publish(NOSTR_RELAYS, wrapForMe),
-                  ...pool.publish(NOSTR_RELAYS, wrapForContact),
-                ]);
-
-                const anySuccess = publishResults.some(
-                  (r) => r.status === "fulfilled",
+                const publishOutcome = await publishWrappedWithRetry(
+                  pool,
+                  NOSTR_RELAYS,
+                  wrapForMe,
+                  wrapForContact,
                 );
+
+                const anySuccess = publishOutcome.anySuccess;
                 if (!anySuccess) {
-                  const firstError = publishResults.find(
-                    (r): r is PromiseRejectedResult => r.status === "rejected",
-                  )?.reason;
+                  const firstError = publishOutcome.error;
                   pushToast(
                     `${t("payFailed")}: ${String(firstError ?? "publish failed")}`,
                   );
@@ -11170,6 +11273,9 @@ const App = () => {
 
               <div className="settings-row">
                 <div className="settings-left">
+                  <span className="settings-icon" aria-hidden="true">
+                    🪙
+                  </span>
                   <span className="settings-label">{t("tokens")}</span>
                 </div>
                 <div className="settings-right">
