@@ -851,6 +851,16 @@ button.settings-link:hover {
   background: rgba(20, 184, 166, 0.12);
 }
 
+.chat-message.pending .chat-bubble.out {
+  border: 1px dashed rgba(20, 184, 166, 0.6);
+  background: rgba(20, 184, 166, 0.08);
+  opacity: 0.85;
+}
+
+.chat-message.pending .chat-time {
+  color: #fbbf24;
+}
+
 .chat-time {
   font-size: 10px;
   line-height: 1;

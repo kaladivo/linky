@@ -104,6 +104,8 @@ const PROMISE_EXPIRES_SEC = 30 * 24 * 60 * 60;
 const LOCAL_PAYMENT_EVENTS_STORAGE_KEY_PREFIX = "linky.local.paymentEvents.v1";
 const LOCAL_NOSTR_MESSAGES_STORAGE_KEY_PREFIX = "linky.local.nostrMessages.v1";
 const LOCAL_MINT_INFO_STORAGE_KEY_PREFIX = "linky.local.mintInfo.v1";
+const LOCAL_PENDING_PAYMENTS_STORAGE_KEY_PREFIX =
+  "linky.local.pendingPayments.v1";
 
 const inMemoryNostrPictureCache = new Map<string, string | null>();
 const inMemoryMintIconCache = new Map<string, string | null>();
@@ -129,6 +131,14 @@ type LocalNostrMessage = {
   wrapId: string;
   rumorId: string | null;
   pubkey: string;
+  createdAtSec: number;
+  status?: "sent" | "pending";
+};
+
+type LocalPendingPayment = {
+  id: string;
+  contactId: string;
+  amountSat: number;
   createdAtSec: number;
 };
 
@@ -3174,6 +3184,9 @@ const App = () => {
     LocalNostrMessage[]
   >(() => []);
   const nostrMessageWrapIdsRef = React.useRef<Set<string>>(new Set());
+  const [pendingPayments, setPendingPayments] = useState<LocalPendingPayment[]>(
+    () => [],
+  );
 
   React.useEffect(() => {
     const ownerId = appOwnerIdRef.current;
@@ -3189,10 +3202,17 @@ const App = () => {
     const wrapIds = new Set<string>();
     const deduped: LocalNostrMessage[] = [];
     for (const msg of raw) {
-      const key = String(msg.wrapId ?? "").trim() || String(msg.id ?? "");
+      const normalizedStatus =
+        msg.status === "pending" || msg.status === "sent" ? msg.status : "sent";
+      const normalized = {
+        ...msg,
+        status: normalizedStatus,
+      } as LocalNostrMessage;
+      const key =
+        String(normalized.wrapId ?? "").trim() || String(normalized.id ?? "");
       if (key && wrapIds.has(key)) continue;
       if (key) wrapIds.add(key);
-      deduped.push(msg);
+      deduped.push(normalized);
     }
     deduped.sort((a, b) => a.createdAtSec - b.createdAtSec);
     const trimmed = deduped.slice(-500);
@@ -3203,13 +3223,18 @@ const App = () => {
   }, [appOwnerId]);
 
   const appendLocalNostrMessage = React.useCallback(
-    (msg: Omit<LocalNostrMessage, "id">) => {
+    (
+      msg: Omit<LocalNostrMessage, "id" | "status"> & {
+        status?: "sent" | "pending";
+      },
+    ): string => {
       const ownerId = appOwnerIdRef.current;
-      if (!ownerId) return;
+      if (!ownerId) return "";
 
       const entry: LocalNostrMessage = {
         id: makeLocalId(),
         ...msg,
+        status: msg.status ?? "sent",
       };
 
       setNostrMessagesLocal((prev) => {
@@ -3256,6 +3281,117 @@ const App = () => {
 
         safeLocalStorageSetJson(
           `${LOCAL_NOSTR_MESSAGES_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
+          next,
+        );
+        return next;
+      });
+      return entry.id;
+    },
+    [appOwnerId],
+  );
+
+  const updateLocalNostrMessage = React.useCallback(
+    (
+      id: string,
+      updates: Partial<Pick<LocalNostrMessage, "wrapId" | "status" | "pubkey">>,
+    ) => {
+      const ownerId = appOwnerIdRef.current;
+      if (!ownerId || !id) return;
+
+      setNostrMessagesLocal((prev) => {
+        const idx = prev.findIndex((m) => String(m.id ?? "") === id);
+        if (idx < 0) return prev;
+        const current = prev[idx];
+        const nextEntry: LocalNostrMessage = {
+          ...current,
+          ...updates,
+          status:
+            updates.status === "pending" || updates.status === "sent"
+              ? updates.status
+              : (current.status ?? "sent"),
+        };
+
+        const wrapIds = nostrMessageWrapIdsRef.current;
+        const prevKey = String(current.wrapId ?? "").trim() || String(id);
+        const nextKey =
+          String(nextEntry.wrapId ?? "").trim() || String(nextEntry.id);
+        if (prevKey && prevKey !== nextKey) wrapIds.delete(prevKey);
+        if (nextKey) wrapIds.add(nextKey);
+
+        const next = [...prev];
+        next[idx] = nextEntry;
+
+        safeLocalStorageSetJson(
+          `${LOCAL_NOSTR_MESSAGES_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
+          next,
+        );
+        return next;
+      });
+    },
+    [appOwnerId],
+  );
+
+  React.useEffect(() => {
+    const ownerId = appOwnerIdRef.current;
+    if (!ownerId) {
+      setPendingPayments([]);
+      return;
+    }
+    const raw = safeLocalStorageGetJson(
+      `${LOCAL_PENDING_PAYMENTS_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
+      [] as LocalPendingPayment[],
+    );
+    const normalized = Array.isArray(raw)
+      ? raw
+          .map((p) => ({
+            id: String(p.id ?? "").trim(),
+            contactId: String(p.contactId ?? "").trim(),
+            amountSat: Math.max(0, Math.trunc(Number(p.amountSat ?? 0) || 0)),
+            createdAtSec: Math.max(
+              0,
+              Math.trunc(Number(p.createdAtSec ?? 0) || 0),
+            ),
+          }))
+          .filter((p) => p.id && p.contactId && p.amountSat > 0)
+      : [];
+    setPendingPayments(normalized);
+  }, [appOwnerId]);
+
+  const enqueuePendingPayment = React.useCallback(
+    (payload: { contactId: ContactId; amountSat: number }) => {
+      const ownerId = appOwnerIdRef.current;
+      if (!ownerId) return;
+      const amountSat =
+        Number.isFinite(payload.amountSat) && payload.amountSat > 0
+          ? Math.trunc(payload.amountSat)
+          : 0;
+      if (amountSat <= 0) return;
+      const entry: LocalPendingPayment = {
+        id: makeLocalId(),
+        contactId: String(payload.contactId ?? ""),
+        amountSat,
+        createdAtSec: Math.floor(Date.now() / 1000),
+      };
+      setPendingPayments((prev) => {
+        const next = [...prev, entry].slice(-200);
+        safeLocalStorageSetJson(
+          `${LOCAL_PENDING_PAYMENTS_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
+          next,
+        );
+        return next;
+      });
+    },
+    [appOwnerId],
+  );
+
+  const removePendingPayment = React.useCallback(
+    (id: string) => {
+      const ownerId = appOwnerIdRef.current;
+      if (!ownerId || !id) return;
+      setPendingPayments((prev) => {
+        const next = prev.filter((p) => String(p.id ?? "") !== id);
+        safeLocalStorageSetJson(
+          `${LOCAL_PENDING_PAYMENTS_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
           next,
         );
         return next;
@@ -3316,11 +3452,12 @@ const App = () => {
           "",
       ).trim();
       if (!tokenText) continue;
-      const hasMessage = nostrMessagesLocal.some(
-        (m) =>
-          String(m.direction ?? "") === "out" &&
-          String(m.content ?? "").trim() === tokenText,
-      );
+      const hasMessage = nostrMessagesLocal.some((m) => {
+        const isOut = String(m.direction ?? "") === "out";
+        const matches = String(m.content ?? "").trim() === tokenText;
+        const status = String(m.status ?? "sent");
+        return isOut && matches && status !== "pending";
+      });
       if (!hasMessage) continue;
       update("cashuToken", {
         id: row.id as CashuTokenId,
@@ -4943,6 +5080,700 @@ const App = () => {
     },
     [confirmPublishById, publishToRelaysWithRetry],
   );
+
+  const payContactWithCashuMessage = React.useCallback(
+    async (args: {
+      contact: (typeof contacts)[number];
+      amountSat: number;
+      fromQueue?: boolean;
+    }): Promise<{ ok: boolean; queued: boolean; error?: string }> => {
+      const { contact, amountSat, fromQueue } = args;
+      const notify = !fromQueue;
+
+      if (!currentNsec || !currentNpub) {
+        if (notify) setStatus(t("profileMissingNpub"));
+        return { ok: false, queued: false, error: "missing nsec" };
+      }
+
+      const contactNpub = String(contact.npub ?? "").trim();
+      if (!contactNpub) {
+        if (notify) setStatus(t("chatMissingContactNpub"));
+        return { ok: false, queued: false, error: "missing contact npub" };
+      }
+
+      const isOffline =
+        typeof navigator !== "undefined" && navigator.onLine === false;
+      if (isOffline) {
+        enqueuePendingPayment({
+          contactId: contact.id as ContactId,
+          amountSat,
+        });
+        if (notify) {
+          setStatus(t("payQueued"));
+          showPaidOverlay(
+            t("paidQueuedTo")
+              .replace("{amount}", formatInteger(amountSat))
+              .replace("{unit}", displayUnit)
+              .replace(
+                "{name}",
+                String(contact.name ?? "").trim() ||
+                  String(contact.lnAddress ?? "").trim() ||
+                  t("appTitle"),
+              ),
+          );
+          safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
+          setContactsOnboardingHasPaid(true);
+          navigateToChat(contact.id as ContactId);
+        }
+        return { ok: true, queued: true };
+      }
+
+      if (notify) setStatus(t("payPaying"));
+
+      const availableCredo = contactNpub
+        ? getCredoAvailableForContact(contactNpub)
+        : 0;
+      const useCredoAmount = Math.min(availableCredo, amountSat);
+      const remainingAfterCredo = Math.max(0, amountSat - useCredoAmount);
+
+      const cashuToSend = Math.min(cashuBalance, remainingAfterCredo);
+      const promiseAmount = Math.max(0, remainingAfterCredo - cashuToSend);
+      if (promiseAmount > 0) {
+        if (!allowPromisesEnabled) {
+          if (notify) setStatus(t("payInsufficient"));
+          return { ok: false, queued: false, error: "insufficient" };
+        }
+        if (totalCredoOutstandingOut + promiseAmount > PROMISE_TOTAL_CAP_SAT) {
+          if (notify) setStatus(t("payPromiseLimit"));
+          return { ok: false, queued: false, error: "promise limit" };
+        }
+      }
+
+      const sendBatches: Array<{
+        token: string;
+        amount: number;
+        mint: string;
+        unit: string | null;
+      }> = [];
+      const tokensToDeleteByMint = new Map<string, CashuTokenId[]>();
+      const sendTokenMetaByText = new Map<
+        string,
+        { mint: string; unit: string | null; amount: number }
+      >();
+
+      let lastError: unknown = null;
+      let lastMint: string | null = null;
+
+      if (cashuToSend > 0) {
+        const mintGroups = new Map<string, { tokens: string[]; sum: number }>();
+        for (const row of cashuTokens) {
+          if (String(row.state ?? "") !== "accepted") continue;
+          const mint = String(row.mint ?? "").trim();
+          if (!mint) continue;
+          const tokenText = String(row.token ?? "").trim();
+          if (!tokenText) continue;
+
+          const amount = Number((row.amount ?? 0) as unknown as number) || 0;
+          const entry = mintGroups.get(mint) ?? { tokens: [], sum: 0 };
+          entry.tokens.push(tokenText);
+          entry.sum += amount;
+          mintGroups.set(mint, entry);
+        }
+
+        const preferredMint = normalizeMintUrl(defaultMintUrl ?? "");
+        const candidates = buildCashuMintCandidates(mintGroups, preferredMint);
+
+        if (candidates.length === 0) {
+          if (notify) setStatus(t("payInsufficient"));
+          return { ok: false, queued: false, error: "insufficient" };
+        }
+
+        let remaining = cashuToSend;
+
+        for (const candidate of candidates) {
+          if (remaining <= 0) break;
+          const useAmount = Math.min(remaining, candidate.sum);
+          if (useAmount <= 0) continue;
+
+          try {
+            const split = await createSendTokenWithTokensAtMint({
+              amount: useAmount,
+              mint: candidate.mint,
+              tokens: candidate.tokens,
+              unit: "sat",
+            });
+
+            if (!split.ok) {
+              lastError = split.error;
+              lastMint = candidate.mint;
+              continue;
+            }
+
+            sendBatches.push({
+              token: split.sendToken,
+              amount: split.sendAmount,
+              mint: split.mint,
+              unit: split.unit ?? null,
+            });
+            sendTokenMetaByText.set(split.sendToken, {
+              mint: split.mint,
+              unit: split.unit ?? null,
+              amount: split.sendAmount,
+            });
+            remaining -= split.sendAmount;
+
+            const remainingToken = split.remainingToken;
+            const remainingAmount = split.remainingAmount;
+
+            if (remainingToken && remainingAmount > 0) {
+              const inserted = insert("cashuToken", {
+                token: remainingToken as typeof Evolu.NonEmptyString.Type,
+                rawToken: null,
+                mint: split.mint as typeof Evolu.NonEmptyString1000.Type,
+                unit: split.unit
+                  ? (split.unit as typeof Evolu.NonEmptyString100.Type)
+                  : null,
+                amount:
+                  remainingAmount > 0
+                    ? (remainingAmount as typeof Evolu.PositiveInt.Type)
+                    : null,
+                state: "accepted" as typeof Evolu.NonEmptyString100.Type,
+                error: null,
+              });
+              if (!inserted.ok) throw inserted.error;
+            }
+
+            if (!tokensToDeleteByMint.has(candidate.mint)) {
+              const ids = cashuTokens
+                .filter(
+                  (row) =>
+                    String(row.state ?? "") === "accepted" &&
+                    String(row.mint ?? "").trim() === candidate.mint,
+                )
+                .map((row) => row.id as CashuTokenId);
+              tokensToDeleteByMint.set(candidate.mint, ids);
+            }
+          } catch (e) {
+            lastError = e;
+            lastMint = candidate.mint;
+          }
+        }
+
+        if (remaining > 0) {
+          logPaymentEvent({
+            direction: "out",
+            status: "error",
+            amount: amountSat,
+            fee: null,
+            mint: lastMint,
+            unit: "sat",
+            error: String(lastError ?? "insufficient funds"),
+            contactId: contact.id as ContactId,
+          });
+          if (notify) {
+            setStatus(
+              lastError
+                ? `${t("payFailed")}: ${String(lastError)}`
+                : t("payInsufficient"),
+            );
+          }
+          return { ok: false, queued: false, error: String(lastError ?? "") };
+        }
+      }
+
+      const settlementPlans: Array<{
+        row: unknown;
+        amount: number;
+      }> = [];
+
+      if (useCredoAmount > 0) {
+        const candidates = credoTokensActive
+          .filter((row) => {
+            const r = row as CredoTokenRow;
+            return (
+              String(r.direction ?? "") === "in" &&
+              String(r.issuer ?? "").trim() === contactNpub
+            );
+          })
+          .sort(
+            (a, b) =>
+              Number((a as CredoTokenRow).expiresAtSec ?? 0) -
+              Number((b as CredoTokenRow).expiresAtSec ?? 0),
+          );
+
+        let remaining = useCredoAmount;
+        for (const row of candidates) {
+          if (remaining <= 0) break;
+          const available = getCredoRemainingAmount(row);
+          if (available <= 0) continue;
+          const useAmount = Math.min(available, remaining);
+          if (useAmount <= 0) continue;
+          settlementPlans.push({ row, amount: useAmount });
+          remaining -= useAmount;
+        }
+      }
+
+      try {
+        const { nip19, getPublicKey } = await import("nostr-tools");
+        const { wrapEvent } = await import("nostr-tools/nip59");
+
+        const decodedMe = nip19.decode(currentNsec);
+        if (decodedMe.type !== "nsec") throw new Error("invalid nsec");
+        const privBytes = decodedMe.data as Uint8Array;
+        const myPubHex = getPublicKey(privBytes);
+
+        const decodedContact = nip19.decode(contactNpub);
+        if (decodedContact.type !== "npub") throw new Error("invalid npub");
+        const contactPubHex = decodedContact.data as string;
+
+        const pool = await getSharedAppNostrPool();
+
+        const messagePlans: Array<{
+          text: string;
+          onSuccess?: () => void;
+        }> = [];
+        const nowSec = Math.floor(Date.now() / 1000);
+
+        for (const plan of settlementPlans) {
+          const row = plan.row as CredoTokenRow;
+          const promiseId = String(row.promiseId ?? "").trim();
+          const issuer = String(row.issuer ?? "").trim();
+          const recipient = String(row.recipient ?? "").trim() || currentNpub;
+          if (!promiseId || !issuer || !recipient) continue;
+          const settlement = createCredoSettlementToken({
+            recipientNsec: privBytes,
+            promiseId,
+            issuerNpub: issuer,
+            recipientNpub: recipient,
+            amount: plan.amount,
+            unit: "sat",
+            settledAtSec: nowSec,
+          });
+          messagePlans.push({
+            text: settlement.token,
+            onSuccess: () =>
+              applyCredoSettlement({
+                promiseId,
+                amount: plan.amount,
+                settledAtSec: nowSec,
+              }),
+          });
+        }
+
+        if (promiseAmount > 0) {
+          const expiresAtSec = nowSec + PROMISE_EXPIRES_SEC;
+          const promiseCreated = createCredoPromiseToken({
+            issuerNpub: currentNpub,
+            issuerNsec: privBytes,
+            recipientNpub: contactNpub,
+            amount: promiseAmount,
+            unit: "sat",
+            expiresAtSec,
+            createdAtSec: nowSec,
+          });
+          messagePlans.push({
+            text: promiseCreated.token,
+            onSuccess: () =>
+              insertCredoPromise({
+                promiseId: promiseCreated.promiseId,
+                token: promiseCreated.token,
+                issuer: currentNpub,
+                recipient: contactNpub,
+                amount: promiseAmount,
+                unit: "sat",
+                createdAtSec: nowSec,
+                expiresAtSec,
+                direction: "out",
+              }),
+          });
+        }
+
+        for (const batch of sendBatches) {
+          messagePlans.unshift({
+            text: String(batch.token ?? "").trim(),
+          });
+        }
+
+        const publishedSendTokens = new Set<string>();
+        let hasPendingMessages = false;
+
+        for (const plan of messagePlans) {
+          const messageText = plan.text;
+          const baseEvent = {
+            created_at: Math.ceil(Date.now() / 1e3),
+            kind: 14,
+            pubkey: myPubHex,
+            tags: [
+              ["p", contactPubHex],
+              ["p", myPubHex],
+            ],
+            content: messageText,
+          } satisfies UnsignedEvent;
+
+          const pendingId = appendLocalNostrMessage({
+            contactId: String(contact.id ?? ""),
+            direction: "out",
+            content: messageText,
+            wrapId: `pending:${makeLocalId()}`,
+            rumorId: null,
+            pubkey: myPubHex,
+            createdAtSec: baseEvent.created_at,
+            status: "pending",
+          });
+
+          const wrapForMe = wrapEvent(
+            baseEvent,
+            privBytes,
+            myPubHex,
+          ) as NostrToolsEvent;
+          const wrapForContact = wrapEvent(
+            baseEvent,
+            privBytes,
+            contactPubHex,
+          ) as NostrToolsEvent;
+
+          const publishOutcome = await publishWrappedWithRetry(
+            pool,
+            NOSTR_RELAYS,
+            wrapForMe,
+            wrapForContact,
+          );
+
+          const anySuccess = publishOutcome.anySuccess;
+          if (!anySuccess) {
+            const firstError = publishOutcome.error;
+            hasPendingMessages = true;
+            if (notify) {
+              pushToast(
+                `${t("payFailed")}: ${String(firstError ?? "publish failed")}`,
+              );
+            }
+            continue;
+          }
+
+          chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
+          if (pendingId) {
+            updateLocalNostrMessage(pendingId, {
+              status: "sent",
+              wrapId: String(wrapForMe.id ?? ""),
+              pubkey: myPubHex,
+            });
+          }
+
+          plan.onSuccess?.();
+          if (sendTokenMetaByText.has(messageText)) {
+            publishedSendTokens.add(messageText);
+          }
+        }
+
+        if (sendTokenMetaByText.size > 0) {
+          const unsentTokens = Array.from(sendTokenMetaByText.keys()).filter(
+            (token) => !publishedSendTokens.has(token),
+          );
+          for (const tokenText of unsentTokens) {
+            const meta = sendTokenMetaByText.get(tokenText);
+            if (!meta) continue;
+            insert("cashuToken", {
+              token: tokenText as typeof Evolu.NonEmptyString.Type,
+              rawToken: null,
+              mint: meta.mint as typeof Evolu.NonEmptyString1000.Type,
+              unit: meta.unit
+                ? (meta.unit as typeof Evolu.NonEmptyString100.Type)
+                : null,
+              amount:
+                meta.amount > 0
+                  ? (meta.amount as typeof Evolu.PositiveInt.Type)
+                  : null,
+              state: "pending" as typeof Evolu.NonEmptyString100.Type,
+              error: null,
+            });
+          }
+
+          for (const ids of tokensToDeleteByMint.values()) {
+            for (const id of ids) {
+              update("cashuToken", {
+                id,
+                isDeleted: Evolu.sqliteTrue,
+              });
+            }
+          }
+        }
+
+        const usedMints = Array.from(new Set(sendBatches.map((b) => b.mint)));
+
+        logPaymentEvent({
+          direction: "out",
+          status: "ok",
+          amount: amountSat,
+          fee: null,
+          mint:
+            usedMints.length === 0
+              ? null
+              : usedMints.length === 1
+                ? usedMints[0]
+                : "multi",
+          unit: "sat",
+          error: null,
+          contactId: contact.id as ContactId,
+        });
+
+        if (notify) {
+          const displayName =
+            String(contact.name ?? "").trim() ||
+            String(contact.lnAddress ?? "").trim() ||
+            t("appTitle");
+
+          showPaidOverlay(
+            (hasPendingMessages ? t("paidQueuedTo") : t("paidSentTo"))
+              .replace("{amount}", formatInteger(amountSat))
+              .replace("{unit}", displayUnit)
+              .replace("{name}", displayName),
+          );
+
+          setStatus(hasPendingMessages ? t("payQueued") : t("paySuccess"));
+          safeLocalStorageSet(CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY, "1");
+          setContactsOnboardingHasPaid(true);
+          navigateToChat(contact.id as ContactId);
+        }
+
+        return { ok: true, queued: hasPendingMessages };
+      } catch (e) {
+        logPaymentEvent({
+          direction: "out",
+          status: "error",
+          amount: amountSat,
+          fee: null,
+          mint: lastMint,
+          unit: "sat",
+          error: String(e ?? "unknown"),
+          contactId: contact.id as ContactId,
+        });
+        if (notify) {
+          setStatus(`${t("payFailed")}: ${String(e ?? "unknown")}`);
+        }
+        return { ok: false, queued: false, error: String(e ?? "unknown") };
+      }
+    },
+    [
+      allowPromisesEnabled,
+      cashuBalance,
+      cashuTokens,
+      currentNpub,
+      currentNsec,
+      displayUnit,
+      enqueuePendingPayment,
+      formatInteger,
+      getCredoAvailableForContact,
+      getCredoRemainingAmount,
+      insert,
+      insertCredoPromise,
+      logPaymentEvent,
+      normalizeMintUrl,
+      pushToast,
+      showPaidOverlay,
+      t,
+      totalCredoOutstandingOut,
+      update,
+      applyCredoSettlement,
+      buildCashuMintCandidates,
+      navigateToChat,
+      updateLocalNostrMessage,
+      appendLocalNostrMessage,
+      publishWrappedWithRetry,
+      credoTokensActive,
+      safeLocalStorageSet,
+      setContactsOnboardingHasPaid,
+    ],
+  );
+
+  const nostrPendingFlushRef = React.useRef<Promise<void> | null>(null);
+
+  const flushPendingNostrMessages = React.useCallback(async () => {
+    if (!currentNsec) return;
+    if (nostrPendingFlushRef.current) return;
+
+    const pending = nostrMessagesLocal
+      .filter(
+        (m) =>
+          String(m.direction ?? "") === "out" &&
+          String(m.status ?? "sent") === "pending",
+      )
+      .sort((a, b) => (a.createdAtSec ?? 0) - (b.createdAtSec ?? 0));
+
+    if (pending.length === 0) return;
+
+    const run = (async () => {
+      try {
+        const { nip19, getPublicKey } = await import("nostr-tools");
+        const { wrapEvent } = await import("nostr-tools/nip59");
+
+        const decodedMe = nip19.decode(currentNsec);
+        if (decodedMe.type !== "nsec") return;
+        const privBytes = decodedMe.data as Uint8Array;
+        const myPubHex = getPublicKey(privBytes);
+
+        const pool = await getSharedAppNostrPool();
+
+        for (const msg of pending) {
+          const contact = contacts.find(
+            (c) => String(c.id ?? "") === String(msg.contactId ?? ""),
+          );
+          const contactNpub = String(contact?.npub ?? "").trim();
+          if (!contactNpub) continue;
+
+          const decodedContact = nip19.decode(contactNpub);
+          if (decodedContact.type !== "npub") continue;
+          const contactPubHex = decodedContact.data as string;
+
+          const createdAt = Number(msg.createdAtSec ?? 0) || 0;
+          const baseEvent = {
+            created_at: createdAt > 0 ? createdAt : Math.ceil(Date.now() / 1e3),
+            kind: 14,
+            pubkey: myPubHex,
+            tags: [
+              ["p", contactPubHex],
+              ["p", myPubHex],
+            ],
+            content: String(msg.content ?? ""),
+          } satisfies UnsignedEvent;
+
+          const wrapForMe = wrapEvent(
+            baseEvent,
+            privBytes,
+            myPubHex,
+          ) as NostrToolsEvent;
+          const wrapForContact = wrapEvent(
+            baseEvent,
+            privBytes,
+            contactPubHex,
+          ) as NostrToolsEvent;
+
+          const publishOutcome = await publishWrappedWithRetry(
+            pool,
+            NOSTR_RELAYS,
+            wrapForMe,
+            wrapForContact,
+          );
+
+          if (publishOutcome.anySuccess) {
+            chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
+            updateLocalNostrMessage(String(msg.id ?? ""), {
+              status: "sent",
+              wrapId: String(wrapForMe.id ?? ""),
+              pubkey: myPubHex,
+            });
+          }
+        }
+      } finally {
+        nostrPendingFlushRef.current = null;
+      }
+    })();
+
+    nostrPendingFlushRef.current = run;
+    await run;
+  }, [
+    contacts,
+    currentNsec,
+    nostrMessagesLocal,
+    publishWrappedWithRetry,
+    updateLocalNostrMessage,
+  ]);
+
+  React.useEffect(() => {
+    const handleOnline = () => {
+      void flushPendingNostrMessages();
+    };
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [flushPendingNostrMessages]);
+
+  React.useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.onLine) {
+      void flushPendingNostrMessages();
+    }
+  }, [currentNsec, contacts, flushPendingNostrMessages]);
+
+  const pendingPaymentsFlushRef = React.useRef<Promise<void> | null>(null);
+
+  const flushPendingPayments = React.useCallback(async () => {
+    if (pendingPaymentsFlushRef.current) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    if (!currentNsec || !currentNpub) return;
+    if (cashuIsBusy) return;
+    if (pendingPayments.length === 0) return;
+
+    const run = (async () => {
+      try {
+        for (const pending of pendingPayments) {
+          const contact = contacts.find(
+            (c) => String(c.id ?? "") === String(pending.contactId ?? ""),
+          );
+          if (!contact) {
+            removePendingPayment(pending.id);
+            continue;
+          }
+
+          const amountSat = Number(pending.amountSat ?? 0) || 0;
+          if (amountSat <= 0) {
+            removePendingPayment(pending.id);
+            continue;
+          }
+
+          if (cashuIsBusy) break;
+          setCashuIsBusy(true);
+          try {
+            const result = await payContactWithCashuMessage({
+              contact,
+              amountSat,
+              fromQueue: true,
+            });
+            if (result.ok) {
+              removePendingPayment(pending.id);
+            } else {
+              if (result.error) {
+                pushToast(`${t("payFailed")}: ${result.error}`);
+              }
+            }
+          } catch {
+            // Keep pending payment for retry.
+          } finally {
+            setCashuIsBusy(false);
+          }
+        }
+      } finally {
+        pendingPaymentsFlushRef.current = null;
+      }
+    })();
+
+    pendingPaymentsFlushRef.current = run;
+    await run;
+  }, [
+    cashuIsBusy,
+    contacts,
+    currentNpub,
+    currentNsec,
+    pendingPayments,
+    payContactWithCashuMessage,
+    pushToast,
+    removePendingPayment,
+    t,
+  ]);
+
+  React.useEffect(() => {
+    const handleOnline = () => {
+      void flushPendingPayments();
+    };
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [flushPendingPayments]);
+
+  React.useEffect(() => {
+    void flushPendingPayments();
+  }, [currentNsec, contacts, pendingPayments.length, flushPendingPayments]);
 
   const paySelectedContact = async () => {
     if (route.kind !== "contactPay") return;
@@ -9102,6 +9933,25 @@ const App = () => {
         content: text,
       } satisfies UnsignedEvent;
 
+      const pendingId = appendLocalNostrMessage({
+        contactId: String(selectedContact.id),
+        direction: "out",
+        content: text,
+        wrapId: `pending:${makeLocalId()}`,
+        rumorId: null,
+        pubkey: myPubHex,
+        createdAtSec: baseEvent.created_at,
+        status: "pending",
+      });
+
+      const isOffline =
+        typeof navigator !== "undefined" && navigator.onLine === false;
+      if (isOffline) {
+        setChatDraft("");
+        setStatus(t("chatQueued"));
+        return;
+      }
+
       const wrapForMe = wrapEvent(
         baseEvent,
         privBytes,
@@ -9113,32 +9963,27 @@ const App = () => {
         contactPubHex,
       ) as NostrToolsEvent;
 
-      chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
-
-      appendLocalNostrMessage({
-        contactId: String(selectedContact.id),
-        direction: "out",
-        content: text,
-        wrapId: String(wrapForMe.id ?? ""),
-        rumorId: null,
-        pubkey: myPubHex,
-        createdAtSec: baseEvent.created_at,
-      });
-
       const pool = await getSharedAppNostrPool();
-      const publishResults = await Promise.allSettled([
-        ...pool.publish(NOSTR_RELAYS, wrapForMe),
-        ...pool.publish(NOSTR_RELAYS, wrapForContact),
-      ]);
+      const publishOutcome = await publishWrappedWithRetry(
+        pool,
+        NOSTR_RELAYS,
+        wrapForMe,
+        wrapForContact,
+      );
 
-      // Some relays may fail (websocket issues), while others succeed.
-      // Treat it as success if at least one relay accepted the event.
-      const anySuccess = publishResults.some((r) => r.status === "fulfilled");
-      if (!anySuccess) {
-        const firstError = publishResults.find(
-          (r): r is PromiseRejectedResult => r.status === "rejected",
-        )?.reason;
-        throw new Error(String(firstError ?? "publish failed"));
+      if (!publishOutcome.anySuccess) {
+        setChatDraft("");
+        setStatus(t("chatQueued"));
+        return;
+      }
+
+      chatSeenWrapIdsRef.current.add(String(wrapForMe.id ?? ""));
+      if (pendingId) {
+        updateLocalNostrMessage(pendingId, {
+          status: "sent",
+          wrapId: String(wrapForMe.id ?? ""),
+          pubkey: myPubHex,
+        });
       }
 
       setChatDraft("");
@@ -13895,6 +14740,8 @@ const App = () => {
                     ) : (
                       chatMessages.map((m, idx) => {
                         const isOut = String(m.direction ?? "") === "out";
+                        const isPending =
+                          isOut && String(m.status ?? "sent") === "pending";
                         const content = String(m.content ?? "");
                         const messageId = String(m.id ?? "");
                         const createdAtSec = Number(m.createdAtSec ?? 0) || 0;
@@ -13951,9 +14798,9 @@ const App = () => {
                             ) : null}
 
                             <div
-                              className={
-                                isOut ? "chat-message out" : "chat-message in"
-                              }
+                              className={`chat-message ${
+                                isOut ? "out" : "in"
+                              }${isPending ? " pending" : ""}`}
                               ref={(el) => {
                                 if (!messageId) return;
                                 const map = chatMessageElByIdRef.current;
@@ -14137,7 +14984,12 @@ const App = () => {
                               </div>
 
                               {showTime ? (
-                                <div className="chat-time">{timeLabel}</div>
+                                <div className="chat-time">
+                                  {timeLabel}
+                                  {isPending
+                                    ? ` · ${t("chatPendingShort")}`
+                                    : ""}
+                                </div>
                               ) : null}
                             </div>
                           </React.Fragment>

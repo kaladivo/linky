@@ -150,6 +150,8 @@ export const cs = {
   chatEmpty: "Zatím žádné zprávy.",
   chatPlaceholder: "Zpráva",
   chatMissingContactNpub: "Chybí npub u kontaktu.",
+  chatQueued: "Zpráva zařazena do fronty.",
+  chatPendingShort: "čeká",
   send: "Odeslat",
 
   profile: "Profil",
@@ -348,11 +350,13 @@ export const cs = {
   payFetchingInvoice: "Získávám fakturu…",
   payPaying: "Platím…",
   paySuccess: "Zaplaceno.",
+  payQueued: "Platba čeká na odeslání.",
   payFailed: "Platba se nepovedla",
   payPromiseLimit: "Dosažen limit slibů.",
 
   paidSent: "Odesláno {amount} {unit}.",
   paidSentTo: "Odesláno {amount} {unit} → {name}.",
+  paidQueuedTo: "Odesláno {amount} {unit} → {name} (čeká).",
   paidReceived: "Přijato {amount} {unit}.",
   topupOverlay: "Dobito {amount} {unit}.",
 

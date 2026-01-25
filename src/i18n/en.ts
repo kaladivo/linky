@@ -150,6 +150,8 @@ export const en = {
   chatEmpty: "No messages yet.",
   chatPlaceholder: "Message",
   chatMissingContactNpub: "Missing contact npub.",
+  chatQueued: "Queued for delivery.",
+  chatPendingShort: "pending",
   send: "Send",
 
   profile: "Profile",
@@ -345,11 +347,13 @@ export const en = {
   payFetchingInvoice: "Fetching invoice…",
   payPaying: "Paying…",
   paySuccess: "Paid.",
+  payQueued: "Payment queued for delivery.",
   payFailed: "Payment failed",
   payPromiseLimit: "Promise limit reached.",
 
   paidSent: "Sent {amount} {unit}.",
   paidSentTo: "Sent {amount} {unit} to {name}.",
+  paidQueuedTo: "Queued {amount} {unit} → {name}.",
   paidReceived: "Received {amount} {unit}.",
   topupOverlay: "Topped up {amount} {unit}.",
 
