@@ -135,6 +135,7 @@ type LocalNostrMessage = {
   createdAtSec: number;
   status?: "sent" | "pending";
   clientId?: string;
+  localOnly?: boolean;
 };
 
 type LocalPendingPayment = {
@@ -3204,6 +3205,7 @@ const App = () => {
         ...msg,
         status: normalizedStatus,
         ...(normalizedClientId ? { clientId: normalizedClientId } : {}),
+        ...(msg.localOnly ? { localOnly: true } : {}),
       } as LocalNostrMessage;
       const key =
         String(normalized.wrapId ?? "").trim() || String(normalized.id ?? "");
@@ -3298,7 +3300,7 @@ const App = () => {
       updates: Partial<
         Pick<
           LocalNostrMessage,
-          "wrapId" | "status" | "pubkey" | "content" | "clientId"
+          "wrapId" | "status" | "pubkey" | "content" | "clientId" | "localOnly"
         >
       >,
     ) => {
@@ -5148,6 +5150,7 @@ const App = () => {
           createdAtSec: Math.floor(Date.now() / 1000),
           status: "pending",
           clientId,
+          localOnly: true,
         });
         enqueuePendingPayment({
           contactId: contact.id as ContactId,
@@ -5470,6 +5473,7 @@ const App = () => {
               pubkey: myPubHex,
               content: messageText,
               clientId,
+              localOnly: false,
             });
           } else {
             pendingId = appendLocalNostrMessage({
@@ -5661,7 +5665,8 @@ const App = () => {
       .filter(
         (m) =>
           String(m.direction ?? "") === "out" &&
-          String(m.status ?? "sent") === "pending",
+          String(m.status ?? "sent") === "pending" &&
+          !m.localOnly,
       )
       .sort((a, b) => (a.createdAtSec ?? 0) - (b.createdAtSec ?? 0));
 
