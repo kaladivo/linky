@@ -70,6 +70,7 @@ import {
 } from "./nostrProfile";
 import { publishKind0ProfileMetadata } from "./nostrPublish";
 import { ContactCard } from "./components/ContactCard";
+import { WalletBalance } from "./components/WalletBalance";
 import type { Route } from "./types/route";
 import {
   bumpCashuDeterministicCounter,
@@ -13438,12 +13439,12 @@ const App = () => {
               </div>
               <div className="panel-header">
                 <div className="wallet-hero">
-                  <div className="balance-hero" aria-label={t("cashuBalance")}>
-                    <span className="balance-number">
-                      {formatInteger(cashuBalance)}
-                    </span>
-                    <span className="balance-unit">{displayUnit}</span>
-                  </div>
+                  <WalletBalance
+                    balance={cashuBalance}
+                    displayUnit={displayUnit}
+                    formatInteger={formatInteger}
+                    ariaLabel={t("cashuBalance")}
+                  />
                   <button
                     type="button"
                     className="wallet-tokens-link"
