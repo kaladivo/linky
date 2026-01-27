@@ -74,6 +74,7 @@ import { WalletBalance } from "./components/WalletBalance";
 import { PaymentHistoryRow } from "./components/PaymentHistoryRow";
 import { ChatMessage } from "./components/ChatMessage";
 import { CashuTokenPill } from "./components/CashuTokenPill";
+import { CredoTokenPill } from "./components/CredoTokenPill";
 import type { Route } from "./types/route";
 import {
   bumpCashuDeterministicCounter,
@@ -13762,41 +13763,19 @@ const App = () => {
                       const npub = String(row.recipient ?? "").trim();
                       const avatar = npub ? nostrPictureByNpub[npub] : null;
                       return (
-                        <button
+                        <CredoTokenPill
                           key={row.id as unknown as CredoTokenId}
-                          className="pill pill-credo"
+                          token={row}
+                          amount={amount}
+                          avatar={avatar}
                           onClick={() =>
                             navigateToCredoToken(
                               row.id as unknown as CredoTokenId,
                             )
                           }
-                          style={{ cursor: "pointer" }}
-                          aria-label={t("credoOwe")}
-                        >
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 6,
-                            }}
-                          >
-                            {avatar ? (
-                              <img
-                                src={avatar}
-                                alt=""
-                                width={14}
-                                height={14}
-                                style={{
-                                  borderRadius: 9999,
-                                  objectFit: "cover",
-                                }}
-                                loading="lazy"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : null}
-                            <span>-{formatInteger(amount)}</span>
-                          </span>
-                        </button>
+                          ariaLabel={t("credoOwe")}
+                          formatInteger={formatInteger}
+                        />
                       );
                     })}
                   </div>
@@ -13818,41 +13797,19 @@ const App = () => {
                       const npub = String(row.issuer ?? "").trim();
                       const avatar = npub ? nostrPictureByNpub[npub] : null;
                       return (
-                        <button
+                        <CredoTokenPill
                           key={row.id as unknown as CredoTokenId}
-                          className="pill pill-credo"
+                          token={row}
+                          amount={amount}
+                          avatar={avatar}
                           onClick={() =>
                             navigateToCredoToken(
                               row.id as unknown as CredoTokenId,
                             )
                           }
-                          style={{ cursor: "pointer" }}
-                          aria-label={t("credoPromisedToMe")}
-                        >
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 6,
-                            }}
-                          >
-                            {avatar ? (
-                              <img
-                                src={avatar}
-                                alt=""
-                                width={14}
-                                height={14}
-                                style={{
-                                  borderRadius: 9999,
-                                  objectFit: "cover",
-                                }}
-                                loading="lazy"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : null}
-                            <span>{formatInteger(amount)}</span>
-                          </span>
-                        </button>
+                          ariaLabel={t("credoPromisedToMe")}
+                          formatInteger={formatInteger}
+                        />
                       );
                     })}
                   </div>
