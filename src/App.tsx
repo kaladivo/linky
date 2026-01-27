@@ -72,6 +72,7 @@ import { publishKind0ProfileMetadata } from "./nostrPublish";
 import { ContactCard } from "./components/ContactCard";
 import { WalletBalance } from "./components/WalletBalance";
 import { PaymentHistoryRow } from "./components/PaymentHistoryRow";
+import { ChatMessage } from "./components/ChatMessage";
 import type { Route } from "./types/route";
 import {
   bumpCashuDeterministicCounter,
@@ -14684,260 +14685,50 @@ const App = () => {
                       <p className="muted">{t("chatEmpty")}</p>
                     ) : (
                       chatMessages.map((m, idx) => {
-                        const isOut = String(m.direction ?? "") === "out";
-                        const isPending =
-                          isOut && String(m.status ?? "sent") === "pending";
-                        const content = String(m.content ?? "");
-                        const messageId = String(m.id ?? "");
-                        const createdAtSec = Number(m.createdAtSec ?? 0) || 0;
-                        const ms = createdAtSec * 1000;
-                        const d = new Date(ms);
-                        const dayKey = `${d.getFullYear()}-${
-                          d.getMonth() + 1
-                        }-${d.getDate()}`;
-                        const minuteKey = Math.floor(createdAtSec / 60);
-
                         const prev = idx > 0 ? chatMessages[idx - 1] : null;
-                        const prevSec = prev
-                          ? Number(prev.createdAtSec ?? 0) || 0
-                          : 0;
-                        const prevDate = prev ? new Date(prevSec * 1000) : null;
-                        const prevDayKey = prevDate
-                          ? `${prevDate.getFullYear()}-${
-                              prevDate.getMonth() + 1
-                            }-${prevDate.getDate()}`
-                          : null;
-
                         const next =
                           idx + 1 < chatMessages.length
                             ? chatMessages[idx + 1]
                             : null;
-                        const nextSec = next
-                          ? Number(next.createdAtSec ?? 0) || 0
-                          : 0;
-                        const nextMinuteKey = next
-                          ? Math.floor(nextSec / 60)
+                        const npub = String(
+                          selectedContact?.npub ?? "",
+                        ).trim();
+                        const avatar = npub
+                          ? nostrPictureByNpub[npub]
                           : null;
 
-                        const showDaySeparator = prevDayKey !== dayKey;
-                        const showTime = nextMinuteKey !== minuteKey;
-
-                        const locale = lang === "cs" ? "cs-CZ" : "en-US";
-                        const timeLabel = new Intl.DateTimeFormat(locale, {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        }).format(d);
-
-                        const tokenInfo = getCashuTokenMessageInfo(content);
-                        const credoInfo = getCredoTokenMessageInfo(content);
-
                         return (
-                          <React.Fragment key={String(m.id)}>
-                            {showDaySeparator ? (
-                              <div
-                                className="chat-day-separator"
-                                aria-hidden="true"
-                              >
-                                {formatChatDayLabel(ms)}
-                              </div>
-                            ) : null}
-
-                            <div
-                              className={`chat-message ${
-                                isOut ? "out" : "in"
-                              }${isPending ? " pending" : ""}`}
-                              ref={(el) => {
-                                if (!messageId) return;
-                                const map = chatMessageElByIdRef.current;
-                                if (el) map.set(messageId, el);
-                                else map.delete(messageId);
-                              }}
-                            >
-                              <div
-                                className={
-                                  isOut ? "chat-bubble out" : "chat-bubble in"
-                                }
-                              >
-                                {credoInfo
-                                  ? (() => {
-                                      const npub = String(
-                                        selectedContact?.npub ?? "",
-                                      ).trim();
-                                      const avatar = npub
-                                        ? nostrPictureByNpub[npub]
-                                        : null;
-                                      return (
-                                        <span
-                                          className={
-                                            credoInfo.isValid
-                                              ? "pill pill-credo"
-                                              : "pill pill-muted"
-                                          }
-                                          style={{
-                                            display: "inline-flex",
-                                            alignItems: "center",
-                                            gap: 6,
-                                          }}
-                                          aria-label={`${formatInteger(
-                                            credoInfo.amount ?? 0,
-                                          )} sat`}
-                                        >
-                                          {avatar ? (
-                                            <img
-                                              src={avatar}
-                                              alt=""
-                                              width={14}
-                                              height={14}
-                                              style={{
-                                                borderRadius: 9999,
-                                                objectFit: "cover",
-                                              }}
-                                              loading="lazy"
-                                              referrerPolicy="no-referrer"
-                                            />
-                                          ) : null}
-                                          <span>
-                                            {formatInteger(
-                                              credoInfo.amount ?? 0,
-                                            )}
-                                          </span>
-                                        </span>
-                                      );
-                                    })()
-                                  : tokenInfo
-                                    ? (() => {
-                                        const icon = getMintIconUrl(
-                                          tokenInfo.mintUrl,
-                                        );
-                                        const showMintFallback =
-                                          icon.failed || !icon.url;
-                                        return (
-                                          <span
-                                            className={
-                                              tokenInfo.isValid
-                                                ? "pill"
-                                                : "pill pill-muted"
-                                            }
-                                            style={{
-                                              display: "inline-flex",
-                                              alignItems: "center",
-                                              gap: 6,
-                                            }}
-                                            aria-label={
-                                              tokenInfo.mintDisplay
-                                                ? `${formatInteger(
-                                                    tokenInfo.amount ?? 0,
-                                                  )} sat · ${
-                                                    tokenInfo.mintDisplay
-                                                  }`
-                                                : `${formatInteger(
-                                                    tokenInfo.amount ?? 0,
-                                                  )} sat`
-                                            }
-                                          >
-                                            {icon.url ? (
-                                              <img
-                                                src={icon.url}
-                                                alt=""
-                                                width={14}
-                                                height={14}
-                                                style={{
-                                                  borderRadius: 9999,
-                                                  objectFit: "cover",
-                                                }}
-                                                loading="lazy"
-                                                referrerPolicy="no-referrer"
-                                                onLoad={() => {
-                                                  if (icon.origin) {
-                                                    setMintIconUrlByMint(
-                                                      (prev) => ({
-                                                        ...prev,
-                                                        [icon.origin as string]:
-                                                          icon.url,
-                                                      }),
-                                                    );
-                                                  }
-                                                }}
-                                                onError={(e) => {
-                                                  (
-                                                    e.currentTarget as HTMLImageElement
-                                                  ).style.display = "none";
-                                                  if (icon.origin) {
-                                                    const duck = icon.host
-                                                      ? `https://icons.duckduckgo.com/ip3/${icon.host}.ico`
-                                                      : null;
-                                                    const favicon = `${icon.origin}/favicon.ico`;
-                                                    let next: string | null =
-                                                      null;
-                                                    if (
-                                                      duck &&
-                                                      icon.url !== duck
-                                                    ) {
-                                                      next = duck;
-                                                    } else if (
-                                                      icon.url !== favicon
-                                                    ) {
-                                                      next = favicon;
-                                                    }
-                                                    setMintIconUrlByMint(
-                                                      (prev) => ({
-                                                        ...prev,
-                                                        [icon.origin as string]:
-                                                          next ?? null,
-                                                      }),
-                                                    );
-                                                  }
-                                                }}
-                                              />
-                                            ) : null}
-                                            {showMintFallback && icon.host ? (
-                                              <span
-                                                className="muted"
-                                                style={{
-                                                  fontSize: 10,
-                                                  lineHeight: "14px",
-                                                }}
-                                              >
-                                                {icon.host}
-                                              </span>
-                                            ) : null}
-                                            {!showMintFallback &&
-                                            tokenInfo.mintDisplay ? (
-                                              <span
-                                                className="muted"
-                                                style={{
-                                                  fontSize: 10,
-                                                  lineHeight: "14px",
-                                                  maxWidth: 140,
-                                                  overflow: "hidden",
-                                                  textOverflow: "ellipsis",
-                                                  whiteSpace: "nowrap",
-                                                }}
-                                              >
-                                                {tokenInfo.mintDisplay}
-                                              </span>
-                                            ) : null}
-                                            <span>
-                                              {formatInteger(
-                                                tokenInfo.amount ?? 0,
-                                              )}
-                                            </span>
-                                          </span>
-                                        );
-                                      })()
-                                    : content}
-                              </div>
-
-                              {showTime ? (
-                                <div className="chat-time">
-                                  {timeLabel}
-                                  {isPending
-                                    ? ` · ${t("chatPendingShort")}`
-                                    : ""}
-                                </div>
-                              ) : null}
-                            </div>
-                          </React.Fragment>
+                          <ChatMessage
+                            key={String(m.id)}
+                            message={m}
+                            previousMessage={prev}
+                            nextMessage={next}
+                            locale={lang === "cs" ? "cs-CZ" : "en-US"}
+                            contactAvatar={avatar}
+                            formatInteger={formatInteger}
+                            formatChatDayLabel={formatChatDayLabel}
+                            getCashuTokenMessageInfo={getCashuTokenMessageInfo}
+                            getCredoTokenMessageInfo={getCredoTokenMessageInfo}
+                            getMintIconUrl={getMintIconUrl}
+                            onMintIconLoad={(origin, url) => {
+                              setMintIconUrlByMint((prev) => ({
+                                ...prev,
+                                [origin]: url,
+                              }));
+                            }}
+                            onMintIconError={(origin, nextUrl) => {
+                              setMintIconUrlByMint((prev) => ({
+                                ...prev,
+                                [origin]: nextUrl,
+                              }));
+                            }}
+                            chatPendingLabel={t("chatPendingShort")}
+                            messageElRef={(el, messageId) => {
+                              const map = chatMessageElByIdRef.current;
+                              if (el) map.set(messageId, el as HTMLDivElement);
+                              else map.delete(messageId);
+                            }}
+                          />
                         );
                       })
                     )}
