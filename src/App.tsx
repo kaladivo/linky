@@ -69,6 +69,7 @@ import {
   type NostrProfileMetadata,
 } from "./nostrProfile";
 import { publishKind0ProfileMetadata } from "./nostrPublish";
+import { ContactCard } from "./components/ContactCard";
 import type { Route } from "./types/route";
 import {
   bumpCashuDeterministicCounter,
@@ -8746,244 +8747,45 @@ const App = () => {
   const renderContactCard = (contact: (typeof contacts)[number]) => {
     const npub = String(contact.npub ?? "").trim();
     const avatarUrl = npub ? nostrPictureByNpub[npub] : null;
-    const initials = getInitials(String(contact.name ?? ""));
     const contactId = String(contact.id ?? "").trim();
     const last = contactId ? lastMessageByContactId.get(contactId) : null;
     const lastText = String(last?.content ?? "").trim();
     const tokenInfo = lastText ? getCashuTokenMessageInfo(lastText) : null;
     const credoInfo = lastText ? getCredoTokenMessageInfo(lastText) : null;
-    const preview =
-      lastText.length > 40 ? `${lastText.slice(0, 40)}…` : lastText;
-    const lastTime = last
-      ? formatContactMessageTimestamp(last.createdAtSec)
-      : "";
     const promiseNet = npub ? getCredoNetForContact(npub) : 0;
     const hasAttention = Boolean(
       contactAttentionById[String(contact.id ?? "")],
     );
-    const directionSymbol = (() => {
-      const dir = String(last?.direction ?? "").trim();
-      if (dir === "out") return "↗";
-      if (dir === "in") return "↘";
-      return "";
-    })();
-    const previewText = preview
-      ? directionSymbol
-        ? `${directionSymbol} ${preview}`
-        : preview
-      : "";
 
     return (
-      <article
-        key={contact.id}
-        className="contact-card is-clickable"
-        data-guide="contact-card"
-        data-guide-contact-id={String(contact.id)}
-        role="button"
-        tabIndex={0}
-        onClick={() => openContactDetail(contact)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            openContactDetail(contact);
-          }
+      <ContactCard
+        key={String(contact.id ?? "")}
+        contact={contact}
+        avatarUrl={avatarUrl}
+        lastMessage={last ?? undefined}
+        hasAttention={hasAttention}
+        promiseNet={promiseNet}
+        displayUnit={displayUnit}
+        tokenInfo={tokenInfo}
+        credoInfo={credoInfo}
+        formatInteger={formatInteger}
+        getInitials={getInitials}
+        formatContactMessageTimestamp={formatContactMessageTimestamp}
+        getMintIconUrl={getMintIconUrl}
+        onSelect={() => openContactDetail(contact)}
+        onMintIconLoad={(origin, url) => {
+          setMintIconUrlByMint((prev) => ({
+            ...prev,
+            [origin]: url,
+          }));
         }}
-      >
-        <div className="card-header">
-          <div className="contact-avatar with-badge" aria-hidden="true">
-            <span className="contact-avatar-inner">
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt=""
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <span className="contact-avatar-fallback">{initials}</span>
-              )}
-            </span>
-            {hasAttention ? (
-              <span className="contact-unread-dot" aria-hidden="true" />
-            ) : null}
-          </div>
-          <div className="card-main">
-            <div className="card-title-row">
-              {contact.name ? (
-                <h4 className="contact-title" style={{ flex: 1 }}>
-                  {contact.name}
-                </h4>
-              ) : null}
-              {lastTime || promiseNet !== 0 ? (
-                <span
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-end",
-                    gap: 2,
-                  }}
-                >
-                  {lastTime ? (
-                    <span
-                      className="muted"
-                      style={{ fontSize: 10, whiteSpace: "nowrap" }}
-                    >
-                      {lastTime}
-                    </span>
-                  ) : null}
-                  {promiseNet !== 0 ? (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        whiteSpace: "nowrap",
-                        color: promiseNet > 0 ? "#34d399" : "#f87171",
-                      }}
-                    >
-                      {promiseNet < 0 ? "- " : ""}
-                      {formatInteger(Math.abs(promiseNet))} {displayUnit}
-                    </span>
-                  ) : null}
-                </span>
-              ) : null}
-            </div>
-            {credoInfo ? (
-              (() => {
-                const avatar = avatarUrl;
-                return (
-                  <div
-                    className="muted"
-                    style={{
-                      fontSize: 12,
-                      marginTop: 4,
-                      lineHeight: 1.2,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    {directionSymbol ? <span>{directionSymbol}</span> : null}
-                    <span
-                      className={
-                        credoInfo.isValid
-                          ? "pill pill-credo"
-                          : "pill pill-muted"
-                      }
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                        padding: "1px 4px",
-                        fontSize: 10,
-                        lineHeight: "10px",
-                      }}
-                      aria-label={`${formatInteger(credoInfo.amount ?? 0)} sat`}
-                    >
-                      {avatar ? (
-                        <img
-                          src={avatar}
-                          alt=""
-                          width={14}
-                          height={14}
-                          style={{
-                            borderRadius: 9999,
-                            objectFit: "cover",
-                          }}
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : null}
-                      <span>{formatInteger(credoInfo.amount ?? 0)}</span>
-                    </span>
-                  </div>
-                );
-              })()
-            ) : tokenInfo ? (
-              (() => {
-                const icon = getMintIconUrl(tokenInfo.mintUrl);
-                return (
-                  <div
-                    className="muted"
-                    style={{
-                      fontSize: 12,
-                      marginTop: 4,
-                      lineHeight: 1.2,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    {directionSymbol ? <span>{directionSymbol}</span> : null}
-                    <span
-                      className={tokenInfo.isValid ? "pill" : "pill pill-muted"}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                        padding: "1px 4px",
-                        fontSize: 10,
-                        lineHeight: "10px",
-                      }}
-                      aria-label={`${formatInteger(tokenInfo.amount ?? 0)} sat`}
-                    >
-                      {icon.url ? (
-                        <img
-                          src={icon.url}
-                          alt=""
-                          width={14}
-                          height={14}
-                          style={{
-                            borderRadius: 9999,
-                            objectFit: "cover",
-                          }}
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                          onLoad={() => {
-                            if (icon.origin) {
-                              setMintIconUrlByMint((prev) => ({
-                                ...prev,
-                                [icon.origin as string]: icon.url,
-                              }));
-                            }
-                          }}
-                          onError={(e) => {
-                            (
-                              e.currentTarget as HTMLImageElement
-                            ).style.display = "none";
-                            if (icon.origin) {
-                              const duck = icon.host
-                                ? `https://icons.duckduckgo.com/ip3/${icon.host}.ico`
-                                : null;
-                              const favicon = `${icon.origin}/favicon.ico`;
-                              let next: string | null = null;
-                              if (duck && icon.url !== duck) {
-                                next = duck;
-                              } else if (icon.url !== favicon) {
-                                next = favicon;
-                              }
-                              setMintIconUrlByMint((prev) => ({
-                                ...prev,
-                                [icon.origin as string]: next ?? null,
-                              }));
-                            }
-                          }}
-                        />
-                      ) : null}
-                      <span>{formatInteger(tokenInfo.amount ?? 0)}</span>
-                    </span>
-                  </div>
-                );
-              })()
-            ) : previewText ? (
-              <div
-                className="muted"
-                style={{ fontSize: 12, marginTop: 4, lineHeight: 1.2 }}
-              >
-                {previewText}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </article>
+        onMintIconError={(origin, url) => {
+          setMintIconUrlByMint((prev) => ({
+            ...prev,
+            [origin]: url,
+          }));
+        }}
+      />
     );
   };
 
@@ -15684,8 +15486,8 @@ const App = () => {
                     }
                     return (
                       <>
-                        {visibleContacts.conversations.length > 0 ? (
-                          <>
+                        {visibleContacts.conversations.length > 0 && (
+                          <React.Fragment key="conversations">
                             <div
                               className="muted"
                               style={{
@@ -15700,11 +15502,11 @@ const App = () => {
                             {visibleContacts.conversations.map(
                               renderContactCard,
                             )}
-                          </>
-                        ) : null}
+                          </React.Fragment>
+                        )}
 
-                        {visibleContacts.others.length > 0 ? (
-                          <>
+                        {visibleContacts.others.length > 0 && (
+                          <React.Fragment key="others">
                             <div
                               className="muted"
                               style={{
@@ -15717,8 +15519,8 @@ const App = () => {
                               {otherContactsLabel}
                             </div>
                             {visibleContacts.others.map(renderContactCard)}
-                          </>
-                        ) : null}
+                          </React.Fragment>
+                        )}
                       </>
                     );
                   })()}
