@@ -894,7 +894,7 @@ const App = () => {
 
   const showPaidOverlay = React.useCallback(
     (title?: string) => {
-      const resolved = title ?? (lang === "cs" ? "Zaplaceno" : "Paid");
+      const resolved = title ?? t("paid");
       setPaidOverlayTitle(resolved);
       setPaidOverlayIsOpen(true);
       if (paidOverlayTimerRef.current !== null) {
@@ -8798,9 +8798,8 @@ const App = () => {
     );
   };
 
-  const conversationsLabel = lang === "cs" ? "Konverzace" : "Conversations";
-  const otherContactsLabel =
-    lang === "cs" ? "Ostatní kontakty" : "Other contacts";
+  const conversationsLabel = t("conversations");
+  const otherContactsLabel = t("otherContacts");
 
   React.useEffect(() => {
     if (route.kind === "contactNew") {
@@ -10764,8 +10763,8 @@ const App = () => {
     ).getTime();
 
     const diffDays = Math.round((startOfToday - startOfThatDay) / 86_400_000);
-    if (diffDays === 0) return lang === "cs" ? "Dnes" : "Today";
-    if (diffDays === 1) return lang === "cs" ? "Včera" : "Yesterday";
+    if (diffDays === 0) return t("today");
+    if (diffDays === 1) return t("yesterday");
 
     const locale = lang === "cs" ? "cs-CZ" : "en-US";
     const weekday = new Intl.DateTimeFormat(locale, {
@@ -14536,8 +14535,8 @@ const App = () => {
                         onClick={() =>
                           void resetEditedContactFieldFromNostr("name")
                         }
-                        title={lang === "cs" ? "Obnovit" : "Reset"}
-                        aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                        title={t("restore")}
+                        aria-label={t("restore")}
                         style={{ paddingInline: 10, minWidth: 40 }}
                       >
                         ↺
@@ -14573,8 +14572,8 @@ const App = () => {
                         onClick={() =>
                           void resetEditedContactFieldFromNostr("lnAddress")
                         }
-                        title={lang === "cs" ? "Obnovit" : "Reset"}
-                        aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                        title={t("restore")}
+                        aria-label={t("restore")}
                         style={{ paddingInline: 10, minWidth: 40 }}
                       >
                         ↺
@@ -15023,8 +15022,8 @@ const App = () => {
                               onClick={() =>
                                 setProfileEditPicture(derivedProfile.pictureUrl)
                               }
-                              title={lang === "cs" ? "Obnovit" : "Reset"}
-                              aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                              title={t("restore")}
+                              aria-label={t("restore")}
                               style={{ paddingInline: 10, minWidth: 40 }}
                             >
                               ↺
@@ -15049,8 +15048,8 @@ const App = () => {
                             onClick={() =>
                               setProfileEditName(derivedProfile.name)
                             }
-                            title={lang === "cs" ? "Obnovit" : "Reset"}
-                            aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                            title={t("restore")}
+                            aria-label={t("restore")}
                             style={{ paddingInline: 10, minWidth: 40 }}
                           >
                             ↺
@@ -15083,8 +15082,8 @@ const App = () => {
                             onClick={() =>
                               setProfileEditLnAddress(derivedProfile.lnAddress)
                             }
-                            title={lang === "cs" ? "Obnovit" : "Reset"}
-                            aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                            title={t("restore")}
+                            aria-label={t("restore")}
                             style={{ paddingInline: 10, minWidth: 40 }}
                           >
                             ↺
@@ -15293,8 +15292,8 @@ const App = () => {
                             onClick={() =>
                               setProfileEditPicture(derivedProfile.pictureUrl)
                             }
-                            title={lang === "cs" ? "Obnovit" : "Reset"}
-                            aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                            title={t("restore")}
+                            aria-label={t("restore")}
                             style={{ paddingInline: 10, minWidth: 40 }}
                           >
                             ↺
@@ -15319,8 +15318,8 @@ const App = () => {
                           onClick={() =>
                             setProfileEditName(derivedProfile.name)
                           }
-                          title={lang === "cs" ? "Obnovit" : "Reset"}
-                          aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                          title={t("restore")}
+                          aria-label={t("restore")}
                           style={{ paddingInline: 10, minWidth: 40 }}
                         >
                           ↺
@@ -15351,8 +15350,8 @@ const App = () => {
                           onClick={() =>
                             setProfileEditLnAddress(derivedProfile.lnAddress)
                           }
-                          title={lang === "cs" ? "Obnovit" : "Reset"}
-                          aria-label={lang === "cs" ? "Obnovit" : "Reset"}
+                          title={t("restore")}
+                          aria-label={t("restore")}
                           style={{ paddingInline: 10, minWidth: 40 }}
                         >
                           ↺
@@ -15492,7 +15491,7 @@ const App = () => {
                   ✓
                 </div>
                 <div className="paid-title">
-                  {paidOverlayTitle ?? (lang === "cs" ? "Zaplaceno" : "Paid")}
+                  {paidOverlayTitle ?? t("paid")}
                 </div>
               </div>
             </div>

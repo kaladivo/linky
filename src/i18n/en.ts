@@ -363,4 +363,11 @@ export const en = {
     "Paid {amount} {unit} to {lnAddress}. Save it as a contact?",
   saveContactPromptSave: "Save contact",
   saveContactPromptSkip: "Not now",
+
+  // Locale-specific strings
+  paid: "Paid",
+  conversations: "Conversations",
+  otherContacts: "Other contacts",
+  today: "Today",
+  yesterday: "Yesterday",
 } as const;

@@ -366,4 +366,11 @@ export const cs = {
     "Zaplaceno {amount} {unit} na {lnAddress}. Chcete adresu uložit jako kontakt?",
   saveContactPromptSave: "Uložit kontakt",
   saveContactPromptSkip: "Teď ne",
+
+  // Locale-specific strings
+  paid: "Zaplaceno",
+  conversations: "Konverzace",
+  otherContacts: "Ostatní kontakty",
+  today: "Dnes",
+  yesterday: "Včera",
 } as const;
