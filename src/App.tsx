@@ -73,6 +73,7 @@ import { ContactCard } from "./components/ContactCard";
 import { WalletBalance } from "./components/WalletBalance";
 import { PaymentHistoryRow } from "./components/PaymentHistoryRow";
 import { ChatMessage } from "./components/ChatMessage";
+import { CashuTokenPill } from "./components/CashuTokenPill";
 import type { Route } from "./types/route";
 import {
   bumpCashuDeterministicCounter,
@@ -13716,91 +13717,31 @@ const App = () => {
                 ) : (
                   <div className="ln-tags">
                     {cashuTokens.map((token) => (
-                      <button
+                      <CashuTokenPill
                         key={token.id as unknown as CashuTokenId}
-                        className={
-                          String(token.state ?? "") === "error"
-                            ? "pill pill-error"
-                            : "pill"
-                        }
+                        token={token}
+                        getMintIconUrl={getMintIconUrl}
+                        formatInteger={formatInteger}
+                        isError={String(token.state ?? "") === "error"}
+                        onMintIconLoad={(origin, url) => {
+                          setMintIconUrlByMint((prev) => ({
+                            ...prev,
+                            [origin]: url,
+                          }));
+                        }}
+                        onMintIconError={(origin, nextUrl) => {
+                          setMintIconUrlByMint((prev) => ({
+                            ...prev,
+                            [origin]: nextUrl,
+                          }));
+                        }}
                         onClick={() =>
                           navigateToCashuToken(
                             token.id as unknown as CashuTokenId,
                           )
                         }
-                        style={{ cursor: "pointer" }}
-                        aria-label={t("cashuToken")}
-                      >
-                        {(() => {
-                          const amount =
-                            Number((token.amount ?? 0) as unknown as number) ||
-                            0;
-                          const icon = getMintIconUrl(token.mint);
-                          const showMintFallback = icon.failed || !icon.url;
-                          return (
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 6,
-                              }}
-                            >
-                              {icon.url ? (
-                                <img
-                                  src={icon.url}
-                                  alt=""
-                                  width={14}
-                                  height={14}
-                                  style={{
-                                    borderRadius: 9999,
-                                    objectFit: "cover",
-                                  }}
-                                  loading="lazy"
-                                  referrerPolicy="no-referrer"
-                                  onLoad={() => {
-                                    if (icon.origin) {
-                                      setMintIconUrlByMint((prev) => ({
-                                        ...prev,
-                                        [icon.origin as string]: icon.url,
-                                      }));
-                                    }
-                                  }}
-                                  onError={(e) => {
-                                    (
-                                      e.currentTarget as HTMLImageElement
-                                    ).style.display = "none";
-                                    if (icon.origin) {
-                                      const duck = icon.host
-                                        ? `https://icons.duckduckgo.com/ip3/${icon.host}.ico`
-                                        : null;
-                                      const favicon = `${icon.origin}/favicon.ico`;
-                                      let next: string | null = null;
-                                      if (duck && icon.url !== duck) {
-                                        next = duck;
-                                      } else if (icon.url !== favicon) {
-                                        next = favicon;
-                                      }
-                                      setMintIconUrlByMint((prev) => ({
-                                        ...prev,
-                                        [icon.origin as string]: next ?? null,
-                                      }));
-                                    }
-                                  }}
-                                />
-                              ) : null}
-                              {showMintFallback && icon.host ? (
-                                <span
-                                  className="muted"
-                                  style={{ fontSize: 10, lineHeight: "14px" }}
-                                >
-                                  {icon.host}
-                                </span>
-                              ) : null}
-                              <span>{formatInteger(amount)}</span>
-                            </span>
-                          );
-                        })()}
-                      </button>
+                        ariaLabel={t("cashuToken")}
+                      />
                     ))}
                   </div>
                 )}
@@ -14690,12 +14631,8 @@ const App = () => {
                           idx + 1 < chatMessages.length
                             ? chatMessages[idx + 1]
                             : null;
-                        const npub = String(
-                          selectedContact?.npub ?? "",
-                        ).trim();
-                        const avatar = npub
-                          ? nostrPictureByNpub[npub]
-                          : null;
+                        const npub = String(selectedContact?.npub ?? "").trim();
+                        const avatar = npub ? nostrPictureByNpub[npub] : null;
 
                         return (
                           <ChatMessage

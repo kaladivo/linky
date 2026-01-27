@@ -84,9 +84,7 @@ export function ChatMessage({
     ? `${prevDate.getFullYear()}-${prevDate.getMonth() + 1}-${prevDate.getDate()}`
     : null;
 
-  const nextSec = nextMessage
-    ? Number(nextMessage.createdAtSec ?? 0) || 0
-    : 0;
+  const nextSec = nextMessage ? Number(nextMessage.createdAtSec ?? 0) || 0 : 0;
   const nextMinuteKey = nextMessage ? Math.floor(nextSec / 60) : null;
 
   const showDaySeparator = prevDayKey !== dayKey;
@@ -151,9 +149,7 @@ export function ChatMessage({
               const showMintFallback = icon.failed || !icon.url;
               return (
                 <span
-                  className={
-                    tokenInfo.isValid ? "pill" : "pill pill-muted"
-                  }
+                  className={tokenInfo.isValid ? "pill" : "pill pill-muted"}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
