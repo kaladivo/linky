@@ -1,11 +1,11 @@
 import React from "react";
 
 interface CashuTokenInfo {
-  mintUrl: string | null;
   amount: number | null;
   isValid: boolean;
-  tokenRaw: string;
   mintDisplay: string | null;
+  mintUrl: string | null;
+  tokenRaw: string;
 }
 
 interface CredoTokenInfo {
@@ -20,24 +20,24 @@ interface LocalNostrMessage {
 }
 
 interface Contact {
+  groupName?: unknown;
   id?: unknown;
+  lnAddress?: unknown;
   name?: unknown;
   npub?: unknown;
-  lnAddress?: unknown;
-  groupName?: unknown;
 }
 interface ContactCardProps {
-  contact: Contact;
   avatarUrl: string | null;
-  lastMessage: LocalNostrMessage | null | undefined;
-  hasAttention: boolean;
-  promiseNet: number;
-  displayUnit: string;
-  tokenInfo: CashuTokenInfo | null;
+  contact: Contact;
   credoInfo: CredoTokenInfo | null;
+  displayUnit: string;
+  formatContactMessageTimestamp: (sec: number) => string;
   formatInteger: (num: number) => string;
   getInitials: (name: string) => string;
-  formatContactMessageTimestamp: (sec: number) => string;
+  hasAttention: boolean;
+  lastMessage: LocalNostrMessage | null | undefined;
+  promiseNet: number;
+  tokenInfo: CashuTokenInfo | null;
   getMintIconUrl: (url: unknown) => {
     url: string | null;
     origin?: string | null;

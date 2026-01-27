@@ -1,9 +1,9 @@
 interface WalletActionButtonProps {
+  dataGuide?: string;
+  disabled?: boolean;
+  icon: "topup" | "send";
   label: string;
   onClick: () => void;
-  disabled?: boolean;
-  dataGuide?: string;
-  icon: "topup" | "send";
 }
 
 export function WalletActionButton({

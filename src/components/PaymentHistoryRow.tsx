@@ -1,19 +1,19 @@
 interface PaymentEvent {
-  id?: unknown;
+  amount?: unknown;
   createdAtSec?: unknown;
   direction?: unknown;
-  status?: unknown;
-  amount?: unknown;
-  fee?: unknown;
-  mint?: unknown;
   error?: unknown;
+  fee?: unknown;
+  id?: unknown;
+  mint?: unknown;
+  status?: unknown;
 }
 
 interface PaymentHistoryRowProps {
-  event: PaymentEvent;
-  locale: string;
-  formatInteger: (n: number) => string;
   displayUnit: string;
+  event: PaymentEvent;
+  formatInteger: (n: number) => string;
+  locale: string;
   translations: {
     paymentsHistoryFailed: string;
     paymentsHistoryIncoming: string;

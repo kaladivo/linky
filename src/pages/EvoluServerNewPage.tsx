@@ -1,17 +1,17 @@
 import React from "react";
 
 interface EvoluServerNewPageProps {
-  newEvoluServerUrl: string;
   evoluServerUrls: string[];
   evoluWipeStorageIsBusy: boolean;
-  setNewEvoluServerUrl: (url: string) => void;
-  normalizeEvoluServerUrl: (url: string) => string | null;
-  saveEvoluServerUrls: (urls: string[]) => void;
   navigateToEvoluServers: () => void;
-  setStatus: (message: string) => void;
+  newEvoluServerUrl: string;
+  normalizeEvoluServerUrl: (url: string) => string | null;
   pushToast: (message: string) => void;
-  wipeEvoluStorage: () => Promise<void>;
+  saveEvoluServerUrls: (urls: string[]) => void;
+  setNewEvoluServerUrl: (url: string) => void;
+  setStatus: (message: string) => void;
   t: (key: string) => string;
+  wipeEvoluStorage: () => Promise<void>;
 }
 
 export function EvoluServerNewPage({

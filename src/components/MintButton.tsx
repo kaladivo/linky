@@ -1,15 +1,15 @@
 interface MintIcon {
-  url: string | null;
-  host: string | null;
   failed: boolean;
+  host: string | null;
+  url: string | null;
 }
 
 interface MintButtonProps {
-  mint: string;
+  fallbackLetter: string;
   getMintIconUrl: (mint: unknown) => MintIcon;
   isSelected: boolean;
   label: string;
-  fallbackLetter: string;
+  mint: string;
   onClick: () => void;
 }
 

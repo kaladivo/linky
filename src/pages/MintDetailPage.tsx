@@ -1,22 +1,22 @@
 interface MintDetailPageProps {
-  mintUrl: string;
-  normalizeMintUrl: (url: string) => string;
-  mintInfoByUrl: Map<string, unknown>;
+  Evolu: { sqliteTrue: unknown };
+  LOCAL_MINT_INFO_STORAGE_KEY_PREFIX: string;
+  appOwnerIdRef: React.RefObject<string | null>;
+  extractPpk: (data: unknown) => number | null;
   getMintRuntime: (
     url: string,
   ) => { lastCheckedAtSec: number; latencyMs: number | null } | null;
-  refreshMintInfo: (url: string) => Promise<void>;
-  pendingMintDeleteUrl: string | null;
-  setPendingMintDeleteUrl: (url: string | null) => void;
-  navigateToMints: () => void;
-  setStatus: (message: string) => void;
-  setMintInfoAll: (updater: (prev: unknown[]) => unknown[]) => void;
-  appOwnerIdRef: React.RefObject<string | null>;
-  Evolu: { sqliteTrue: unknown };
-  LOCAL_MINT_INFO_STORAGE_KEY_PREFIX: string;
-  safeLocalStorageSetJson: (key: string, value: unknown) => void;
-  extractPpk: (data: unknown) => number | null;
   lang: string;
+  mintInfoByUrl: Map<string, unknown>;
+  mintUrl: string;
+  navigateToMints: () => void;
+  normalizeMintUrl: (url: string) => string;
+  pendingMintDeleteUrl: string | null;
+  refreshMintInfo: (url: string) => Promise<void>;
+  safeLocalStorageSetJson: (key: string, value: unknown) => void;
+  setMintInfoAll: (updater: (prev: unknown[]) => unknown[]) => void;
+  setPendingMintDeleteUrl: (url: string | null) => void;
+  setStatus: (message: string) => void;
   t: (key: string) => string;
 }
 

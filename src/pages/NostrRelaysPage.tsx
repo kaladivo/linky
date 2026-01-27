@@ -2,9 +2,9 @@ import React from "react";
 import { NostrRelayRow } from "../components/NostrRelayRow";
 
 interface NostrRelaysPageProps {
-  relayUrls: string[];
-  relayStatusByUrl: Record<string, "connected" | "checking" | "disconnected">;
   navigateToNostrRelay: (url: string) => void;
+  relayStatusByUrl: Record<string, "connected" | "checking" | "disconnected">;
+  relayUrls: string[];
   t: (key: string) => string;
 }
 

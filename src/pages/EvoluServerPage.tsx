@@ -1,26 +1,26 @@
 import React from "react";
 
 interface EvoluServerPageProps {
-  selectedEvoluServerUrl: string | null;
-  evoluServersReloadRequired: boolean;
+  DEFAULT_EVOLU_SERVER_URLS: readonly string[];
+  evoluHasError: boolean;
   evoluServerStatusByUrl: Record<
     string,
     "connected" | "checking" | "disconnected"
   >;
-  evoluHasError: boolean;
-  syncOwner: unknown;
-  DEFAULT_EVOLU_SERVER_URLS: readonly string[];
-  isEvoluServerOffline: (url: string) => boolean;
-  setEvoluServerOffline: (url: string, offline: boolean) => void;
-  pendingEvoluServerDeleteUrl: string | null;
-  setPendingEvoluServerDeleteUrl: (url: string | null) => void;
+  evoluServersReloadRequired: boolean;
   evoluServerUrls: string[];
-  saveEvoluServerUrls: (urls: string[]) => void;
-  navigateToEvoluServers: () => void;
-  setStatus: (message: string) => void;
-  wipeEvoluStorage: () => Promise<void>;
   evoluWipeStorageIsBusy: boolean;
+  isEvoluServerOffline: (url: string) => boolean;
+  navigateToEvoluServers: () => void;
+  pendingEvoluServerDeleteUrl: string | null;
+  saveEvoluServerUrls: (urls: string[]) => void;
+  selectedEvoluServerUrl: string | null;
+  setEvoluServerOffline: (url: string, offline: boolean) => void;
+  setPendingEvoluServerDeleteUrl: (url: string | null) => void;
+  setStatus: (message: string) => void;
+  syncOwner: unknown;
   t: (key: string) => string;
+  wipeEvoluStorage: () => Promise<void>;
 }
 
 export function EvoluServerPage({

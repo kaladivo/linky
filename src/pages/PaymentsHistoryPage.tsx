@@ -1,21 +1,21 @@
 import { PaymentHistoryRow } from "../components/PaymentHistoryRow";
 
 interface PaymentEvent {
-  id?: unknown;
+  amount?: unknown;
   createdAtSec?: unknown;
   direction?: unknown;
-  status?: unknown;
-  amount?: unknown;
-  fee?: unknown;
-  mint?: unknown;
   error?: unknown;
+  fee?: unknown;
+  id?: unknown;
+  mint?: unknown;
+  status?: unknown;
 }
 
 interface PaymentsHistoryPageProps {
-  paymentEvents: unknown[];
-  lang: string;
-  formatInteger: (value: number) => string;
   displayUnit: string;
+  formatInteger: (value: number) => string;
+  lang: string;
+  paymentEvents: unknown[];
   t: (key: string) => string;
 }
 

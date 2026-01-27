@@ -1,38 +1,38 @@
 import React from "react";
 
 interface AdvancedPageProps {
-  currentNsec: string | null;
-  seedMnemonic: string | null;
-  tokensRestoreIsBusy: boolean;
-  cashuIsBusy: boolean;
-  payWithCashuEnabled: boolean;
+  __APP_VERSION__: string;
   allowPromisesEnabled: boolean;
-  relayUrls: string[];
+  cashuIsBusy: boolean;
   connectedRelayCount: number;
-  nostrRelayOverallStatus: "connected" | "checking" | "disconnected";
-  evoluServerUrls: string[];
-  evoluConnectedServerCount: number;
-  evoluOverallStatus: "connected" | "checking" | "disconnected";
-  defaultMintDisplay: string | null;
-  dedupeContactsIsBusy: boolean;
-  logoutArmed: boolean;
-  importDataFileInputRef: React.RefObject<HTMLInputElement | null>;
   copyNostrKeys: () => void;
   copySeed: () => void;
-  restoreMissingTokens: () => Promise<void>;
-  setPayWithCashuEnabled: (value: boolean) => void;
-  setAllowPromisesEnabled: (value: boolean) => void;
-  navigateToNostrRelays: () => void;
+  currentNsec: string | null;
+  dedupeContacts: () => Promise<void>;
+  dedupeContactsIsBusy: boolean;
+  defaultMintDisplay: string | null;
+  evoluConnectedServerCount: number;
+  evoluOverallStatus: "connected" | "checking" | "disconnected";
+  evoluServerUrls: string[];
+  exportAppData: () => void;
+  handleImportAppDataFilePicked: (file: File | null) => Promise<void>;
+  importDataFileInputRef: React.RefObject<HTMLInputElement | null>;
+  logoutArmed: boolean;
   navigateToEvoluServers: () => void;
   navigateToMints: () => void;
+  navigateToNostrRelays: () => void;
   navigateToPaymentsHistory: () => void;
-  exportAppData: () => void;
+  nostrRelayOverallStatus: "connected" | "checking" | "disconnected";
+  payWithCashuEnabled: boolean;
+  relayUrls: string[];
   requestImportAppData: () => void;
-  dedupeContacts: () => Promise<void>;
-  handleImportAppDataFilePicked: (file: File | null) => Promise<void>;
   requestLogout: () => void;
+  restoreMissingTokens: () => Promise<void>;
+  seedMnemonic: string | null;
+  setAllowPromisesEnabled: (value: boolean) => void;
+  setPayWithCashuEnabled: (value: boolean) => void;
   t: (key: string) => string;
-  __APP_VERSION__: string;
+  tokensRestoreIsBusy: boolean;
 }
 
 export function AdvancedPage({

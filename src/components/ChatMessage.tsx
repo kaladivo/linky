@@ -1,28 +1,28 @@
 import React from "react";
 
 interface CashuTokenInfo {
-  tokenRaw: string;
-  mintDisplay: string | null;
-  mintUrl: string | null;
   amount: number | null;
   isValid: boolean;
+  mintDisplay: string | null;
+  mintUrl: string | null;
+  tokenRaw: string;
 }
 
 interface CredoTokenInfo {
-  tokenRaw: string;
   amount: number | null;
-  isValid: boolean;
-  kind: "promise" | "settlement";
-  issuer: string | null;
-  recipient: string | null;
   expiresAtSec: number | null;
+  isValid: boolean;
+  issuer: string | null;
+  kind: "promise" | "settlement";
+  recipient: string | null;
+  tokenRaw: string;
 }
 
 interface MintIcon {
+  failed: boolean;
+  host: string | null;
   origin: string | null;
   url: string | null;
-  host: string | null;
-  failed: boolean;
 }
 
 interface LocalNostrMessage {

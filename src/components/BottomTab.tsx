@@ -1,8 +1,8 @@
 interface BottomTabProps {
-  label: string;
-  isActive: boolean;
-  onClick: () => void;
   icon: "contacts" | "wallet";
+  isActive: boolean;
+  label: string;
+  onClick: () => void;
 }
 
 export function BottomTab({ label, isActive, onClick, icon }: BottomTabProps) {

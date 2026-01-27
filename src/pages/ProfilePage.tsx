@@ -1,35 +1,35 @@
 import React from "react";
 
 interface DerivedProfile {
+  lnAddress: string;
   name: string;
   pictureUrl: string;
-  lnAddress: string;
 }
 
 interface ProfilePageProps {
+  copyText: (text: string) => Promise<void>;
   currentNpub: string | null;
-  isProfileEditing: boolean;
-  profileEditPicture: string;
-  effectiveProfilePicture: string | null;
-  effectiveProfileName: string | null;
-  profileEditName: string;
-  profileEditLnAddress: string;
   derivedProfile: DerivedProfile | null;
-  profileEditsSavable: boolean;
-  myProfileQr: string | null;
   effectiveMyLightningAddress: string | null;
-  profilePhotoInputRef: React.RefObject<HTMLInputElement | null>;
-  setProfileEditPicture: (value: string) => void;
-  setProfileEditName: (value: string) => void;
-  setProfileEditLnAddress: (value: string) => void;
+  effectiveProfileName: string | null;
+  effectiveProfilePicture: string | null;
+  formatShortNpub: (npub: string) => string;
+  getInitials: (name: string) => string;
+  isProfileEditing: boolean;
+  myProfileQr: string | null;
+  onPickProfilePhoto: () => Promise<void>;
   onProfilePhotoSelected: (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => Promise<void>;
-  onPickProfilePhoto: () => Promise<void>;
+  profileEditLnAddress: string;
+  profileEditName: string;
+  profileEditPicture: string;
+  profileEditsSavable: boolean;
+  profilePhotoInputRef: React.RefObject<HTMLInputElement | null>;
   saveProfileEdits: () => Promise<void>;
-  copyText: (text: string) => Promise<void>;
-  formatShortNpub: (npub: string) => string;
-  getInitials: (name: string) => string;
+  setProfileEditLnAddress: (value: string) => void;
+  setProfileEditName: (value: string) => void;
+  setProfileEditPicture: (value: string) => void;
   t: (key: string) => string;
 }
 

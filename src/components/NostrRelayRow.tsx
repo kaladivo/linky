@@ -1,14 +1,12 @@
 interface NostrRelayRowProps {
-  url: string;
-  state: string;
   onNavigate: (url: string) => void;
+  state: string;
+  url: string;
 }
 
 export function NostrRelayRow({ url, state, onNavigate }: NostrRelayRowProps) {
   const dotClass =
-    state === "connected"
-      ? "status-dot connected"
-      : "status-dot disconnected";
+    state === "connected" ? "status-dot connected" : "status-dot disconnected";
 
   return (
     <button

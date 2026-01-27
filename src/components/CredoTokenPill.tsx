@@ -1,10 +1,10 @@
 interface CredoTokenPillProps {
-  token: unknown;
   amount: number;
-  avatar: string | null;
-  onClick: () => void;
   ariaLabel: string;
+  avatar: string | null;
   formatInteger: (n: number) => string;
+  onClick: () => void;
+  token: unknown;
 }
 
 export function CredoTokenPill({

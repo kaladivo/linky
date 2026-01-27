@@ -1,10 +1,10 @@
 import React from "react";
 
 interface WalletBalanceProps {
+  ariaLabel: string;
   balance: number;
   displayUnit: string;
   formatInteger: (num: number) => string;
-  ariaLabel: string;
 }
 
 export const WalletBalance: React.FC<WalletBalanceProps> = ({

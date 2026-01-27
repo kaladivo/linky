@@ -1,15 +1,15 @@
 import React from "react";
 
 interface EvoluServersPageProps {
-  evoluServerUrls: string[];
+  evoluHasError: boolean;
   evoluServerStatusByUrl: Record<
     string,
     "connected" | "checking" | "disconnected"
   >;
-  evoluHasError: boolean;
-  syncOwner: unknown;
+  evoluServerUrls: string[];
   isEvoluServerOffline: (url: string) => boolean;
   navigateToEvoluServer: (url: string) => void;
+  syncOwner: unknown;
   t: (key: string) => string;
 }
 

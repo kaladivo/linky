@@ -132,67 +132,67 @@ const inMemoryNostrPictureCache = new Map<string, string | null>();
 const inMemoryMintIconCache = new Map<string, string | null>();
 
 type LocalPaymentEvent = {
-  id: string;
+  amount: number | null;
+  contactId: string | null;
   createdAtSec: number;
   direction: "in" | "out";
-  status: "ok" | "error";
-  amount: number | null;
-  fee: number | null;
-  mint: string | null;
-  unit: string | null;
   error: string | null;
-  contactId: string | null;
+  fee: number | null;
+  id: string;
+  mint: string | null;
+  status: "ok" | "error";
+  unit: string | null;
 };
 
 type LocalNostrMessage = {
-  id: string;
-  contactId: string;
-  direction: "in" | "out";
-  content: string;
-  wrapId: string;
-  rumorId: string | null;
-  pubkey: string;
-  createdAtSec: number;
-  status?: "sent" | "pending";
   clientId?: string;
+  contactId: string;
+  content: string;
+  createdAtSec: number;
+  direction: "in" | "out";
+  id: string;
   localOnly?: boolean;
+  pubkey: string;
+  rumorId: string | null;
+  status?: "sent" | "pending";
+  wrapId: string;
 };
 
 type LocalPendingPayment = {
-  id: string;
-  contactId: string;
   amountSat: number;
+  contactId: string;
   createdAtSec: number;
+  id: string;
   messageId?: string;
 };
 
 type LocalMintInfoRow = {
-  id: string;
-  url: string;
-  isDeleted?: unknown;
+  feesJson?: unknown;
   firstSeenAtSec?: unknown;
+  id: string;
+  infoJson?: unknown;
+  isDeleted?: unknown;
+  lastCheckedAtSec?: unknown;
   lastSeenAtSec?: unknown;
   supportsMpp?: unknown;
-  feesJson?: unknown;
-  infoJson?: unknown;
-  lastCheckedAtSec?: unknown;
+  url: string;
 };
 
 type CredoTokenRow = {
-  id: CredoTokenId;
-  promiseId?: unknown;
-  issuer?: unknown;
-  recipient?: unknown;
   amount?: unknown;
-  unit?: unknown;
+  contactId?: unknown;
   createdAtSec?: unknown;
+  direction?: unknown;
   expiresAtSec?: unknown;
+  id: CredoTokenId;
+  isDeleted?: unknown;
+  issuer?: unknown;
+  promiseId?: unknown;
+  rawToken?: unknown;
+  recipient?: unknown;
   settledAmount?: unknown;
   settledAtSec?: unknown;
-  direction?: unknown;
-  contactId?: unknown;
-  rawToken?: unknown;
-  isDeleted?: unknown;
+  unit?: unknown;
 };
 
 type AppNostrPool = {
@@ -215,11 +215,11 @@ type AppNostrPool = {
 type ContactsGuideKey = "add_contact" | "topup" | "pay" | "message";
 
 type ContactsGuideStep = {
+  bodyKey: keyof typeof translations.cs;
+  ensure?: () => void;
   id: string;
   selector: string;
   titleKey: keyof typeof translations.cs;
-  bodyKey: keyof typeof translations.cs;
-  ensure?: () => void;
 };
 
 let sharedAppNostrPoolPromise: Promise<AppNostrPool> | null = null;
@@ -239,10 +239,10 @@ const getSharedAppNostrPool = async (): Promise<AppNostrPool> => {
 };
 
 type ContactFormState = {
+  group: string;
+  lnAddress: string;
   name: string;
   npub: string;
-  lnAddress: string;
-  group: string;
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {

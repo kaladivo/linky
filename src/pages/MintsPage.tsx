@@ -1,21 +1,21 @@
 import { MintButton } from "../components/MintButton";
 
 interface MintIcon {
-  url: string | null;
-  host: string | null;
   failed: boolean;
+  host: string | null;
+  url: string | null;
 }
 
 interface MintsPageProps {
-  defaultMintUrl: string | null;
-  defaultMintUrlDraft: string;
-  setDefaultMintUrlDraft: (value: string) => void;
-  normalizeMintUrl: (url: string) => string;
   MAIN_MINT_URL: string;
   PRESET_MINTS: readonly string[];
-  getMintIconUrl: (mint: unknown) => MintIcon;
   applyDefaultMintSelection: (mint: string) => Promise<void>;
+  defaultMintUrl: string | null;
+  defaultMintUrlDraft: string;
+  getMintIconUrl: (mint: unknown) => MintIcon;
   hasMintOverrideRef: React.RefObject<boolean>;
+  normalizeMintUrl: (url: string) => string;
+  setDefaultMintUrlDraft: (value: string) => void;
   t: (key: string) => string;
 }
 

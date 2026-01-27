@@ -1,9 +1,9 @@
 import React from "react";
 
 interface NostrRelayPageProps {
-  selectedRelayUrl: string | null;
   pendingRelayDeleteUrl: string | null;
   requestDeleteSelectedRelay: () => void;
+  selectedRelayUrl: string | null;
   t: (key: string) => string;
 }
 

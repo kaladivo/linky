@@ -1,19 +1,19 @@
 interface MintIcon {
+  failed: boolean;
+  host: string | null;
   origin: string | null;
   url: string | null;
-  host: string | null;
-  failed: boolean;
 }
 
 interface CashuTokenPillProps {
-  token: unknown;
-  getMintIconUrl: (mint: unknown) => MintIcon;
-  formatInteger: (n: number) => string;
-  isError?: boolean;
-  onMintIconLoad: (origin: string, url: string | null) => void;
-  onMintIconError: (origin: string, nextUrl: string | null) => void;
-  onClick: () => void;
   ariaLabel: string;
+  formatInteger: (n: number) => string;
+  getMintIconUrl: (mint: unknown) => MintIcon;
+  isError?: boolean;
+  onClick: () => void;
+  onMintIconError: (origin: string, nextUrl: string | null) => void;
+  onMintIconLoad: (origin: string, url: string | null) => void;
+  token: unknown;
 }
 
 export function CashuTokenPill({

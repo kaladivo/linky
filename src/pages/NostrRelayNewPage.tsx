@@ -1,10 +1,10 @@
 import React from "react";
 
 interface NostrRelayNewPageProps {
-  newRelayUrl: string;
   canSaveNewRelay: boolean;
-  setNewRelayUrl: (url: string) => void;
+  newRelayUrl: string;
   saveNewRelay: () => void;
+  setNewRelayUrl: (url: string) => void;
   t: (key: string) => string;
 }
 
