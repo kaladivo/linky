@@ -75,6 +75,7 @@ import { PaymentHistoryRow } from "./components/PaymentHistoryRow";
 import { ChatMessage } from "./components/ChatMessage";
 import { CashuTokenPill } from "./components/CashuTokenPill";
 import { CredoTokenPill } from "./components/CredoTokenPill";
+import { MintButton } from "./components/MintButton";
 import type { Route } from "./types/route";
 import {
   bumpCashuDeterministicCounter,
@@ -12648,7 +12649,6 @@ const App = () => {
                         }}
                       >
                         {buttonMints.map((mint) => {
-                          const icon = getMintIconUrl(mint);
                           const isSelected =
                             normalizeMintUrl(mint) === selectedMint;
                           const label = stripped(mint);
@@ -12656,63 +12656,17 @@ const App = () => {
                             label.match(/[a-z]/i)?.[0] ?? "?"
                           ).toUpperCase();
                           return (
-                            <button
+                            <MintButton
                               key={mint}
-                              type="button"
-                              className="ghost"
+                              mint={mint}
+                              getMintIconUrl={getMintIconUrl}
+                              isSelected={isSelected}
+                              label={label}
+                              fallbackLetter={fallbackLetter}
                               onClick={() =>
                                 void applyDefaultMintSelection(mint)
                               }
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 8,
-                                border: isSelected
-                                  ? "1px solid #22c55e"
-                                  : undefined,
-                                boxShadow: isSelected
-                                  ? "0 0 0 1px rgba(34,197,94,0.35)"
-                                  : undefined,
-                              }}
-                            >
-                              {icon.url ? (
-                                <img
-                                  src={icon.url}
-                                  alt=""
-                                  width={14}
-                                  height={14}
-                                  style={{
-                                    borderRadius: 9999,
-                                    objectFit: "cover",
-                                  }}
-                                  loading="lazy"
-                                  referrerPolicy="no-referrer"
-                                  onError={(e) => {
-                                    (
-                                      e.currentTarget as HTMLImageElement
-                                    ).style.display = "none";
-                                  }}
-                                />
-                              ) : (
-                                <span
-                                  aria-hidden="true"
-                                  style={{
-                                    width: 14,
-                                    height: 14,
-                                    borderRadius: 9999,
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    fontSize: 9,
-                                    background: "rgba(148,163,184,0.25)",
-                                    color: "#e2e8f0",
-                                  }}
-                                >
-                                  {fallbackLetter}
-                                </span>
-                              )}
-                              {label}
-                            </button>
+                            />
                           );
                         })}
                       </div>
