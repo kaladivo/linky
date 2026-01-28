@@ -83,6 +83,7 @@ import { SaveContactPromptModal } from "./components/SaveContactPromptModal";
 import { ContactsGuideOverlay } from "./components/ContactsGuideOverlay";
 import { ProfileQrModal } from "./components/ProfileQrModal";
 import { MenuModal } from "./components/MenuModal";
+import { AmountDisplay } from "./components/AmountDisplay";
 import {
   PaymentsHistoryPage,
   MintsPage,
@@ -12432,21 +12433,11 @@ const App = () => {
                 </div>
               </div>
 
-              <div className="amount-display" aria-live="polite">
-                {(() => {
-                  const amountSat = Number.parseInt(topupAmount.trim(), 10);
-                  const display =
-                    Number.isFinite(amountSat) && amountSat > 0 ? amountSat : 0;
-                  return (
-                    <>
-                      <span className="amount-number">
-                        {formatInteger(display)}
-                      </span>
-                      <span className="amount-unit">{displayUnit}</span>
-                    </>
-                  );
-                })()}
-              </div>
+              <AmountDisplay
+                amount={topupAmount}
+                displayUnit={displayUnit}
+                formatInteger={formatInteger}
+              />
 
               <Keypad
                 ariaLabel={`${t("payAmount")} (${displayUnit})`}
@@ -13140,23 +13131,11 @@ const App = () => {
                   })()}
 
                   <div data-guide="pay-step3">
-                    <div className="amount-display" aria-live="polite">
-                      {(() => {
-                        const amountSat = Number.parseInt(payAmount.trim(), 10);
-                        const display =
-                          Number.isFinite(amountSat) && amountSat > 0
-                            ? amountSat
-                            : 0;
-                        return (
-                          <>
-                            <span className="amount-number">
-                              {formatInteger(display)}
-                            </span>
-                            <span className="amount-unit">{displayUnit}</span>
-                          </>
-                        );
-                      })()}
-                    </div>
+                    <AmountDisplay
+                      amount={payAmount}
+                      displayUnit={displayUnit}
+                      formatInteger={formatInteger}
+                    />
 
                     <Keypad
                       ariaLabel={`${t("payAmount")} (${displayUnit})`}
@@ -13273,24 +13252,11 @@ const App = () => {
                 <p className="muted">{t("payInsufficient")}</p>
               ) : null}
 
-              <div className="amount-display" aria-live="polite">
-                {(() => {
-                  const amountSat = Number.parseInt(
-                    lnAddressPayAmount.trim(),
-                    10,
-                  );
-                  const display =
-                    Number.isFinite(amountSat) && amountSat > 0 ? amountSat : 0;
-                  return (
-                    <>
-                      <span className="amount-number">
-                        {formatInteger(display)}
-                      </span>
-                      <span className="amount-unit">{displayUnit}</span>
-                    </>
-                  );
-                })()}
-              </div>
+              <AmountDisplay
+                amount={lnAddressPayAmount}
+                displayUnit={displayUnit}
+                formatInteger={formatInteger}
+              />
 
               <Keypad
                 ariaLabel={`${t("payAmount")} (${displayUnit})`}

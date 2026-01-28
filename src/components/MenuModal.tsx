@@ -30,10 +30,7 @@ export function MenuModal({
       aria-label={t("menu")}
       onClick={closeMenu}
     >
-      <div
-        className="menu-modal-sheet"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="menu-modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="settings-row">
           <div className="settings-left">
             <span className="settings-icon" aria-hidden="true">
