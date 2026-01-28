@@ -93,6 +93,7 @@ import {
   EvoluServerNewPage,
   ProfilePage,
   WalletPage,
+  TopupPage,
 } from "./pages";
 import type { Route } from "./types/route";
 import {
@@ -12148,100 +12149,22 @@ const App = () => {
           )}
 
           {route.kind === "topup" && (
-            <section className="panel">
-              <div className="contact-header">
-                <div className="contact-avatar is-large" aria-hidden="true">
-                  {effectiveProfilePicture ? (
-                    <img
-                      src={effectiveProfilePicture}
-                      alt=""
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <span className="contact-avatar-fallback">
-                      {getInitials(
-                        effectiveProfileName ??
-                          (currentNpub ? formatShortNpub(currentNpub) : ""),
-                      )}
-                    </span>
-                  )}
-                </div>
-                <div className="contact-header-text">
-                  <h3>
-                    {effectiveProfileName ??
-                      (currentNpub
-                        ? formatShortNpub(currentNpub)
-                        : t("appTitle"))}
-                  </h3>
-                  <p
-                    className="muted"
-                    style={{ maxWidth: "100%", overflow: "hidden" }}
-                  >
-                    {formatMiddleDots(
-                      String(npubCashLightningAddress ?? ""),
-                      28,
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              <AmountDisplay
-                amount={topupAmount}
-                displayUnit={displayUnit}
-                formatInteger={formatInteger}
-              />
-
-              <Keypad
-                ariaLabel={`${t("payAmount")} (${displayUnit})`}
-                disabled={topupInvoiceIsBusy}
-                onKeyPress={(key) => {
-                  if (topupInvoiceIsBusy) return;
-                  if (key === "C") {
-                    setTopupAmount("");
-                    return;
-                  }
-                  if (key === "⌫") {
-                    setTopupAmount((v) => v.slice(0, -1));
-                    return;
-                  }
-                  setTopupAmount((v) => {
-                    const next = (v + key).replace(/^0+(\d)/, "$1");
-                    return next;
-                  });
-                }}
-                translations={{
-                  clearForm: t("clearForm"),
-                  delete: t("delete"),
-                }}
-              />
-
-              {(() => {
-                const ln = String(npubCashLightningAddress ?? "").trim();
-                const amountSat = Number.parseInt(topupAmount.trim(), 10);
-                const invalid =
-                  !ln ||
-                  !Number.isFinite(amountSat) ||
-                  amountSat <= 0 ||
-                  topupInvoiceIsBusy;
-
-                return (
-                  <div className="actions">
-                    <button
-                      className="btn-wide"
-                      onClick={() => {
-                        if (invalid) return;
-                        navigateToTopupInvoice();
-                      }}
-                      disabled={invalid}
-                      data-guide="topup-show-invoice"
-                    >
-                      {t("topupShowInvoice")}
-                    </button>
-                  </div>
-                );
-              })()}
-            </section>
+            <TopupPage
+              effectiveProfilePicture={effectiveProfilePicture}
+              effectiveProfileName={effectiveProfileName}
+              currentNpub={currentNpub}
+              npubCashLightningAddress={npubCashLightningAddress}
+              topupAmount={topupAmount}
+              setTopupAmount={setTopupAmount}
+              topupInvoiceIsBusy={topupInvoiceIsBusy}
+              displayUnit={displayUnit}
+              navigateToTopupInvoice={navigateToTopupInvoice}
+              formatShortNpub={formatShortNpub}
+              formatMiddleDots={formatMiddleDots}
+              formatInteger={formatInteger}
+              getInitials={getInitials}
+              t={t}
+            />
           )}
 
           {route.kind === "topupInvoice" && (
