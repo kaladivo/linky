@@ -30,7 +30,6 @@ interface ChatPageProps {
     failed: boolean;
   };
   lang: string;
-  mintIconUrlByMint: Record<string, string | null>;
   nostrPictureByNpub: Record<string, string | null>;
   openContactPay: (id: ContactId, returnToChat?: boolean) => void;
   payWithCashuEnabled: boolean;
@@ -60,7 +59,6 @@ export const ChatPage: FC<ChatPageProps> = ({
   getCredoTokenMessageInfo,
   getMintIconUrl,
   lang,
-  mintIconUrlByMint,
   nostrPictureByNpub,
   openContactPay,
   payWithCashuEnabled,

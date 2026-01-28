@@ -20,13 +20,7 @@ export function NostrRelaysPage({
         <div>
           {relayUrls.map((url) => {
             const state = relayStatusByUrl[url] ?? "checking";
-            return (
-              <NostrRelayRow
-                key={url}
-                url={url}
-                state={state}
-              />
-            );
+            return <NostrRelayRow key={url} url={url} state={state} />;
           })}
         </div>
       )}

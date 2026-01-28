@@ -97,7 +97,9 @@ export const ContactPage: FC<ContactPageProps> = ({
           {npub && (
             <button
               className="btn-wide secondary"
-              onClick={() => navigateTo({ route: "chat", id: selectedContact.id })}
+              onClick={() =>
+                navigateTo({ route: "chat", id: selectedContact.id })
+              }
               data-guide="contact-message"
             >
               {isFeedbackContact ? "Feedback" : t("sendMessage")}

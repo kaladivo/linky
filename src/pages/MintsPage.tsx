@@ -13,7 +13,6 @@ interface MintsPageProps {
   defaultMintUrl: string | null;
   defaultMintUrlDraft: string;
   getMintIconUrl: (mint: unknown) => MintIcon;
-  hasMintOverrideRef: React.RefObject<boolean>;
   normalizeMintUrl: (url: string) => string;
   setDefaultMintUrlDraft: (value: string) => void;
   t: (key: string) => string;
@@ -26,7 +25,6 @@ export function MintsPage({
   defaultMintUrl,
   defaultMintUrlDraft,
   getMintIconUrl,
-  hasMintOverrideRef,
   normalizeMintUrl,
   setDefaultMintUrlDraft,
   t,

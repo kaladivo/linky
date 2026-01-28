@@ -21,7 +21,6 @@ interface CashuTokenNewPageProps {
     host: string | null;
     failed: boolean;
   };
-  mintIconUrlByMint: Record<string, string | null>;
   nostrPictureByNpub: Record<string, string | null>;
   saveCashuFromText: (
     text: string,
@@ -48,7 +47,6 @@ export const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
   formatInteger,
   getCredoRemainingAmount,
   getMintIconUrl,
-  mintIconUrlByMint,
   nostrPictureByNpub,
   saveCashuFromText,
   setCashuDraft,
@@ -99,7 +97,10 @@ export const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
                   }));
                 }}
                 onClick={() =>
-                  navigateTo({ route: "cashuToken", id: token.id as unknown as CashuTokenId })
+                  navigateTo({
+                    route: "cashuToken",
+                    id: token.id as unknown as CashuTokenId,
+                  })
                 }
                 ariaLabel={t("cashuToken")}
               />
@@ -128,7 +129,10 @@ export const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
                   amount={amount}
                   avatar={avatar}
                   onClick={() =>
-                    navigateTo({ route: "credoToken", id: token.id as unknown as CredoTokenId })
+                    navigateTo({
+                      route: "credoToken",
+                      id: token.id as unknown as CredoTokenId,
+                    })
                   }
                   ariaLabel={t("credoOwe")}
                   formatInteger={formatInteger}
@@ -159,7 +163,10 @@ export const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
                   amount={amount}
                   avatar={avatar}
                   onClick={() =>
-                    navigateTo({ route: "credoToken", id: token.id as unknown as CredoTokenId })
+                    navigateTo({
+                      route: "credoToken",
+                      id: token.id as unknown as CredoTokenId,
+                    })
                   }
                   ariaLabel={t("credoPromisedToMe")}
                   formatInteger={formatInteger}
