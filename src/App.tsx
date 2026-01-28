@@ -78,6 +78,7 @@ import { WalletActionButton } from "./components/WalletActionButton";
 import { BottomTab } from "./components/BottomTab";
 import { Keypad } from "./components/Keypad";
 import { ScanModal } from "./components/ScanModal";
+import { PaidOverlay } from "./components/PaidOverlay";
 import {
   PaymentsHistoryPage,
   MintsPage,
@@ -14383,16 +14384,7 @@ const App = () => {
           ) : null}
 
           {paidOverlayIsOpen ? (
-            <div className="paid-overlay" role="status" aria-live="assertive">
-              <div className="paid-sheet">
-                <div className="paid-check" aria-hidden="true">
-                  ✓
-                </div>
-                <div className="paid-title">
-                  {paidOverlayTitle ?? t("paid")}
-                </div>
-              </div>
-            </div>
+            <PaidOverlay paidOverlayTitle={paidOverlayTitle} t={t} />
           ) : null}
         </>
       ) : null}

@@ -2,7 +2,7 @@ import React from "react";
 
 interface ScanModalProps {
   closeScan: () => void;
-  scanVideoRef: React.RefObject<HTMLVideoElement>;
+  scanVideoRef: React.RefObject<HTMLVideoElement | null>;
   t: (key: string) => string;
 }
 
