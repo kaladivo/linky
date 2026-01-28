@@ -79,6 +79,7 @@ import { BottomTab } from "./components/BottomTab";
 import { Keypad } from "./components/Keypad";
 import { ScanModal } from "./components/ScanModal";
 import { PaidOverlay } from "./components/PaidOverlay";
+import { SaveContactPromptModal } from "./components/SaveContactPromptModal";
 import {
   PaymentsHistoryPage,
   MintsPage,
@@ -14329,58 +14330,16 @@ const App = () => {
           )}
 
           {postPaySaveContact && !paidOverlayIsOpen ? (
-            <div
-              className="modal-overlay"
-              role="dialog"
-              aria-modal="true"
-              aria-label={t("saveContactPromptTitle")}
-            >
-              <div className="modal-sheet">
-                <div className="modal-title">{t("saveContactPromptTitle")}</div>
-                <div className="modal-body">
-                  {t("saveContactPromptBody")
-                    .replace(
-                      "{amount}",
-                      formatInteger(postPaySaveContact.amountSat),
-                    )
-                    .replace("{unit}", displayUnit)
-                    .replace("{lnAddress}", postPaySaveContact.lnAddress)}
-                </div>
-                <div className="modal-actions">
-                  <button
-                    className="btn-wide"
-                    onClick={() => {
-                      const ln = String(
-                        postPaySaveContact.lnAddress ?? "",
-                      ).trim();
-
-                      const npub = (() => {
-                        const lower = ln.toLowerCase();
-                        if (!lower.endsWith("@npub.cash")) return null;
-                        const left = ln.slice(0, -"@npub.cash".length).trim();
-                        return left || null;
-                      })();
-
-                      setPostPaySaveContact(null);
-                      setContactNewPrefill({
-                        lnAddress: ln,
-                        npub,
-                        suggestedName: null,
-                      });
-                      navigateToNewContact();
-                    }}
-                  >
-                    {t("saveContactPromptSave")}
-                  </button>
-                  <button
-                    className="btn-wide secondary"
-                    onClick={() => setPostPaySaveContact(null)}
-                  >
-                    {t("saveContactPromptSkip")}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <SaveContactPromptModal
+              amountSat={postPaySaveContact.amountSat}
+              displayUnit={displayUnit}
+              formatInteger={formatInteger}
+              lnAddress={postPaySaveContact.lnAddress}
+              navigateToNewContact={navigateToNewContact}
+              onClose={() => setPostPaySaveContact(null)}
+              setContactNewPrefill={setContactNewPrefill}
+              t={t}
+            />
           ) : null}
 
           {paidOverlayIsOpen ? (
