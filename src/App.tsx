@@ -86,6 +86,7 @@ import { AmountDisplay } from "./components/AmountDisplay";
 import { ContactsChecklist } from "./components/ContactsChecklist";
 import { Topbar } from "./components/Topbar";
 import { BottomTabBar } from "./components/BottomTabBar";
+import { WalletWarning } from "./components/WalletWarning";
 import {
   PaymentsHistoryPage,
   MintsPage,
@@ -12256,19 +12257,7 @@ const App = () => {
 
           {route.kind === "wallet" && (
             <section className="panel panel-plain wallet-panel">
-              <div className="wallet-warning" role="alert">
-                <div className="wallet-warning-icon" aria-hidden="true">
-                  ⚠
-                </div>
-                <div className="wallet-warning-text">
-                  <div className="wallet-warning-title">
-                    {t("walletEarlyWarningTitle")}
-                  </div>
-                  <div className="wallet-warning-body">
-                    {t("walletEarlyWarningBody")}
-                  </div>
-                </div>
-              </div>
+              <WalletWarning t={t} />
               <div className="panel-header">
                 <div className="wallet-hero">
                   <WalletBalance
