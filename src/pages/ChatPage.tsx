@@ -43,7 +43,7 @@ interface ChatPageProps {
   t: (key: string) => string;
 }
 
-const ChatPage: FC<ChatPageProps> = ({
+export const ChatPage: FC<ChatPageProps> = ({
   selectedContact,
   chatMessages,
   chatMessagesRef,
@@ -176,5 +176,3 @@ const ChatPage: FC<ChatPageProps> = ({
     </section>
   );
 };
-
-export default ChatPage;

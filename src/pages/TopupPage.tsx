@@ -19,7 +19,7 @@ interface TopupPageProps {
   t: (key: string) => string;
 }
 
-const TopupPage: FC<TopupPageProps> = ({
+export const TopupPage: FC<TopupPageProps> = ({
   effectiveProfilePicture,
   effectiveProfileName,
   currentNpub,
@@ -117,5 +117,3 @@ const TopupPage: FC<TopupPageProps> = ({
     </section>
   );
 };
-
-export default TopupPage;

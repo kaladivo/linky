@@ -28,7 +28,7 @@ interface ContactEditPageProps {
   t: (key: string) => string;
 }
 
-const ContactEditPage: FC<ContactEditPageProps> = ({
+export const ContactEditPage: FC<ContactEditPageProps> = ({
   selectedContact,
   form,
   setForm,
@@ -155,5 +155,3 @@ const ContactEditPage: FC<ContactEditPageProps> = ({
     </section>
   );
 };
-
-export default ContactEditPage;

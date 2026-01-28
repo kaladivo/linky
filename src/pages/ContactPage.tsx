@@ -24,7 +24,7 @@ interface ContactPageProps {
   t: (key: string) => string;
 }
 
-const ContactPage: FC<ContactPageProps> = ({
+export const ContactPage: FC<ContactPageProps> = ({
   selectedContact,
   nostrPictureByNpub,
   cashuBalance,
@@ -108,5 +108,3 @@ const ContactPage: FC<ContactPageProps> = ({
     </section>
   );
 };
-
-export default ContactPage;

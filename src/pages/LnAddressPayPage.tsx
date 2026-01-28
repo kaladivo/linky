@@ -19,7 +19,7 @@ interface LnAddressPayPageProps {
   t: (key: string) => string;
 }
 
-const LnAddressPayPage: FC<LnAddressPayPageProps> = ({
+export const LnAddressPayPage: FC<LnAddressPayPageProps> = ({
   lnAddress,
   cashuBalance,
   canPayWithCashu,
@@ -102,5 +102,3 @@ const LnAddressPayPage: FC<LnAddressPayPageProps> = ({
     </section>
   );
 };
-
-export default LnAddressPayPage;

@@ -33,7 +33,7 @@ interface ContactPayPageProps {
   t: (key: string) => string;
 }
 
-const ContactPayPage: FC<ContactPayPageProps> = ({
+export const ContactPayPage: FC<ContactPayPageProps> = ({
   selectedContact,
   nostrPictureByNpub,
   cashuBalance,
@@ -229,5 +229,3 @@ const ContactPayPage: FC<ContactPayPageProps> = ({
     </section>
   );
 };
-
-export default ContactPayPage;

@@ -28,7 +28,7 @@ interface ContactsPageProps {
   t: (key: string) => string;
 }
 
-const ContactsPage: FC<ContactsPageProps> = ({
+export const ContactsPage: FC<ContactsPageProps> = ({
   contactsToolbarStyle,
   contactsSearchInputRef,
   contactsSearch,
@@ -194,5 +194,3 @@ const ContactsPage: FC<ContactsPageProps> = ({
     </>
   );
 };
-
-export default ContactsPage;

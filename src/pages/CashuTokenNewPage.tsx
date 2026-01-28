@@ -37,7 +37,7 @@ interface CashuTokenNewPageProps {
   t: (key: string) => string;
 }
 
-const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
+export const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
   cashuBalance,
   totalCredoOutstandingIn,
   totalCredoOutstandingOut,
@@ -200,5 +200,3 @@ const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
     </section>
   );
 };
-
-export default CashuTokenNewPage;

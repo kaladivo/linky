@@ -13,7 +13,7 @@ interface TopupInvoicePageProps {
   t: (key: string) => string;
 }
 
-const TopupInvoicePage: FC<TopupInvoicePageProps> = ({
+export const TopupInvoicePage: FC<TopupInvoicePageProps> = ({
   topupAmount,
   topupDebug,
   topupInvoiceQr,
@@ -76,5 +76,3 @@ const TopupInvoicePage: FC<TopupInvoicePageProps> = ({
     </section>
   );
 };
-
-export default TopupInvoicePage;

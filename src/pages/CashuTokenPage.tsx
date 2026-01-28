@@ -12,7 +12,7 @@ interface CashuTokenPageProps {
   t: (key: string) => string;
 }
 
-const CashuTokenPage: FC<CashuTokenPageProps> = ({
+export const CashuTokenPage: FC<CashuTokenPageProps> = ({
   cashuTokensAll,
   routeId,
   cashuIsBusy,
@@ -98,5 +98,3 @@ const CashuTokenPage: FC<CashuTokenPageProps> = ({
     </section>
   );
 };
-
-export default CashuTokenPage;

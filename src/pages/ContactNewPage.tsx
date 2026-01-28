@@ -17,7 +17,7 @@ interface ContactNewPageProps {
   t: (key: string) => string;
 }
 
-const ContactNewPage: FC<ContactNewPageProps> = ({
+export const ContactNewPage: FC<ContactNewPageProps> = ({
   form,
   setForm,
   groupNames,
@@ -83,5 +83,3 @@ const ContactNewPage: FC<ContactNewPageProps> = ({
     </section>
   );
 };
-
-export default ContactNewPage;

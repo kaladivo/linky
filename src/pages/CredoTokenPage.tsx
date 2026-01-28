@@ -27,7 +27,7 @@ interface CredoTokenPageProps {
   t: (key: string) => string;
 }
 
-const CredoTokenPage: FC<CredoTokenPageProps> = ({
+export const CredoTokenPage: FC<CredoTokenPageProps> = ({
   credoTokensAll,
   routeId,
   contacts,
@@ -96,5 +96,3 @@ const CredoTokenPage: FC<CredoTokenPageProps> = ({
     </section>
   );
 };
-
-export default CredoTokenPage;
