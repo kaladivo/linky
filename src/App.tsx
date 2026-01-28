@@ -71,11 +71,9 @@ import {
 import { publishKind0ProfileMetadata } from "./nostrPublish";
 import { ContactCard } from "./components/ContactCard";
 import { ChatMessage } from "./components/ChatMessage";
-import { Keypad } from "./components/Keypad";
 import { AuthenticatedLayout } from "./components/AuthenticatedLayout";
 import { UnauthenticatedLayout } from "./components/UnauthenticatedLayout";
 import { ToastNotifications } from "./components/ToastNotifications";
-import { AmountDisplay } from "./components/AmountDisplay";
 import { ContactsChecklist } from "./components/ContactsChecklist";
 import { BottomTabBar } from "./components/BottomTabBar";
 import {
@@ -98,6 +96,7 @@ import {
   CredoTokenPage,
   ContactPage,
   ContactPayPage,
+  LnAddressPayPage,
 } from "./pages";
 import type { Route } from "./types/route";
 import {
@@ -12280,91 +12279,19 @@ const App = () => {
           )}
 
           {route.kind === "lnAddressPay" && (
-            <section className="panel">
-              <div className="contact-header">
-                <div className="contact-avatar is-large" aria-hidden="true">
-                  <span className="contact-avatar-fallback">⚡</span>
-                </div>
-                <div className="contact-header-text">
-                  <h3>{t("payTo")}</h3>
-                  <p className="muted">
-                    {formatMiddleDots(String(route.lnAddress ?? ""), 36)}
-                  </p>
-                  <p className="muted">
-                    {t("availablePrefix")} {formatInteger(cashuBalance)}{" "}
-                    {displayUnit}
-                  </p>
-                </div>
-              </div>
-
-              {!canPayWithCashu ? (
-                <p className="muted">{t("payInsufficient")}</p>
-              ) : null}
-
-              <AmountDisplay
-                amount={lnAddressPayAmount}
-                displayUnit={displayUnit}
-                formatInteger={formatInteger}
-              />
-
-              <Keypad
-                ariaLabel={`${t("payAmount")} (${displayUnit})`}
-                disabled={cashuIsBusy}
-                onKeyPress={(key) => {
-                  if (cashuIsBusy) return;
-                  if (key === "C") {
-                    setLnAddressPayAmount("");
-                    return;
-                  }
-                  if (key === "⌫") {
-                    setLnAddressPayAmount((v) => v.slice(0, -1));
-                    return;
-                  }
-                  setLnAddressPayAmount((v) => {
-                    const next = (v + key).replace(/^0+(\d)/, "$1");
-                    return next;
-                  });
-                }}
-                translations={{
-                  clearForm: t("clearForm"),
-                  delete: t("delete"),
-                }}
-              />
-
-              {(() => {
-                const amountSat = Number.parseInt(
-                  lnAddressPayAmount.trim(),
-                  10,
-                );
-                const invalid =
-                  !canPayWithCashu ||
-                  !Number.isFinite(amountSat) ||
-                  amountSat <= 0 ||
-                  amountSat > cashuBalance;
-                return (
-                  <div className="actions">
-                    <button
-                      className="btn-wide"
-                      onClick={() => {
-                        if (invalid) return;
-                        void payLightningAddressWithCashu(
-                          route.lnAddress,
-                          amountSat,
-                        );
-                      }}
-                      disabled={cashuIsBusy || invalid}
-                      title={
-                        amountSat > cashuBalance
-                          ? t("payInsufficient")
-                          : undefined
-                      }
-                    >
-                      {t("paySend")}
-                    </button>
-                  </div>
-                );
-              })()}
-            </section>
+            <LnAddressPayPage
+              lnAddress={route.lnAddress}
+              cashuBalance={cashuBalance}
+              canPayWithCashu={canPayWithCashu}
+              cashuIsBusy={cashuIsBusy}
+              lnAddressPayAmount={lnAddressPayAmount}
+              setLnAddressPayAmount={setLnAddressPayAmount}
+              displayUnit={displayUnit}
+              payLightningAddressWithCashu={payLightningAddressWithCashu}
+              formatMiddleDots={formatMiddleDots}
+              formatInteger={formatInteger}
+              t={t}
+            />
           )}
 
           {route.kind === "chat" && (
