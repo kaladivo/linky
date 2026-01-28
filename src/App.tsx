@@ -94,6 +94,7 @@ import {
   TopupPage,
   TopupInvoicePage,
   CashuTokenNewPage,
+  CashuTokenPage,
 } from "./pages";
 import type { Route } from "./types/route";
 import {
@@ -12209,88 +12210,16 @@ const App = () => {
           )}
 
           {route.kind === "cashuToken" && (
-            <section className="panel">
-              {(() => {
-                const row = cashuTokensAll.find(
-                  (tkn) =>
-                    String(tkn?.id ?? "") ===
-                      String(route.id as unknown as string) && !tkn?.isDeleted,
-                );
-
-                if (!row) {
-                  return <p className="muted">{t("errorPrefix")}</p>;
-                }
-
-                const tokenText = String(row.token ?? row.rawToken ?? "");
-                const mintText = String(row.mint ?? "").trim();
-                const mintDisplay = (() => {
-                  if (!mintText) return null;
-                  try {
-                    return new URL(mintText).host;
-                  } catch {
-                    return mintText;
-                  }
-                })();
-
-                return (
-                  <>
-                    {mintDisplay ? (
-                      <p className="muted" style={{ margin: "0 0 10px" }}>
-                        {mintDisplay}
-                      </p>
-                    ) : null}
-
-                    {String(row.state ?? "") === "error" ? (
-                      <p
-                        className="muted"
-                        style={{ margin: "0 0 10px", color: "#fca5a5" }}
-                      >
-                        {String(row.error ?? "").trim() || t("cashuInvalid")}
-                      </p>
-                    ) : null}
-
-                    <div className="settings-row">
-                      <button
-                        className="btn-wide"
-                        onClick={() =>
-                          void checkAndRefreshCashuToken(
-                            route.id as unknown as CashuTokenId,
-                          )
-                        }
-                        disabled={cashuIsBusy}
-                      >
-                        {t("cashuCheckToken")}
-                      </button>
-                    </div>
-                    <label>{t("cashuToken")}</label>
-                    <textarea readOnly value={tokenText} />
-
-                    <div className="settings-row">
-                      <button
-                        className="btn-wide secondary"
-                        onClick={() => void copyText(tokenText)}
-                        disabled={!tokenText.trim()}
-                      >
-                        {t("copy")}
-                      </button>
-                    </div>
-
-                    <div className="settings-row">
-                      <button
-                        className={
-                          pendingCashuDeleteId === (route.id as CashuTokenId)
-                            ? "btn-wide secondary danger-armed"
-                            : "btn-wide secondary"
-                        }
-                        onClick={() => requestDeleteCashuToken(route.id)}
-                      >
-                        {t("delete")}
-                      </button>
-                    </div>
-                  </>
-                );
-              })()}
-            </section>
+            <CashuTokenPage
+              cashuTokensAll={cashuTokensAll}
+              routeId={route.id}
+              cashuIsBusy={cashuIsBusy}
+              pendingCashuDeleteId={pendingCashuDeleteId}
+              checkAndRefreshCashuToken={checkAndRefreshCashuToken}
+              copyText={copyText}
+              requestDeleteCashuToken={requestDeleteCashuToken}
+              t={t}
+            />
           )}
 
           {route.kind === "credoToken" && (

@@ -13,3 +13,4 @@ export { WalletPage } from "./WalletPage";
 export { default as TopupPage } from "./TopupPage";
 export { default as TopupInvoicePage } from "./TopupInvoicePage";
 export { default as CashuTokenNewPage } from "./CashuTokenNewPage";
+export { default as CashuTokenPage } from "./CashuTokenPage";
