@@ -3,33 +3,33 @@ import { AmountDisplay } from "../components/AmountDisplay";
 import { Keypad } from "../components/Keypad";
 
 interface LnAddressPayPageProps {
-  lnAddress: string;
-  cashuBalance: number;
   canPayWithCashu: boolean;
+  cashuBalance: number;
   cashuIsBusy: boolean;
-  lnAddressPayAmount: string;
-  setLnAddressPayAmount: (value: string | ((prev: string) => string)) => void;
   displayUnit: string;
+  formatInteger: (val: number) => string;
+  formatMiddleDots: (str: string, maxLen: number) => string;
+  lnAddress: string;
+  lnAddressPayAmount: string;
   payLightningAddressWithCashu: (
     lnAddress: string,
     amountSat: number,
   ) => Promise<void>;
-  formatMiddleDots: (str: string, maxLen: number) => string;
-  formatInteger: (val: number) => string;
+  setLnAddressPayAmount: (value: string | ((prev: string) => string)) => void;
   t: (key: string) => string;
 }
 
 export const LnAddressPayPage: FC<LnAddressPayPageProps> = ({
-  lnAddress,
-  cashuBalance,
   canPayWithCashu,
+  cashuBalance,
   cashuIsBusy,
-  lnAddressPayAmount,
-  setLnAddressPayAmount,
   displayUnit,
-  payLightningAddressWithCashu,
-  formatMiddleDots,
   formatInteger,
+  formatMiddleDots,
+  lnAddress,
+  lnAddressPayAmount,
+  payLightningAddressWithCashu,
+  setLnAddressPayAmount,
   t,
 }) => {
   const amountSat = Number.parseInt(lnAddressPayAmount.trim(), 10);

@@ -13,32 +13,32 @@ interface ContactFormData {
 }
 
 interface ContactEditPageProps {
-  selectedContact: Contact | null;
-  form: ContactFormData;
-  setForm: (value: ContactFormData) => void;
-  groupNames: string[];
-  editingId: ContactId | null;
   contactEditsSavable: boolean;
-  pendingDeleteId: ContactId | null;
+  editingId: ContactId | null;
+  form: ContactFormData;
+  groupNames: string[];
   handleSaveContact: () => void;
+  pendingDeleteId: ContactId | null;
   requestDeleteCurrentContact: () => void;
   resetEditedContactFieldFromNostr: (
     field: "name" | "lnAddress",
   ) => Promise<void>;
+  selectedContact: Contact | null;
+  setForm: (value: ContactFormData) => void;
   t: (key: string) => string;
 }
 
 export const ContactEditPage: FC<ContactEditPageProps> = ({
-  selectedContact,
-  form,
-  setForm,
-  groupNames,
-  editingId,
   contactEditsSavable,
-  pendingDeleteId,
+  editingId,
+  form,
+  groupNames,
   handleSaveContact,
+  pendingDeleteId,
   requestDeleteCurrentContact,
   resetEditedContactFieldFromNostr,
+  selectedContact,
+  setForm,
   t,
 }) => {
   return (

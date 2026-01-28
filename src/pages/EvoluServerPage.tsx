@@ -24,23 +24,23 @@ interface EvoluServerPageProps {
 }
 
 export function EvoluServerPage({
-  selectedEvoluServerUrl,
-  evoluServersReloadRequired,
-  evoluServerStatusByUrl,
-  evoluHasError,
-  syncOwner,
   DEFAULT_EVOLU_SERVER_URLS,
-  isEvoluServerOffline,
-  setEvoluServerOffline,
-  pendingEvoluServerDeleteUrl,
-  setPendingEvoluServerDeleteUrl,
+  evoluHasError,
+  evoluServerStatusByUrl,
+  evoluServersReloadRequired,
   evoluServerUrls,
-  saveEvoluServerUrls,
-  navigateToEvoluServers,
-  setStatus,
-  wipeEvoluStorage,
   evoluWipeStorageIsBusy,
+  isEvoluServerOffline,
+  navigateToEvoluServers,
+  pendingEvoluServerDeleteUrl,
+  saveEvoluServerUrls,
+  selectedEvoluServerUrl,
+  setEvoluServerOffline,
+  setPendingEvoluServerDeleteUrl,
+  setStatus,
+  syncOwner,
   t,
+  wipeEvoluStorage,
 }: EvoluServerPageProps): React.ReactElement {
   return (
     <section className="panel">

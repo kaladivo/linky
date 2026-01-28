@@ -15,17 +15,17 @@ interface EvoluServerNewPageProps {
 }
 
 export function EvoluServerNewPage({
-  newEvoluServerUrl,
   evoluServerUrls,
   evoluWipeStorageIsBusy,
-  setNewEvoluServerUrl,
-  normalizeEvoluServerUrl,
-  saveEvoluServerUrls,
   navigateToEvoluServers,
-  setStatus,
+  newEvoluServerUrl,
+  normalizeEvoluServerUrl,
   pushToast,
-  wipeEvoluStorage,
+  saveEvoluServerUrls,
+  setNewEvoluServerUrl,
+  setStatus,
   t,
+  wipeEvoluStorage,
 }: EvoluServerNewPageProps): React.ReactElement {
   return (
     <section className="panel">

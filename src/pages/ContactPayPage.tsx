@@ -11,47 +11,47 @@ interface Contact {
 }
 
 interface ContactPayPageProps {
-  selectedContact: Contact | null;
-  nostrPictureByNpub: Record<string, string | null>;
-  cashuBalance: number;
-  totalCredoOutstandingOut: number;
-  promiseTotalCapSat: number;
-  cashuIsBusy: boolean;
-  payWithCashuEnabled: boolean;
   allowPromisesEnabled: boolean;
+  cashuBalance: number;
+  cashuIsBusy: boolean;
   contactPayMethod: "lightning" | "cashu" | null;
+  displayUnit: string;
+  formatInteger: (val: number) => string;
+  getCredoAvailableForContact: (npub: string) => number;
+  getInitials: (name: string) => string;
+  nostrPictureByNpub: Record<string, string | null>;
+  payAmount: string;
+  paySelectedContact: () => Promise<void>;
+  payWithCashuEnabled: boolean;
+  promiseTotalCapSat: number;
+  selectedContact: Contact | null;
   setContactPayMethod: React.Dispatch<
     React.SetStateAction<"lightning" | "cashu" | null>
   >;
-  payAmount: string;
   setPayAmount: (value: string | ((prev: string) => string)) => void;
-  displayUnit: string;
-  getInitials: (name: string) => string;
-  getCredoAvailableForContact: (npub: string) => number;
-  formatInteger: (val: number) => string;
-  paySelectedContact: () => Promise<void>;
   t: (key: string) => string;
+  totalCredoOutstandingOut: number;
 }
 
 export const ContactPayPage: FC<ContactPayPageProps> = ({
-  selectedContact,
-  nostrPictureByNpub,
-  cashuBalance,
-  totalCredoOutstandingOut,
-  promiseTotalCapSat,
-  cashuIsBusy,
-  payWithCashuEnabled,
   allowPromisesEnabled,
+  cashuBalance,
+  cashuIsBusy,
   contactPayMethod,
-  setContactPayMethod,
-  payAmount,
-  setPayAmount,
   displayUnit,
-  getInitials,
-  getCredoAvailableForContact,
   formatInteger,
+  getCredoAvailableForContact,
+  getInitials,
+  nostrPictureByNpub,
+  payAmount,
   paySelectedContact,
+  payWithCashuEnabled,
+  promiseTotalCapSat,
+  selectedContact,
+  setContactPayMethod,
+  setPayAmount,
   t,
+  totalCredoOutstandingOut,
 }) => {
   if (!selectedContact) {
     return (

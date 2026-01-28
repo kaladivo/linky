@@ -5,59 +5,60 @@ import type { CashuTokenId, CredoTokenId } from "../evolu";
 
 interface CashuTokenNewPageProps {
   cashuBalance: number;
-  totalCredoOutstandingIn: number;
-  totalCredoOutstandingOut: number;
-  displayUnit: string;
-  cashuTokens: readonly any[];
   cashuDraft: string;
-  setCashuDraft: (value: string) => void;
   cashuDraftRef: React.RefObject<HTMLTextAreaElement | null>;
   cashuIsBusy: boolean;
+  cashuTokens: readonly any[];
   credoOweTokens: any[];
   credoPromisedTokens: any[];
-  nostrPictureByNpub: Record<string, string | null>;
-  mintIconUrlByMint: Record<string, string | null>;
-  setMintIconUrlByMint: React.Dispatch<
-    React.SetStateAction<Record<string, string | null>>
-  >;
-  navigateToCashuToken: (id: CashuTokenId) => void;
-  navigateToCredoToken: (id: CredoTokenId) => void;
-  saveCashuFromText: (
-    text: string,
-    opts: { navigateToWallet: boolean },
-  ) => Promise<void>;
+  displayUnit: string;
+  formatInteger: (val: number) => string;
+  getCredoRemainingAmount: (row: any) => number;
   getMintIconUrl: (mint: unknown) => {
     origin: string | null;
     url: string | null;
     host: string | null;
     failed: boolean;
   };
-  formatInteger: (val: number) => string;
-  getCredoRemainingAmount: (row: any) => number;
+  mintIconUrlByMint: Record<string, string | null>;
+  navigateToCashuToken: (id: CashuTokenId) => void;
+  navigateToCredoToken: (id: CredoTokenId) => void;
+  nostrPictureByNpub: Record<string, string | null>;
+  saveCashuFromText: (
+    text: string,
+    opts: { navigateToWallet: boolean },
+  ) => Promise<void>;
+  setCashuDraft: (value: string) => void;
+  setMintIconUrlByMint: React.Dispatch<
+    React.SetStateAction<Record<string, string | null>>
+  >;
   t: (key: string) => string;
+  totalCredoOutstandingIn: number;
+  totalCredoOutstandingOut: number;
 }
 
 export const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
   cashuBalance,
-  totalCredoOutstandingIn,
-  totalCredoOutstandingOut,
-  displayUnit,
-  cashuTokens,
   cashuDraft,
-  setCashuDraft,
   cashuDraftRef,
   cashuIsBusy,
+  cashuTokens,
   credoOweTokens,
   credoPromisedTokens,
-  nostrPictureByNpub,
-  setMintIconUrlByMint,
-  navigateToCashuToken,
-  navigateToCredoToken,
-  saveCashuFromText,
-  getMintIconUrl,
+  displayUnit,
   formatInteger,
   getCredoRemainingAmount,
+  getMintIconUrl,
+  mintIconUrlByMint,
+  navigateToCashuToken,
+  navigateToCredoToken,
+  nostrPictureByNpub,
+  saveCashuFromText,
+  setCashuDraft,
+  setMintIconUrlByMint,
   t,
+  totalCredoOutstandingIn,
+  totalCredoOutstandingOut,
 }) => {
   return (
     <section className="panel">

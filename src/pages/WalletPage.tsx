@@ -5,30 +5,30 @@ import { WalletActionButton } from "../components/WalletActionButton";
 import { BottomTabBar } from "../components/BottomTabBar";
 
 type WalletPageProps = {
+  bottomTabActive: "wallet" | "contacts" | null;
   cashuBalance: number;
   displayUnit: string;
   formatInteger: (value: number) => string;
   navigateToCashuTokenNew: () => void;
+  navigateToContacts: () => void;
   navigateToTopup: () => void;
+  navigateToWallet: () => void;
   openScan: () => void;
   scanIsOpen: boolean;
-  bottomTabActive: "wallet" | "contacts" | null;
-  navigateToContacts: () => void;
-  navigateToWallet: () => void;
   t: (key: string) => string;
 };
 
 export const WalletPage: React.FC<WalletPageProps> = ({
+  bottomTabActive,
   cashuBalance,
   displayUnit,
   formatInteger,
   navigateToCashuTokenNew,
+  navigateToContacts,
   navigateToTopup,
+  navigateToWallet,
   openScan,
   scanIsOpen,
-  bottomTabActive,
-  navigateToContacts,
-  navigateToWallet,
   t,
 }) => {
   return (

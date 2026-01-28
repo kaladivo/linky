@@ -10,32 +10,32 @@ interface Contact {
 }
 
 interface ContactPageProps {
-  selectedContact: Contact | null;
-  nostrPictureByNpub: Record<string, string | null>;
+  allowPromisesEnabled: boolean;
   cashuBalance: number;
   cashuIsBusy: boolean;
-  payWithCashuEnabled: boolean;
-  allowPromisesEnabled: boolean;
   feedbackContactNpub: string;
-  getInitials: (name: string) => string;
   getCredoAvailableForContact: (npub: string) => number;
-  openContactPay: (id: ContactId) => void;
+  getInitials: (name: string) => string;
   navigateToChat: (id: ContactId) => void;
+  nostrPictureByNpub: Record<string, string | null>;
+  openContactPay: (id: ContactId) => void;
+  payWithCashuEnabled: boolean;
+  selectedContact: Contact | null;
   t: (key: string) => string;
 }
 
 export const ContactPage: FC<ContactPageProps> = ({
-  selectedContact,
-  nostrPictureByNpub,
+  allowPromisesEnabled,
   cashuBalance,
   cashuIsBusy,
-  payWithCashuEnabled,
-  allowPromisesEnabled,
   feedbackContactNpub,
-  getInitials,
   getCredoAvailableForContact,
-  openContactPay,
+  getInitials,
   navigateToChat,
+  nostrPictureByNpub,
+  openContactPay,
+  payWithCashuEnabled,
+  selectedContact,
   t,
 }) => {
   if (!selectedContact) {

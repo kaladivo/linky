@@ -1,29 +1,29 @@
 import type { FC } from "react";
 
 interface TopupInvoicePageProps {
+  copyText: (text: string) => Promise<void>;
+  displayUnit: string;
+  formatInteger: (val: number) => string;
+  t: (key: string) => string;
   topupAmount: string;
   topupDebug: string | null;
-  topupInvoiceQr: string | null;
   topupInvoice: string | null;
   topupInvoiceError: string | null;
   topupInvoiceIsBusy: boolean;
-  displayUnit: string;
-  copyText: (text: string) => Promise<void>;
-  formatInteger: (val: number) => string;
-  t: (key: string) => string;
+  topupInvoiceQr: string | null;
 }
 
 export const TopupInvoicePage: FC<TopupInvoicePageProps> = ({
+  copyText,
+  displayUnit,
+  formatInteger,
+  t,
   topupAmount,
   topupDebug,
-  topupInvoiceQr,
   topupInvoice,
   topupInvoiceError,
   topupInvoiceIsBusy,
-  displayUnit,
-  copyText,
-  formatInteger,
-  t,
+  topupInvoiceQr,
 }) => {
   const amountSat = Number.parseInt(topupAmount.trim(), 10);
 

@@ -2,24 +2,24 @@ import type { FC } from "react";
 import type { CashuTokenId } from "../evolu";
 
 interface CashuTokenPageProps {
-  cashuTokensAll: readonly any[];
-  routeId: CashuTokenId;
   cashuIsBusy: boolean;
-  pendingCashuDeleteId: CashuTokenId | null;
+  cashuTokensAll: readonly any[];
   checkAndRefreshCashuToken: (id: CashuTokenId) => Promise<void>;
   copyText: (text: string) => Promise<void>;
+  pendingCashuDeleteId: CashuTokenId | null;
   requestDeleteCashuToken: (id: CashuTokenId) => void;
+  routeId: CashuTokenId;
   t: (key: string) => string;
 }
 
 export const CashuTokenPage: FC<CashuTokenPageProps> = ({
-  cashuTokensAll,
-  routeId,
   cashuIsBusy,
-  pendingCashuDeleteId,
+  cashuTokensAll,
   checkAndRefreshCashuToken,
   copyText,
+  pendingCashuDeleteId,
   requestDeleteCashuToken,
+  routeId,
   t,
 }) => {
   const row = cashuTokensAll.find(

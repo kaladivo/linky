@@ -16,26 +16,26 @@ interface Contact {
 }
 
 interface CredoTokenPageProps {
-  credoTokensAll: readonly any[];
-  routeId: CredoTokenId;
   contacts: readonly Contact[];
+  credoTokensAll: readonly any[];
   displayUnit: string;
-  getCredoRemainingAmount: (row: any) => number;
-  formatShortNpub: (npub: string) => string;
-  formatInteger: (val: number) => string;
   formatDurationShort: (sec: number) => string;
+  formatInteger: (val: number) => string;
+  formatShortNpub: (npub: string) => string;
+  getCredoRemainingAmount: (row: any) => number;
+  routeId: CredoTokenId;
   t: (key: string) => string;
 }
 
 export const CredoTokenPage: FC<CredoTokenPageProps> = ({
-  credoTokensAll,
-  routeId,
   contacts,
+  credoTokensAll,
   displayUnit,
-  getCredoRemainingAmount,
-  formatShortNpub,
-  formatInteger,
   formatDurationShort,
+  formatInteger,
+  formatShortNpub,
+  getCredoRemainingAmount,
+  routeId,
   t,
 }) => {
   const row = credoTokensAll.find(

@@ -3,52 +3,52 @@ import React from "react";
 import { BottomTabBar } from "../components/BottomTabBar";
 
 interface ContactsPageProps {
-  contactsToolbarStyle: React.CSSProperties;
-  contactsSearchInputRef: React.RefObject<HTMLInputElement | null>;
+  activeGroup: string | null;
+  bottomTabActive: "contacts" | "wallet" | null;
+  contacts: readonly any[];
   contactsSearch: string;
+  contactsSearchInputRef: React.RefObject<HTMLInputElement | null>;
+  contactsToolbarStyle: React.CSSProperties;
+  conversationsLabel: string;
+  groupNames: string[];
+  navigateToContacts: () => void;
+  navigateToWallet: () => void;
+  noGroupFilterValue: string;
+  openNewContactPage: () => void;
+  otherContactsLabel: string;
+  renderContactCard: (contact: any) => React.ReactNode;
+  setActiveGroup: (value: string | null) => void;
   setContactsSearch: (value: string) => void;
   showGroupFilter: boolean;
-  activeGroup: string | null;
-  setActiveGroup: (value: string | null) => void;
   showNoGroupFilter: boolean;
-  noGroupFilterValue: string;
-  groupNames: string[];
-  contacts: readonly any[];
+  t: (key: string) => string;
   visibleContacts: {
     conversations: any[];
     others: any[];
   };
-  conversationsLabel: string;
-  otherContactsLabel: string;
-  renderContactCard: (contact: any) => React.ReactNode;
-  bottomTabActive: "contacts" | "wallet" | null;
-  openNewContactPage: () => void;
-  navigateToContacts: () => void;
-  navigateToWallet: () => void;
-  t: (key: string) => string;
 }
 
 export const ContactsPage: FC<ContactsPageProps> = ({
-  contactsToolbarStyle,
-  contactsSearchInputRef,
-  contactsSearch,
-  setContactsSearch,
-  showGroupFilter,
   activeGroup,
-  setActiveGroup,
-  showNoGroupFilter,
-  noGroupFilterValue,
-  groupNames,
-  contacts,
-  visibleContacts,
-  conversationsLabel,
-  otherContactsLabel,
-  renderContactCard,
   bottomTabActive,
-  openNewContactPage,
+  contacts,
+  contactsSearch,
+  contactsSearchInputRef,
+  contactsToolbarStyle,
+  conversationsLabel,
+  groupNames,
   navigateToContacts,
   navigateToWallet,
+  noGroupFilterValue,
+  openNewContactPage,
+  otherContactsLabel,
+  renderContactCard,
+  setActiveGroup,
+  setContactsSearch,
+  showGroupFilter,
+  showNoGroupFilter,
   t,
+  visibleContacts,
 }) => {
   const totalVisible =
     visibleContacts.conversations.length + visibleContacts.others.length;

@@ -9,27 +9,19 @@ interface Contact {
 }
 
 interface ChatPageProps {
-  selectedContact: Contact | null;
-  chatMessages: any[];
-  chatMessagesRef: React.RefObject<HTMLDivElement | null>;
-  chatDraft: string;
-  setChatDraft: (value: string) => void;
-  chatSendIsBusy: boolean;
+  allowPromisesEnabled: boolean;
   cashuBalance: number;
   cashuIsBusy: boolean;
-  payWithCashuEnabled: boolean;
-  allowPromisesEnabled: boolean;
-  feedbackContactNpub: string;
-  lang: string;
-  nostrPictureByNpub: Record<string, string | null>;
-  mintIconUrlByMint: Record<string, string | null>;
-  setMintIconUrlByMint: React.Dispatch<
-    React.SetStateAction<Record<string, string | null>>
-  >;
+  chatDraft: string;
   chatMessageElByIdRef: React.MutableRefObject<Map<string, HTMLDivElement>>;
-  formatInteger: (val: number) => string;
+  chatMessages: any[];
+  chatMessagesRef: React.RefObject<HTMLDivElement | null>;
+  chatSendIsBusy: boolean;
+  feedbackContactNpub: string;
   formatChatDayLabel: (timestamp: number) => string;
+  formatInteger: (val: number) => string;
   getCashuTokenMessageInfo: (id: string) => any;
+  getCredoAvailableForContact: (npub: string) => number;
   getCredoTokenMessageInfo: (id: string) => any;
   getMintIconUrl: (mint: unknown) => {
     origin: string | null;
@@ -37,36 +29,45 @@ interface ChatPageProps {
     host: string | null;
     failed: boolean;
   };
-  getCredoAvailableForContact: (npub: string) => number;
-  sendChatMessage: () => Promise<void>;
+  lang: string;
+  mintIconUrlByMint: Record<string, string | null>;
+  nostrPictureByNpub: Record<string, string | null>;
   openContactPay: (id: ContactId, returnToChat?: boolean) => void;
+  payWithCashuEnabled: boolean;
+  selectedContact: Contact | null;
+  sendChatMessage: () => Promise<void>;
+  setChatDraft: (value: string) => void;
+  setMintIconUrlByMint: React.Dispatch<
+    React.SetStateAction<Record<string, string | null>>
+  >;
   t: (key: string) => string;
 }
 
 export const ChatPage: FC<ChatPageProps> = ({
-  selectedContact,
-  chatMessages,
-  chatMessagesRef,
-  chatDraft,
-  setChatDraft,
-  chatSendIsBusy,
+  allowPromisesEnabled,
   cashuBalance,
   cashuIsBusy,
-  payWithCashuEnabled,
-  allowPromisesEnabled,
-  feedbackContactNpub,
-  lang,
-  nostrPictureByNpub,
-  setMintIconUrlByMint,
+  chatDraft,
   chatMessageElByIdRef,
-  formatInteger,
+  chatMessages,
+  chatMessagesRef,
+  chatSendIsBusy,
+  feedbackContactNpub,
   formatChatDayLabel,
+  formatInteger,
   getCashuTokenMessageInfo,
+  getCredoAvailableForContact,
   getCredoTokenMessageInfo,
   getMintIconUrl,
-  getCredoAvailableForContact,
-  sendChatMessage,
+  lang,
+  mintIconUrlByMint,
+  nostrPictureByNpub,
   openContactPay,
+  payWithCashuEnabled,
+  selectedContact,
+  sendChatMessage,
+  setChatDraft,
+  setMintIconUrlByMint,
   t,
 }) => {
   if (!selectedContact) {

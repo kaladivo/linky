@@ -20,14 +20,15 @@ interface MintsPageProps {
 }
 
 export function MintsPage({
-  defaultMintUrl,
-  defaultMintUrlDraft,
-  setDefaultMintUrlDraft,
-  normalizeMintUrl,
   MAIN_MINT_URL,
   PRESET_MINTS,
-  getMintIconUrl,
   applyDefaultMintSelection,
+  defaultMintUrl,
+  defaultMintUrlDraft,
+  getMintIconUrl,
+  hasMintOverrideRef,
+  normalizeMintUrl,
+  setDefaultMintUrlDraft,
   t,
 }: MintsPageProps) {
   const selectedMint =

@@ -9,21 +9,21 @@ interface ContactFormData {
 
 interface ContactNewPageProps {
   form: ContactFormData;
-  setForm: (value: ContactFormData) => void;
   groupNames: string[];
-  scanIsOpen: boolean;
   handleSaveContact: () => void;
   openScan: () => void;
+  scanIsOpen: boolean;
+  setForm: (value: ContactFormData) => void;
   t: (key: string) => string;
 }
 
 export const ContactNewPage: FC<ContactNewPageProps> = ({
   form,
-  setForm,
   groupNames,
-  scanIsOpen,
   handleSaveContact,
   openScan,
+  scanIsOpen,
+  setForm,
   t,
 }) => {
   return (

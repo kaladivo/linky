@@ -3,37 +3,37 @@ import { AmountDisplay } from "../components/AmountDisplay";
 import { Keypad } from "../components/Keypad";
 
 interface TopupPageProps {
-  effectiveProfilePicture: string | null;
-  effectiveProfileName: string | null;
   currentNpub: string | null;
-  npubCashLightningAddress: string | null;
-  topupAmount: string;
-  setTopupAmount: (value: string | ((prev: string) => string)) => void;
-  topupInvoiceIsBusy: boolean;
   displayUnit: string;
-  navigateToTopupInvoice: () => void;
-  formatShortNpub: (npub: string) => string;
-  formatMiddleDots: (str: string, maxLen: number) => string;
+  effectiveProfileName: string | null;
+  effectiveProfilePicture: string | null;
   formatInteger: (val: number) => string;
+  formatMiddleDots: (str: string, maxLen: number) => string;
+  formatShortNpub: (npub: string) => string;
   getInitials: (name: string) => string;
+  navigateToTopupInvoice: () => void;
+  npubCashLightningAddress: string | null;
+  setTopupAmount: (value: string | ((prev: string) => string)) => void;
   t: (key: string) => string;
+  topupAmount: string;
+  topupInvoiceIsBusy: boolean;
 }
 
 export const TopupPage: FC<TopupPageProps> = ({
-  effectiveProfilePicture,
-  effectiveProfileName,
   currentNpub,
-  npubCashLightningAddress,
-  topupAmount,
-  setTopupAmount,
-  topupInvoiceIsBusy,
   displayUnit,
-  navigateToTopupInvoice,
-  formatShortNpub,
-  formatMiddleDots,
+  effectiveProfileName,
+  effectiveProfilePicture,
   formatInteger,
+  formatMiddleDots,
+  formatShortNpub,
   getInitials,
+  navigateToTopupInvoice,
+  npubCashLightningAddress,
+  setTopupAmount,
   t,
+  topupAmount,
+  topupInvoiceIsBusy,
 }) => {
   const ln = String(npubCashLightningAddress ?? "").trim();
   const amountSat = Number.parseInt(topupAmount.trim(), 10);

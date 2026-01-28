@@ -14,12 +14,12 @@ interface EvoluServersPageProps {
 }
 
 export function EvoluServersPage({
-  evoluServerUrls,
-  evoluServerStatusByUrl,
   evoluHasError,
-  syncOwner,
+  evoluServerStatusByUrl,
+  evoluServerUrls,
   isEvoluServerOffline,
   navigateToEvoluServer,
+  syncOwner,
   t,
 }: EvoluServersPageProps): React.ReactElement {
   return (
