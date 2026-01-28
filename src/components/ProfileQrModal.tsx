@@ -4,7 +4,11 @@ interface ProfileQrModalProps {
   closeProfileQr: () => void;
   currentNpub: string | null;
   currentNsec: string | null;
-  derivedProfile: { lnAddress: string; name: string; pictureUrl: string } | null;
+  derivedProfile: {
+    lnAddress: string;
+    name: string;
+    pictureUrl: string;
+  } | null;
   effectiveMyLightningAddress: string | null;
   effectiveProfileName: string | null;
   effectiveProfilePicture: string | null;
@@ -26,7 +30,7 @@ interface ProfileQrModalProps {
   profileEditName: string;
   profileEditPicture: string;
   profileEditsSavable: boolean;
-  profilePhotoInputRef: React.RefObject<HTMLInputElement>;
+  profilePhotoInputRef: React.RefObject<HTMLInputElement | null>;
   setIsProfileEditing: (editing: boolean) => void;
   setProfileEditLnAddress: (value: string) => void;
   setProfileEditName: (value: string) => void;
