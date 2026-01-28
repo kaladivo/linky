@@ -2,7 +2,6 @@ import React from "react";
 import { NostrRelayRow } from "../components/NostrRelayRow";
 
 interface NostrRelaysPageProps {
-  navigateToNostrRelay: (url: string) => void;
   relayStatusByUrl: Record<string, "connected" | "checking" | "disconnected">;
   relayUrls: string[];
   t: (key: string) => string;
@@ -11,7 +10,6 @@ interface NostrRelaysPageProps {
 export function NostrRelaysPage({
   relayUrls,
   relayStatusByUrl,
-  navigateToNostrRelay,
   t,
 }: NostrRelaysPageProps): React.ReactElement {
   return (
@@ -27,7 +25,6 @@ export function NostrRelaysPage({
                 key={url}
                 url={url}
                 state={state}
-                onNavigate={navigateToNostrRelay}
               />
             );
           })}

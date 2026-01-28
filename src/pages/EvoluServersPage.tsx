@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigation } from "../hooks/useRouting";
 
 interface EvoluServersPageProps {
   evoluHasError: boolean;
@@ -8,7 +9,6 @@ interface EvoluServersPageProps {
   >;
   evoluServerUrls: string[];
   isEvoluServerOffline: (url: string) => boolean;
-  navigateToEvoluServer: (url: string) => void;
   syncOwner: unknown;
   t: (key: string) => string;
 }
@@ -18,10 +18,10 @@ export function EvoluServersPage({
   evoluServerStatusByUrl,
   evoluServerUrls,
   isEvoluServerOffline,
-  navigateToEvoluServer,
   syncOwner,
   t,
 }: EvoluServersPageProps): React.ReactElement {
+  const navigateTo = useNavigation();
   return (
     <section className="panel">
       {evoluServerUrls.length === 0 ? (
@@ -49,7 +49,7 @@ export function EvoluServersPage({
                 type="button"
                 className="settings-row settings-link"
                 key={url}
-                onClick={() => navigateToEvoluServer(url)}
+                onClick={() => navigateTo({ route: "evoluServer", id: url })}
               >
                 <div className="settings-left">
                   <span className="relay-url">{url}</span>

@@ -11,8 +11,6 @@ interface ContactsPageProps {
   contactsToolbarStyle: React.CSSProperties;
   conversationsLabel: string;
   groupNames: string[];
-  navigateToContacts: () => void;
-  navigateToWallet: () => void;
   noGroupFilterValue: string;
   openNewContactPage: () => void;
   otherContactsLabel: string;
@@ -37,8 +35,6 @@ export const ContactsPage: FC<ContactsPageProps> = ({
   contactsToolbarStyle,
   conversationsLabel,
   groupNames,
-  navigateToContacts,
-  navigateToWallet,
   noGroupFilterValue,
   openNewContactPage,
   otherContactsLabel,
@@ -176,8 +172,6 @@ export const ContactsPage: FC<ContactsPageProps> = ({
       <BottomTabBar
         activeTab={bottomTabActive}
         contactsLabel={t("contactsTitle")}
-        navigateToContacts={navigateToContacts}
-        navigateToWallet={navigateToWallet}
         t={t}
         walletLabel={t("wallet")}
       />

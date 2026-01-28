@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigation } from "../hooks/useRouting";
 
 interface AdvancedPageProps {
   __APP_VERSION__: string;
@@ -18,10 +19,6 @@ interface AdvancedPageProps {
   handleImportAppDataFilePicked: (file: File | null) => Promise<void>;
   importDataFileInputRef: React.RefObject<HTMLInputElement | null>;
   logoutArmed: boolean;
-  navigateToEvoluServers: () => void;
-  navigateToMints: () => void;
-  navigateToNostrRelays: () => void;
-  navigateToPaymentsHistory: () => void;
   nostrRelayOverallStatus: "connected" | "checking" | "disconnected";
   payWithCashuEnabled: boolean;
   relayUrls: string[];
@@ -53,10 +50,6 @@ export function AdvancedPage({
   handleImportAppDataFilePicked,
   importDataFileInputRef,
   logoutArmed,
-  navigateToEvoluServers,
-  navigateToMints,
-  navigateToNostrRelays,
-  navigateToPaymentsHistory,
   nostrRelayOverallStatus,
   payWithCashuEnabled,
   relayUrls,
@@ -69,6 +62,7 @@ export function AdvancedPage({
   t,
   tokensRestoreIsBusy,
 }: AdvancedPageProps): React.ReactElement {
+  const navigateTo = useNavigation();
   return (
     <section className="panel">
       <div className="settings-row">
@@ -176,7 +170,7 @@ export function AdvancedPage({
       <button
         type="button"
         className="settings-row settings-link"
-        onClick={navigateToNostrRelays}
+        onClick={() => navigateTo({ route: "nostrRelays" })}
         aria-label={t("nostrRelay")}
         title={t("nostrRelay")}
       >
@@ -211,7 +205,7 @@ export function AdvancedPage({
       <button
         type="button"
         className="settings-row settings-link"
-        onClick={navigateToEvoluServers}
+        onClick={() => navigateTo({ route: "evoluServers" })}
         aria-label={t("evoluServer")}
         title={t("evoluServer")}
       >
@@ -246,7 +240,7 @@ export function AdvancedPage({
       <button
         type="button"
         className="settings-row settings-link"
-        onClick={navigateToMints}
+        onClick={() => navigateTo({ route: "mints" })}
         aria-label={t("mints")}
         title={t("mints")}
       >
@@ -271,7 +265,7 @@ export function AdvancedPage({
       <button
         type="button"
         className="settings-row settings-link"
-        onClick={navigateToPaymentsHistory}
+        onClick={() => navigateTo({ route: "paymentsHistory" })}
         aria-label={t("paymentsHistory")}
         title={t("paymentsHistory")}
       >

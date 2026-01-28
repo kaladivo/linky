@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigation } from "../hooks/useRouting";
 import { WalletWarning } from "../components/WalletWarning";
 import { WalletBalance } from "../components/WalletBalance";
 import { WalletActionButton } from "../components/WalletActionButton";
@@ -9,10 +10,6 @@ interface WalletPageProps {
   cashuBalance: number;
   displayUnit: string;
   formatInteger: (value: number) => string;
-  navigateToCashuTokenNew: () => void;
-  navigateToContacts: () => void;
-  navigateToTopup: () => void;
-  navigateToWallet: () => void;
   openScan: () => void;
   scanIsOpen: boolean;
   t: (key: string) => string;
@@ -23,14 +20,11 @@ export const WalletPage: React.FC<WalletPageProps> = ({
   cashuBalance,
   displayUnit,
   formatInteger,
-  navigateToCashuTokenNew,
-  navigateToContacts,
-  navigateToTopup,
-  navigateToWallet,
   openScan,
   scanIsOpen,
   t,
 }) => {
+  const navigateTo = useNavigation();
   return (
     <section className="panel panel-plain wallet-panel">
       <WalletWarning t={t} />
@@ -45,7 +39,7 @@ export const WalletPage: React.FC<WalletPageProps> = ({
           <button
             type="button"
             className="wallet-tokens-link"
-            onClick={navigateToCashuTokenNew}
+            onClick={() => navigateTo({ route: "cashuTokenNew" })}
           >
             {t("tokens")}
           </button>
@@ -53,7 +47,7 @@ export const WalletPage: React.FC<WalletPageProps> = ({
             <WalletActionButton
               icon="topup"
               label={t("walletReceive")}
-              onClick={navigateToTopup}
+              onClick={() => navigateTo({ route: "topup" })}
               dataGuide="wallet-topup"
             />
             <WalletActionButton
@@ -68,8 +62,6 @@ export const WalletPage: React.FC<WalletPageProps> = ({
       <BottomTabBar
         activeTab={bottomTabActive}
         contactsLabel={t("contactsTitle")}
-        navigateToContacts={navigateToContacts}
-        navigateToWallet={navigateToWallet}
         t={t}
         walletLabel={t("wallet")}
       />

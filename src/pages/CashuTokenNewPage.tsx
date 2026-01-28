@@ -1,4 +1,5 @@
 import type { FC } from "react";
+import { useNavigation } from "../hooks/useRouting";
 import { CashuTokenPill } from "../components/CashuTokenPill";
 import { CredoTokenPill } from "../components/CredoTokenPill";
 import type { CashuTokenId, CredoTokenId } from "../evolu";
@@ -21,8 +22,6 @@ interface CashuTokenNewPageProps {
     failed: boolean;
   };
   mintIconUrlByMint: Record<string, string | null>;
-  navigateToCashuToken: (id: CashuTokenId) => void;
-  navigateToCredoToken: (id: CredoTokenId) => void;
   nostrPictureByNpub: Record<string, string | null>;
   saveCashuFromText: (
     text: string,
@@ -50,8 +49,6 @@ export const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
   getCredoRemainingAmount,
   getMintIconUrl,
   mintIconUrlByMint,
-  navigateToCashuToken,
-  navigateToCredoToken,
   nostrPictureByNpub,
   saveCashuFromText,
   setCashuDraft,
@@ -60,6 +57,7 @@ export const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
   totalCredoOutstandingIn,
   totalCredoOutstandingOut,
 }) => {
+  const navigateTo = useNavigation();
   return (
     <section className="panel">
       <div className="ln-list wallet-token-list">
@@ -101,7 +99,7 @@ export const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
                   }));
                 }}
                 onClick={() =>
-                  navigateToCashuToken(token.id as unknown as CashuTokenId)
+                  navigateTo({ route: "cashuToken", id: token.id as unknown as CashuTokenId })
                 }
                 ariaLabel={t("cashuToken")}
               />
@@ -130,7 +128,7 @@ export const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
                   amount={amount}
                   avatar={avatar}
                   onClick={() =>
-                    navigateToCredoToken(token.id as unknown as CredoTokenId)
+                    navigateTo({ route: "credoToken", id: token.id as unknown as CredoTokenId })
                   }
                   ariaLabel={t("credoOwe")}
                   formatInteger={formatInteger}
@@ -161,7 +159,7 @@ export const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
                   amount={amount}
                   avatar={avatar}
                   onClick={() =>
-                    navigateToCredoToken(token.id as unknown as CredoTokenId)
+                    navigateTo({ route: "credoToken", id: token.id as unknown as CredoTokenId })
                   }
                   ariaLabel={t("credoPromisedToMe")}
                   formatInteger={formatInteger}

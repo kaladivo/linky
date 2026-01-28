@@ -1,4 +1,5 @@
 import type { FC } from "react";
+import { useNavigation } from "../hooks/useRouting";
 import type { ContactId } from "../evolu";
 
 interface Contact {
@@ -16,7 +17,6 @@ interface ContactPageProps {
   feedbackContactNpub: string;
   getCredoAvailableForContact: (npub: string) => number;
   getInitials: (name: string) => string;
-  navigateToChat: (id: ContactId) => void;
   nostrPictureByNpub: Record<string, string | null>;
   openContactPay: (id: ContactId) => void;
   payWithCashuEnabled: boolean;
@@ -31,13 +31,13 @@ export const ContactPage: FC<ContactPageProps> = ({
   feedbackContactNpub,
   getCredoAvailableForContact,
   getInitials,
-  navigateToChat,
   nostrPictureByNpub,
   openContactPay,
   payWithCashuEnabled,
   selectedContact,
   t,
 }) => {
+  const navigateTo = useNavigation();
   if (!selectedContact) {
     return (
       <section className="panel">
@@ -97,7 +97,7 @@ export const ContactPage: FC<ContactPageProps> = ({
           {npub && (
             <button
               className="btn-wide secondary"
-              onClick={() => navigateToChat(selectedContact.id)}
+              onClick={() => navigateTo({ route: "chat", id: selectedContact.id })}
               data-guide="contact-message"
             >
               {isFeedbackContact ? "Feedback" : t("sendMessage")}

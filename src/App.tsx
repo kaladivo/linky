@@ -27,10 +27,7 @@ import {
   wipeEvoluStorage as wipeEvoluStorageImpl,
 } from "./evolu";
 import { useInit } from "./hooks/useInit";
-import {
-  navigateTo,
-  useRouting,
-} from "./hooks/useRouting";
+import { navigateTo, useRouting } from "./hooks/useRouting";
 import { useToasts } from "./hooks/useToasts";
 import { getInitialLang, persistLang, translations, type Lang } from "./i18n";
 import { INITIAL_MNEMONIC_STORAGE_KEY } from "./mnemonic";
@@ -387,24 +384,6 @@ const App = () => {
 
   const route = useRouting();
   const { toasts, pushToast } = useToasts();
-
-  // Navigation wrapper functions for backwards compatibility with component props
-  const navigateToAdvanced = React.useCallback(() => navigateTo({ route: "advanced" }), []);
-  const navigateToCashuToken = React.useCallback((id: CashuTokenId) => navigateTo({ route: "cashuToken", id }), []);
-  const navigateToCashuTokenNew = React.useCallback(() => navigateTo({ route: "cashuTokenNew" }), []);
-  const navigateToChat = React.useCallback((id: ContactId) => navigateTo({ route: "chat", id }), []);
-  const navigateToContacts = React.useCallback(() => navigateTo({ route: "contacts" }), []);
-  const navigateToCredoToken = React.useCallback((id: CredoTokenId) => navigateTo({ route: "credoToken", id }), []);
-  const navigateToEvoluServer = React.useCallback((id: string) => navigateTo({ route: "evoluServer", id }), []);
-  const navigateToEvoluServers = React.useCallback(() => navigateTo({ route: "evoluServers" }), []);
-  const navigateToMints = React.useCallback(() => navigateTo({ route: "mints" }), []);
-  const navigateToNewContact = React.useCallback(() => navigateTo({ route: "contactNew" }), []);
-  const navigateToNostrRelay = React.useCallback((id: string) => navigateTo({ route: "nostrRelay", id }), []);
-  const navigateToNostrRelays = React.useCallback(() => navigateTo({ route: "nostrRelays" }), []);
-  const navigateToPaymentsHistory = React.useCallback(() => navigateTo({ route: "paymentsHistory" }), []);
-  const navigateToTopup = React.useCallback(() => navigateTo({ route: "topup" }), []);
-  const navigateToTopupInvoice = React.useCallback(() => navigateTo({ route: "topupInvoice" }), []);
-  const navigateToWallet = React.useCallback(() => navigateTo({ route: "wallet" }), []);
 
   const evoluServers = useEvoluServersManager();
   const evoluServerUrls = evoluServers.configuredUrls;
@@ -5668,7 +5647,6 @@ const App = () => {
       update,
       applyCredoSettlement,
       buildCashuMintCandidates,
-      navigateToChat,
       updateLocalNostrMessage,
       appendLocalNostrMessage,
       publishWrappedWithRetry,
@@ -7495,8 +7473,10 @@ const App = () => {
             | ContactId
             | undefined;
           if (contactId && currentId && currentId !== contactId) {
-            if (kind === "contact") navigateTo({ route: "contact", id: contactId });
-            if (kind === "contactPay") navigateTo({ route: "contactPay", id: contactId });
+            if (kind === "contact")
+              navigateTo({ route: "contact", id: contactId });
+            if (kind === "contactPay")
+              navigateTo({ route: "contactPay", id: contactId });
             if (kind === "chat") navigateTo({ route: "chat", id: contactId });
           }
         }
@@ -7508,9 +7488,12 @@ const App = () => {
       if (kind === "topup") navigateTo({ route: "topup" });
       if (kind === "topupInvoice") navigateTo({ route: "topupInvoice" });
       if (kind === "contactNew") openNewContactPage();
-      if (kind === "contact" && contactId) navigateTo({ route: "contact", id: contactId });
-      if (kind === "contactPay" && contactId) navigateTo({ route: "contactPay", id: contactId });
-      if (kind === "chat" && contactId) navigateTo({ route: "chat", id: contactId });
+      if (kind === "contact" && contactId)
+        navigateTo({ route: "contact", id: contactId });
+      if (kind === "contactPay" && contactId)
+        navigateTo({ route: "contactPay", id: contactId });
+      if (kind === "chat" && contactId)
+        navigateTo({ route: "chat", id: contactId });
     };
 
     const stepsByTask: Record<ContactsGuideKey, ContactsGuideStep[]> = {
@@ -10303,7 +10286,8 @@ const App = () => {
       return {
         icon: "✎",
         label: t("editContact"),
-        onClick: () => navigateTo({ route: "contactEdit", id: selectedContact.id }),
+        onClick: () =>
+          navigateTo({ route: "contactEdit", id: selectedContact.id }),
       };
     }
 
@@ -10311,7 +10295,8 @@ const App = () => {
       return {
         icon: "✎",
         label: t("editContact"),
-        onClick: () => navigateTo({ route: "contactEdit", id: selectedContact.id }),
+        onClick: () =>
+          navigateTo({ route: "contactEdit", id: selectedContact.id }),
       };
     }
 
@@ -11929,8 +11914,6 @@ const App = () => {
           lang={lang}
           menuIsOpen={menuIsOpen}
           myProfileQr={myProfileQr}
-          navigateToAdvanced={navigateToAdvanced}
-          navigateToNewContact={navigateToNewContact}
           nostrPictureByNpub={nostrPictureByNpub}
           onPickProfilePhoto={onPickProfilePhoto}
           onProfilePhotoSelected={onProfilePhotoSelected}
@@ -11989,10 +11972,6 @@ const App = () => {
               restoreMissingTokens={restoreMissingTokens}
               setPayWithCashuEnabled={setPayWithCashuEnabled}
               setAllowPromisesEnabled={setAllowPromisesEnabled}
-              navigateToNostrRelays={navigateToNostrRelays}
-              navigateToEvoluServers={navigateToEvoluServers}
-              navigateToMints={navigateToMints}
-              navigateToPaymentsHistory={navigateToPaymentsHistory}
               exportAppData={exportAppData}
               requestImportAppData={requestImportAppData}
               dedupeContacts={dedupeContacts}
@@ -12037,7 +12016,6 @@ const App = () => {
               refreshMintInfo={refreshMintInfo}
               pendingMintDeleteUrl={pendingMintDeleteUrl}
               setPendingMintDeleteUrl={setPendingMintDeleteUrl}
-              navigateToMints={navigateToMints}
               setStatus={setStatus}
               setMintInfoAll={
                 setMintInfoAll as (
@@ -12063,7 +12041,6 @@ const App = () => {
               evoluHasError={evoluHasError}
               syncOwner={syncOwner}
               isEvoluServerOffline={isEvoluServerOffline}
-              navigateToEvoluServer={navigateToEvoluServer}
               t={t}
             />
           )}
@@ -12082,7 +12059,6 @@ const App = () => {
               setPendingEvoluServerDeleteUrl={setPendingEvoluServerDeleteUrl}
               evoluServerUrls={evoluServerUrls}
               saveEvoluServerUrls={saveEvoluServerUrls}
-              navigateToEvoluServers={navigateToEvoluServers}
               setStatus={setStatus}
               wipeEvoluStorage={wipeEvoluStorage}
               evoluWipeStorageIsBusy={evoluWipeStorageIsBusy}
@@ -12098,7 +12074,6 @@ const App = () => {
               setNewEvoluServerUrl={setNewEvoluServerUrl}
               normalizeEvoluServerUrl={normalizeEvoluServerUrl}
               saveEvoluServerUrls={saveEvoluServerUrls}
-              navigateToEvoluServers={navigateToEvoluServers}
               setStatus={setStatus}
               pushToast={pushToast}
               wipeEvoluStorage={wipeEvoluStorage}
@@ -12110,7 +12085,6 @@ const App = () => {
             <NostrRelaysPage
               relayUrls={relayUrls}
               relayStatusByUrl={relayStatusByUrl}
-              navigateToNostrRelay={navigateToNostrRelay}
               t={t}
             />
           )}
@@ -12139,13 +12113,9 @@ const App = () => {
               cashuBalance={cashuBalance}
               displayUnit={displayUnit}
               formatInteger={formatInteger}
-              navigateToCashuTokenNew={navigateToCashuTokenNew}
-              navigateToTopup={navigateToTopup}
               openScan={openScan}
               scanIsOpen={scanIsOpen}
               bottomTabActive={bottomTabActive}
-              navigateToContacts={navigateToContacts}
-              navigateToWallet={navigateToWallet}
               t={t}
             />
           )}
@@ -12160,7 +12130,6 @@ const App = () => {
               setTopupAmount={setTopupAmount}
               topupInvoiceIsBusy={topupInvoiceIsBusy}
               displayUnit={displayUnit}
-              navigateToTopupInvoice={navigateToTopupInvoice}
               formatShortNpub={formatShortNpub}
               formatMiddleDots={formatMiddleDots}
               formatInteger={formatInteger}
@@ -12200,8 +12169,6 @@ const App = () => {
               nostrPictureByNpub={nostrPictureByNpub}
               mintIconUrlByMint={mintIconUrlByMint}
               setMintIconUrlByMint={setMintIconUrlByMint}
-              navigateToCashuToken={navigateToCashuToken}
-              navigateToCredoToken={navigateToCredoToken}
               saveCashuFromText={saveCashuFromText}
               getMintIconUrl={getMintIconUrl}
               formatInteger={formatInteger}
@@ -12249,7 +12216,6 @@ const App = () => {
               getInitials={getInitials}
               getCredoAvailableForContact={getCredoAvailableForContact}
               openContactPay={openContactPay}
-              navigateToChat={navigateToChat}
               t={t}
             />
           )}
@@ -12385,8 +12351,6 @@ const App = () => {
               renderContactCard={renderContactCard}
               bottomTabActive={bottomTabActive}
               openNewContactPage={openNewContactPage}
-              navigateToContacts={navigateToContacts}
-              navigateToWallet={navigateToWallet}
               t={t}
             />
           )}

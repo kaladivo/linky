@@ -1,4 +1,5 @@
 import type { FC } from "react";
+import { useNavigation } from "../hooks/useRouting";
 import { AmountDisplay } from "../components/AmountDisplay";
 import { Keypad } from "../components/Keypad";
 
@@ -11,7 +12,6 @@ interface TopupPageProps {
   formatMiddleDots: (str: string, maxLen: number) => string;
   formatShortNpub: (npub: string) => string;
   getInitials: (name: string) => string;
-  navigateToTopupInvoice: () => void;
   npubCashLightningAddress: string | null;
   setTopupAmount: (value: string | ((prev: string) => string)) => void;
   t: (key: string) => string;
@@ -28,13 +28,13 @@ export const TopupPage: FC<TopupPageProps> = ({
   formatMiddleDots,
   formatShortNpub,
   getInitials,
-  navigateToTopupInvoice,
   npubCashLightningAddress,
   setTopupAmount,
   t,
   topupAmount,
   topupInvoiceIsBusy,
 }) => {
+  const navigateTo = useNavigation();
   const ln = String(npubCashLightningAddress ?? "").trim();
   const amountSat = Number.parseInt(topupAmount.trim(), 10);
   const invalid =
@@ -106,7 +106,7 @@ export const TopupPage: FC<TopupPageProps> = ({
           className="btn-wide"
           onClick={() => {
             if (invalid) return;
-            navigateToTopupInvoice();
+            navigateTo({ route: "topupInvoice" });
           }}
           disabled={invalid}
           data-guide="topup-show-invoice"
