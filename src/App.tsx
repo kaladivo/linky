@@ -12002,7 +12002,6 @@ const App = () => {
               PRESET_MINTS={PRESET_MINTS}
               getMintIconUrl={getMintIconUrl}
               applyDefaultMintSelection={applyDefaultMintSelection}
-              hasMintOverrideRef={hasMintOverrideRef}
               t={t}
             />
           )}
@@ -12167,7 +12166,6 @@ const App = () => {
               credoOweTokens={credoOweTokens}
               credoPromisedTokens={credoPromisedTokens}
               nostrPictureByNpub={nostrPictureByNpub}
-              mintIconUrlByMint={mintIconUrlByMint}
               setMintIconUrlByMint={setMintIconUrlByMint}
               saveCashuFromText={saveCashuFromText}
               getMintIconUrl={getMintIconUrl}
@@ -12274,7 +12272,6 @@ const App = () => {
               feedbackContactNpub={FEEDBACK_CONTACT_NPUB}
               lang={lang}
               nostrPictureByNpub={nostrPictureByNpub}
-              mintIconUrlByMint={mintIconUrlByMint}
               setMintIconUrlByMint={setMintIconUrlByMint}
               chatMessageElByIdRef={chatMessageElByIdRef}
               formatInteger={formatInteger}
