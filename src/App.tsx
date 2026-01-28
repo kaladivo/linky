@@ -80,6 +80,7 @@ import { Keypad } from "./components/Keypad";
 import { ScanModal } from "./components/ScanModal";
 import { PaidOverlay } from "./components/PaidOverlay";
 import { SaveContactPromptModal } from "./components/SaveContactPromptModal";
+import { ContactsGuideOverlay } from "./components/ContactsGuideOverlay";
 import {
   PaymentsHistoryPage,
   MintsPage,
@@ -12124,60 +12125,17 @@ const App = () => {
           </header>
 
           {contactsGuide && contactsGuideActiveStep?.step ? (
-            <div className="guide-overlay" aria-live="polite">
-              {contactsGuideHighlightRect ? (
-                <div
-                  className="guide-highlight"
-                  aria-hidden="true"
-                  style={{
-                    top: contactsGuideHighlightRect.top,
-                    left: contactsGuideHighlightRect.left,
-                    width: contactsGuideHighlightRect.width,
-                    height: contactsGuideHighlightRect.height,
-                  }}
-                />
-              ) : null}
-
-              <div className="guide-card" role="dialog" aria-modal="false">
-                <div className="guide-step">
-                  {contactsGuideActiveStep.idx + 1} /{" "}
-                  {contactsGuideActiveStep.total}
-                </div>
-                <div className="guide-title">
-                  {t(contactsGuideActiveStep.step.titleKey)}
-                </div>
-                <div className="guide-body">
-                  {t(contactsGuideActiveStep.step.bodyKey)}
-                </div>
-                <div className="guide-actions">
-                  <button
-                    type="button"
-                    className="guide-btn secondary"
-                    onClick={stopContactsGuide}
-                  >
-                    {t("guideSkip")}
-                  </button>
-                  <button
-                    type="button"
-                    className="guide-btn secondary"
-                    onClick={contactsGuideNav.back}
-                    disabled={contactsGuideActiveStep.idx === 0}
-                  >
-                    {t("guideBack")}
-                  </button>
-                  <button
-                    type="button"
-                    className="guide-btn primary"
-                    onClick={contactsGuideNav.next}
-                  >
-                    {contactsGuideActiveStep.idx + 1 >=
-                    contactsGuideActiveStep.total
-                      ? t("guideDone")
-                      : t("guideNext")}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ContactsGuideOverlay
+              currentIdx={contactsGuideActiveStep.idx}
+              highlightRect={contactsGuideHighlightRect}
+              onBack={contactsGuideNav.back}
+              onNext={contactsGuideNav.next}
+              onSkip={stopContactsGuide}
+              stepBodyKey={contactsGuideActiveStep.step.bodyKey}
+              stepTitleKey={contactsGuideActiveStep.step.titleKey}
+              t={t}
+              totalSteps={contactsGuideActiveStep.total}
+            />
           ) : null}
 
           {menuIsOpen ? (
