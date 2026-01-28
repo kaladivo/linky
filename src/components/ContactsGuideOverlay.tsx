@@ -2,7 +2,12 @@ import React from "react";
 
 interface ContactsGuideOverlayProps {
   currentIdx: number;
-  highlightRect: { height: number; left: number; top: number; width: number } | null;
+  highlightRect: {
+    height: number;
+    left: number;
+    top: number;
+    width: number;
+  } | null;
   onBack: () => void;
   onNext: () => void;
   onSkip: () => void;
