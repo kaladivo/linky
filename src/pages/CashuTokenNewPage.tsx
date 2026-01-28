@@ -1,0 +1,204 @@
+import type { FC } from "react";
+import { CashuTokenPill } from "../components/CashuTokenPill";
+import { CredoTokenPill } from "../components/CredoTokenPill";
+import type { CashuTokenId, CredoTokenId } from "../evolu";
+
+interface CashuTokenNewPageProps {
+  cashuBalance: number;
+  totalCredoOutstandingIn: number;
+  totalCredoOutstandingOut: number;
+  displayUnit: string;
+  cashuTokens: readonly any[];
+  cashuDraft: string;
+  setCashuDraft: (value: string) => void;
+  cashuDraftRef: React.RefObject<HTMLTextAreaElement | null>;
+  cashuIsBusy: boolean;
+  credoOweTokens: any[];
+  credoPromisedTokens: any[];
+  nostrPictureByNpub: Record<string, string | null>;
+  mintIconUrlByMint: Record<string, string | null>;
+  setMintIconUrlByMint: React.Dispatch<
+    React.SetStateAction<Record<string, string | null>>
+  >;
+  navigateToCashuToken: (id: CashuTokenId) => void;
+  navigateToCredoToken: (id: CredoTokenId) => void;
+  saveCashuFromText: (
+    text: string,
+    opts: { navigateToWallet: boolean },
+  ) => Promise<void>;
+  getMintIconUrl: (mint: unknown) => {
+    origin: string | null;
+    url: string | null;
+    host: string | null;
+    failed: boolean;
+  };
+  formatInteger: (val: number) => string;
+  getCredoRemainingAmount: (row: any) => number;
+  t: (key: string) => string;
+}
+
+const CashuTokenNewPage: FC<CashuTokenNewPageProps> = ({
+  cashuBalance,
+  totalCredoOutstandingIn,
+  totalCredoOutstandingOut,
+  displayUnit,
+  cashuTokens,
+  cashuDraft,
+  setCashuDraft,
+  cashuDraftRef,
+  cashuIsBusy,
+  credoOweTokens,
+  credoPromisedTokens,
+  nostrPictureByNpub,
+  setMintIconUrlByMint,
+  navigateToCashuToken,
+  navigateToCredoToken,
+  saveCashuFromText,
+  getMintIconUrl,
+  formatInteger,
+  getCredoRemainingAmount,
+  t,
+}) => {
+  return (
+    <section className="panel">
+      <div className="ln-list wallet-token-list">
+        <div className="list-header">
+          <span>{t("totalBalanceWithPromises")}</span>
+          <span>
+            {formatInteger(
+              cashuBalance + totalCredoOutstandingIn - totalCredoOutstandingOut,
+            )}{" "}
+            {displayUnit}
+          </span>
+        </div>
+        <div className="list-header">
+          <span>
+            Cashu · {formatInteger(cashuBalance)} {displayUnit}
+          </span>
+        </div>
+        {cashuTokens.length === 0 ? (
+          <p className="muted">{t("cashuEmpty")}</p>
+        ) : (
+          <div className="ln-tags">
+            {cashuTokens.map((token) => (
+              <CashuTokenPill
+                key={token.id as unknown as CashuTokenId}
+                token={token}
+                getMintIconUrl={getMintIconUrl}
+                formatInteger={formatInteger}
+                isError={String(token.state ?? "") === "error"}
+                onMintIconLoad={(origin, url) => {
+                  setMintIconUrlByMint((prev) => ({
+                    ...prev,
+                    [origin]: url,
+                  }));
+                }}
+                onMintIconError={(origin, nextUrl) => {
+                  setMintIconUrlByMint((prev) => ({
+                    ...prev,
+                    [origin]: nextUrl,
+                  }));
+                }}
+                onClick={() =>
+                  navigateToCashuToken(token.id as unknown as CashuTokenId)
+                }
+                ariaLabel={t("cashuToken")}
+              />
+            ))}
+          </div>
+        )}
+
+        <div className="list-header" style={{ marginTop: 12 }}>
+          <span>
+            {t("credoOwe")} · {formatInteger(totalCredoOutstandingOut)}{" "}
+            {displayUnit}
+          </span>
+        </div>
+        {credoOweTokens.length === 0 ? (
+          <p className="muted">—</p>
+        ) : (
+          <div className="ln-tags">
+            {credoOweTokens.map((token) => {
+              const amount = getCredoRemainingAmount(token);
+              const npub = String(token.recipient ?? "").trim();
+              const avatar = npub ? nostrPictureByNpub[npub] : null;
+              return (
+                <CredoTokenPill
+                  key={token.id as unknown as CredoTokenId}
+                  token={token}
+                  amount={amount}
+                  avatar={avatar}
+                  onClick={() =>
+                    navigateToCredoToken(token.id as unknown as CredoTokenId)
+                  }
+                  ariaLabel={t("credoOwe")}
+                  formatInteger={formatInteger}
+                />
+              );
+            })}
+          </div>
+        )}
+
+        <div className="list-header" style={{ marginTop: 12 }}>
+          <span>
+            {t("credoPromisedToMe")} · {formatInteger(totalCredoOutstandingIn)}{" "}
+            {displayUnit}
+          </span>
+        </div>
+        {credoPromisedTokens.length === 0 ? (
+          <p className="muted">—</p>
+        ) : (
+          <div className="ln-tags">
+            {credoPromisedTokens.map((token) => {
+              const amount = getCredoRemainingAmount(token);
+              const npub = String(token.issuer ?? "").trim();
+              const avatar = npub ? nostrPictureByNpub[npub] : null;
+              return (
+                <CredoTokenPill
+                  key={token.id as unknown as CredoTokenId}
+                  token={token}
+                  amount={amount}
+                  avatar={avatar}
+                  onClick={() =>
+                    navigateToCredoToken(token.id as unknown as CredoTokenId)
+                  }
+                  ariaLabel={t("credoPromisedToMe")}
+                  formatInteger={formatInteger}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <label>{t("cashuToken")}</label>
+      <textarea
+        ref={cashuDraftRef}
+        value={cashuDraft}
+        onChange={(e) => setCashuDraft(e.target.value)}
+        onPaste={(e) => {
+          const text = e.clipboardData?.getData("text") ?? "";
+          const tokenRaw = String(text).trim();
+          if (!tokenRaw) return;
+          e.preventDefault();
+          void saveCashuFromText(tokenRaw, { navigateToWallet: true });
+        }}
+        placeholder={t("cashuPasteManualHint")}
+      />
+
+      <div className="settings-row">
+        <button
+          className="btn-wide"
+          onClick={() =>
+            void saveCashuFromText(cashuDraft, { navigateToWallet: true })
+          }
+          disabled={!cashuDraft.trim() || cashuIsBusy}
+        >
+          {t("cashuSave")}
+        </button>
+      </div>
+    </section>
+  );
+};
+
+export default CashuTokenNewPage;

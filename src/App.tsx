@@ -71,8 +71,6 @@ import {
 import { publishKind0ProfileMetadata } from "./nostrPublish";
 import { ContactCard } from "./components/ContactCard";
 import { ChatMessage } from "./components/ChatMessage";
-import { CashuTokenPill } from "./components/CashuTokenPill";
-import { CredoTokenPill } from "./components/CredoTokenPill";
 import { Keypad } from "./components/Keypad";
 import { AuthenticatedLayout } from "./components/AuthenticatedLayout";
 import { UnauthenticatedLayout } from "./components/UnauthenticatedLayout";
@@ -95,6 +93,7 @@ import {
   WalletPage,
   TopupPage,
   TopupInvoicePage,
+  CashuTokenNewPage,
 } from "./pages";
 import type { Route } from "./types/route";
 import {
@@ -12184,156 +12183,29 @@ const App = () => {
           )}
 
           {route.kind === "cashuTokenNew" && (
-            <section className="panel">
-              <div className="ln-list wallet-token-list">
-                <div className="list-header">
-                  <span>{t("totalBalanceWithPromises")}</span>
-                  <span>
-                    {formatInteger(
-                      cashuBalance +
-                        totalCredoOutstandingIn -
-                        totalCredoOutstandingOut,
-                    )}{" "}
-                    {displayUnit}
-                  </span>
-                </div>
-                <div className="list-header">
-                  <span>
-                    Cashu · {formatInteger(cashuBalance)} {displayUnit}
-                  </span>
-                </div>
-                {cashuTokens.length === 0 ? (
-                  <p className="muted">{t("cashuEmpty")}</p>
-                ) : (
-                  <div className="ln-tags">
-                    {cashuTokens.map((token) => (
-                      <CashuTokenPill
-                        key={token.id as unknown as CashuTokenId}
-                        token={token}
-                        getMintIconUrl={getMintIconUrl}
-                        formatInteger={formatInteger}
-                        isError={String(token.state ?? "") === "error"}
-                        onMintIconLoad={(origin, url) => {
-                          setMintIconUrlByMint((prev) => ({
-                            ...prev,
-                            [origin]: url,
-                          }));
-                        }}
-                        onMintIconError={(origin, nextUrl) => {
-                          setMintIconUrlByMint((prev) => ({
-                            ...prev,
-                            [origin]: nextUrl,
-                          }));
-                        }}
-                        onClick={() =>
-                          navigateToCashuToken(
-                            token.id as unknown as CashuTokenId,
-                          )
-                        }
-                        ariaLabel={t("cashuToken")}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                <div className="list-header" style={{ marginTop: 12 }}>
-                  <span>
-                    {t("credoOwe")} · {formatInteger(totalCredoOutstandingOut)}{" "}
-                    {displayUnit}
-                  </span>
-                </div>
-                {credoOweTokens.length === 0 ? (
-                  <p className="muted">—</p>
-                ) : (
-                  <div className="ln-tags">
-                    {credoOweTokens.map((token) => {
-                      const row = token as CredoTokenRow;
-                      const amount = getCredoRemainingAmount(row);
-                      const npub = String(row.recipient ?? "").trim();
-                      const avatar = npub ? nostrPictureByNpub[npub] : null;
-                      return (
-                        <CredoTokenPill
-                          key={row.id as unknown as CredoTokenId}
-                          token={row}
-                          amount={amount}
-                          avatar={avatar}
-                          onClick={() =>
-                            navigateToCredoToken(
-                              row.id as unknown as CredoTokenId,
-                            )
-                          }
-                          ariaLabel={t("credoOwe")}
-                          formatInteger={formatInteger}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="list-header" style={{ marginTop: 12 }}>
-                  <span>
-                    {t("credoPromisedToMe")} ·{" "}
-                    {formatInteger(totalCredoOutstandingIn)} {displayUnit}
-                  </span>
-                </div>
-                {credoPromisedTokens.length === 0 ? (
-                  <p className="muted">—</p>
-                ) : (
-                  <div className="ln-tags">
-                    {credoPromisedTokens.map((token) => {
-                      const row = token as CredoTokenRow;
-                      const amount = getCredoRemainingAmount(row);
-                      const npub = String(row.issuer ?? "").trim();
-                      const avatar = npub ? nostrPictureByNpub[npub] : null;
-                      return (
-                        <CredoTokenPill
-                          key={row.id as unknown as CredoTokenId}
-                          token={row}
-                          amount={amount}
-                          avatar={avatar}
-                          onClick={() =>
-                            navigateToCredoToken(
-                              row.id as unknown as CredoTokenId,
-                            )
-                          }
-                          ariaLabel={t("credoPromisedToMe")}
-                          formatInteger={formatInteger}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <label>{t("cashuToken")}</label>
-              <textarea
-                ref={cashuDraftRef}
-                value={cashuDraft}
-                onChange={(e) => setCashuDraft(e.target.value)}
-                onPaste={(e) => {
-                  const text = e.clipboardData?.getData("text") ?? "";
-                  const tokenRaw = String(text).trim();
-                  if (!tokenRaw) return;
-                  e.preventDefault();
-                  void saveCashuFromText(tokenRaw, { navigateToWallet: true });
-                }}
-                placeholder={t("cashuPasteManualHint")}
-              />
-
-              <div className="settings-row">
-                <button
-                  className="btn-wide"
-                  onClick={() =>
-                    void saveCashuFromText(cashuDraft, {
-                      navigateToWallet: true,
-                    })
-                  }
-                  disabled={!cashuDraft.trim() || cashuIsBusy}
-                >
-                  {t("cashuSave")}
-                </button>
-              </div>
-            </section>
+            <CashuTokenNewPage
+              cashuBalance={cashuBalance}
+              totalCredoOutstandingIn={totalCredoOutstandingIn}
+              totalCredoOutstandingOut={totalCredoOutstandingOut}
+              displayUnit={displayUnit}
+              cashuTokens={cashuTokens}
+              cashuDraft={cashuDraft}
+              setCashuDraft={setCashuDraft}
+              cashuDraftRef={cashuDraftRef}
+              cashuIsBusy={cashuIsBusy}
+              credoOweTokens={credoOweTokens}
+              credoPromisedTokens={credoPromisedTokens}
+              nostrPictureByNpub={nostrPictureByNpub}
+              mintIconUrlByMint={mintIconUrlByMint}
+              setMintIconUrlByMint={setMintIconUrlByMint}
+              navigateToCashuToken={navigateToCashuToken}
+              navigateToCredoToken={navigateToCredoToken}
+              saveCashuFromText={saveCashuFromText}
+              getMintIconUrl={getMintIconUrl}
+              formatInteger={formatInteger}
+              getCredoRemainingAmount={getCredoRemainingAmount}
+              t={t}
+            />
           )}
 
           {route.kind === "cashuToken" && (
