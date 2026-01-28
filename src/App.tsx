@@ -82,6 +82,7 @@ import { PaidOverlay } from "./components/PaidOverlay";
 import { SaveContactPromptModal } from "./components/SaveContactPromptModal";
 import { ContactsGuideOverlay } from "./components/ContactsGuideOverlay";
 import { ProfileQrModal } from "./components/ProfileQrModal";
+import { MenuModal } from "./components/MenuModal";
 import {
   PaymentsHistoryPage,
   MintsPage,
@@ -12140,104 +12141,16 @@ const App = () => {
           ) : null}
 
           {menuIsOpen ? (
-            <div
-              className="menu-modal-overlay"
-              role="dialog"
-              aria-modal="false"
-              aria-label={t("menu")}
-              onClick={closeMenu}
-            >
-              <div
-                className="menu-modal-sheet"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="settings-row">
-                  <div className="settings-left">
-                    <span className="settings-icon" aria-hidden="true">
-                      🌐
-                    </span>
-                    <span className="settings-label">{t("language")}</span>
-                  </div>
-                  <div className="settings-right">
-                    <select
-                      className="select"
-                      value={lang}
-                      onChange={(e) => setLang(e.target.value as Lang)}
-                      aria-label={t("language")}
-                    >
-                      <option value="cs">{t("czech")}</option>
-                      <option value="en">{t("english")}</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="settings-row">
-                  <div className="settings-left">
-                    <span className="settings-icon" aria-hidden="true">
-                      ₿
-                    </span>
-                    <span className="settings-label">{t("unit")}</span>
-                  </div>
-                  <div className="settings-right">
-                    <label className="switch">
-                      <input
-                        className="switch-input"
-                        type="checkbox"
-                        aria-label={t("unitUseBitcoin")}
-                        checked={useBitcoinSymbol}
-                        onChange={(e) => setUseBitcoinSymbol(e.target.checked)}
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="settings-row settings-link"
-                  onClick={() => {
-                    closeMenu();
-                    navigateToAdvanced();
-                  }}
-                  aria-label={t("advanced")}
-                  title={t("advanced")}
-                >
-                  <div className="settings-left">
-                    <span className="settings-icon" aria-hidden="true">
-                      ⚙️
-                    </span>
-                    <span className="settings-label">{t("advanced")}</span>
-                  </div>
-                  <div className="settings-right">
-                    <span className="settings-chevron" aria-hidden="true">
-                      &gt;
-                    </span>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  className="settings-row settings-link"
-                  onClick={() => {
-                    closeMenu();
-                    openFeedbackContact();
-                  }}
-                  aria-label={t("feedback")}
-                  title={t("feedback")}
-                >
-                  <div className="settings-left">
-                    <span className="settings-icon" aria-hidden="true">
-                      💬
-                    </span>
-                    <span className="settings-label">{t("feedback")}</span>
-                  </div>
-                  <div className="settings-right">
-                    <span className="settings-chevron" aria-hidden="true">
-                      &gt;
-                    </span>
-                  </div>
-                </button>
-              </div>
-            </div>
+            <MenuModal
+              closeMenu={closeMenu}
+              lang={lang}
+              navigateToAdvanced={navigateToAdvanced}
+              openFeedbackContact={openFeedbackContact}
+              setLang={setLang}
+              setUseBitcoinSymbol={setUseBitcoinSymbol}
+              t={t}
+              useBitcoinSymbol={useBitcoinSymbol}
+            />
           ) : null}
 
           {route.kind === "advanced" && (
