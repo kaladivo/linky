@@ -4,7 +4,7 @@ interface NostrRelayRowProps {
   url: string;
 }
 
-export function NostrRelayRow({ url, state, onNavigate }: NostrRelayRowProps) {
+export function NostrRelayRow({ onNavigate, state, url }: NostrRelayRowProps) {
   const dotClass =
     state === "connected" ? "status-dot connected" : "status-dot disconnected";
 

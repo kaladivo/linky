@@ -11,23 +11,23 @@ type RecentlyReceivedToken = {
 } | null;
 
 type ToastNotificationsProps = {
-  recentlyReceivedToken: RecentlyReceivedToken;
-  toasts: Toast[];
   displayUnit: string;
   formatInteger: (value: number) => string;
   pushToast: (message: string) => void;
+  recentlyReceivedToken: RecentlyReceivedToken;
   setRecentlyReceivedToken: (token: RecentlyReceivedToken) => void;
   t: (key: string) => string;
+  toasts: Toast[];
 };
 
 export const ToastNotifications: React.FC<ToastNotificationsProps> = ({
-  recentlyReceivedToken,
-  toasts,
   displayUnit,
   formatInteger,
   pushToast,
+  recentlyReceivedToken,
   setRecentlyReceivedToken,
   t,
+  toasts,
 }) => {
   return (
     <>
