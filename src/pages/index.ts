@@ -16,3 +16,4 @@ export { default as CashuTokenNewPage } from "./CashuTokenNewPage";
 export { default as CashuTokenPage } from "./CashuTokenPage";
 export { default as CredoTokenPage } from "./CredoTokenPage";
 export { default as ContactPage } from "./ContactPage";
+export { default as ContactPayPage } from "./ContactPayPage";
