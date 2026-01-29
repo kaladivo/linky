@@ -3,6 +3,7 @@ import { AmountDisplay } from "../components/AmountDisplay";
 import { Keypad } from "../components/Keypad";
 import { useNavigation } from "../hooks/useRouting";
 import {
+  formatInteger,
   formatMiddleDots,
   formatShortNpub,
   getInitials,
@@ -13,7 +14,6 @@ interface TopupPageProps {
   displayUnit: string;
   effectiveProfileName: string | null;
   effectiveProfilePicture: string | null;
-  formatInteger: (val: number) => string;
   npubCashLightningAddress: string | null;
   setTopupAmount: (value: string | ((prev: string) => string)) => void;
   t: (key: string) => string;
@@ -26,7 +26,6 @@ export const TopupPage: FC<TopupPageProps> = ({
   displayUnit,
   effectiveProfileName,
   effectiveProfilePicture,
-  formatInteger,
   npubCashLightningAddress,
   setTopupAmount,
   t,

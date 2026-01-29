@@ -103,7 +103,7 @@ import {
   safeLocalStorageSet,
   safeLocalStorageSetJson,
 } from "./utils/storage";
-import { getBestNostrName } from "./utils/formatting";
+import { formatInteger, getBestNostrName } from "./utils/formatting";
 
 const LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY = "linky.lastAcceptedCashuToken.v1";
 
@@ -963,14 +963,6 @@ const App = () => {
         sensitivity: "variant",
       }),
     [lang],
-  );
-  const numberFormatter = useMemo(() => new Intl.NumberFormat(lang), [lang]);
-  const formatInteger = React.useCallback(
-    (value: number) =>
-      numberFormatter.format(
-        Number.isFinite(value) ? Math.trunc(value) : Math.trunc(0),
-      ),
-    [numberFormatter],
   );
 
   const contactPayBackToChatRef = React.useRef<ContactId | null>(null);
@@ -8724,7 +8716,6 @@ const App = () => {
         displayUnit={displayUnit}
         tokenInfo={tokenInfo}
         credoInfo={credoInfo}
-        formatInteger={formatInteger}
         getMintIconUrl={getMintIconUrl}
         onSelect={() => openContactDetail(contact)}
         onMintIconLoad={(origin, url) => {
@@ -11769,7 +11760,6 @@ const App = () => {
         recentlyReceivedToken={recentlyReceivedToken}
         toasts={toasts}
         displayUnit={displayUnit}
-        formatInteger={formatInteger}
         pushToast={pushToast}
         setRecentlyReceivedToken={setRecentlyReceivedToken}
         t={t}
@@ -11804,7 +11794,6 @@ const App = () => {
           effectiveMyLightningAddress={effectiveMyLightningAddress}
           effectiveProfileName={effectiveProfileName}
           effectiveProfilePicture={effectiveProfilePicture}
-          formatInteger={formatInteger}
           isProfileEditing={isProfileEditing}
           lang={lang}
           menuIsOpen={menuIsOpen}
@@ -11881,7 +11870,6 @@ const App = () => {
             <PaymentsHistoryPage
               paymentEvents={paymentEvents}
               lang={lang}
-              formatInteger={formatInteger}
               displayUnit={displayUnit}
               t={t}
             />
@@ -12006,7 +11994,6 @@ const App = () => {
             <WalletPage
               cashuBalance={cashuBalance}
               displayUnit={displayUnit}
-              formatInteger={formatInteger}
               openScan={openScan}
               scanIsOpen={scanIsOpen}
               bottomTabActive={bottomTabActive}
@@ -12024,7 +12011,6 @@ const App = () => {
               setTopupAmount={setTopupAmount}
               topupInvoiceIsBusy={topupInvoiceIsBusy}
               displayUnit={displayUnit}
-              formatInteger={formatInteger}
               t={t}
             />
           )}
@@ -12060,7 +12046,6 @@ const App = () => {
               setMintIconUrlByMint={setMintIconUrlByMint}
               saveCashuFromText={saveCashuFromText}
               getMintIconUrl={getMintIconUrl}
-              formatInteger={formatInteger}
               getCredoRemainingAmount={getCredoRemainingAmount}
               t={t}
             />
@@ -12086,7 +12071,6 @@ const App = () => {
               contacts={contacts}
               displayUnit={displayUnit}
               getCredoRemainingAmount={getCredoRemainingAmount}
-              formatInteger={formatInteger}
               t={t}
             />
           )}
@@ -12122,7 +12106,6 @@ const App = () => {
               setPayAmount={setPayAmount}
               displayUnit={displayUnit}
               getCredoAvailableForContact={getCredoAvailableForContact}
-              formatInteger={formatInteger}
               paySelectedContact={paySelectedContact}
               t={t}
             />
@@ -12138,7 +12121,6 @@ const App = () => {
               setLnAddressPayAmount={setLnAddressPayAmount}
               displayUnit={displayUnit}
               payLightningAddressWithCashu={payLightningAddressWithCashu}
-              formatInteger={formatInteger}
               t={t}
             />
           )}
@@ -12160,7 +12142,6 @@ const App = () => {
               nostrPictureByNpub={nostrPictureByNpub}
               setMintIconUrlByMint={setMintIconUrlByMint}
               chatMessageElByIdRef={chatMessageElByIdRef}
-              formatInteger={formatInteger}
               getCashuTokenMessageInfo={getCashuTokenMessageInfo}
               getCredoTokenMessageInfo={getCredoTokenMessageInfo}
               getMintIconUrl={getMintIconUrl}

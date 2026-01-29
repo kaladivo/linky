@@ -60,7 +60,6 @@ interface AuthenticatedLayoutProps {
   effectiveMyLightningAddress: string | null;
   effectiveProfileName: string | null;
   effectiveProfilePicture: string | null;
-  formatInteger: (value: number) => string;
   isProfileEditing: boolean;
   lang: Lang;
   menuIsOpen: boolean;
@@ -130,7 +129,6 @@ export function AuthenticatedLayout({
   effectiveMyLightningAddress,
   effectiveProfileName,
   effectiveProfilePicture,
-  formatInteger,
   isProfileEditing,
   lang,
   menuIsOpen,
@@ -256,7 +254,6 @@ export function AuthenticatedLayout({
         <SaveContactPromptModal
           amountSat={postPaySaveContact.amountSat}
           displayUnit={displayUnit}
-          formatInteger={formatInteger}
           lnAddress={postPaySaveContact.lnAddress}
           onClose={() => setPostPaySaveContact(null)}
           setContactNewPrefill={setContactNewPrefill}

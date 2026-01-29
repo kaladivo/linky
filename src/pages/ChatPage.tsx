@@ -1,7 +1,7 @@
 import type { FC } from "react";
 import { ChatMessage } from "../components/ChatMessage";
 import type { ContactId } from "../evolu";
-import { formatChatDayLabel } from "../utils/formatting";
+import { formatChatDayLabel, formatInteger } from "../utils/formatting";
 
 interface Contact {
   id: ContactId;
@@ -19,7 +19,6 @@ interface ChatPageProps {
   chatMessagesRef: React.RefObject<HTMLDivElement | null>;
   chatSendIsBusy: boolean;
   feedbackContactNpub: string;
-  formatInteger: (val: number) => string;
   getCashuTokenMessageInfo: (id: string) => any;
   getCredoAvailableForContact: (npub: string) => number;
   getCredoTokenMessageInfo: (id: string) => any;
@@ -52,7 +51,6 @@ export const ChatPage: FC<ChatPageProps> = ({
   chatMessagesRef,
   chatSendIsBusy,
   feedbackContactNpub,
-  formatInteger,
   getCashuTokenMessageInfo,
   getCredoAvailableForContact,
   getCredoTokenMessageInfo,
