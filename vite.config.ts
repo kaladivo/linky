@@ -298,7 +298,7 @@ export default defineConfig({
       },
     }),
   ],
-  server: useHttps ? { host: true, https: true } : undefined,
+  ...(useHttps ? { server: { host: true, https: true } } : {}),
   build: {
     rollupOptions: {
       output: {
