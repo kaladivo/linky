@@ -1642,7 +1642,7 @@ button.icon {
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
+  touch-action: auto;
   scrollbar-width: none;
   flex: 1 1 auto;
   min-height: 0;

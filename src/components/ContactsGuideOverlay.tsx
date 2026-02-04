@@ -29,7 +29,7 @@ export function ContactsGuideOverlay({
   totalSteps,
 }: ContactsGuideOverlayProps): React.ReactElement {
   const moveGuideTop =
-    Boolean(highlightRect) &&
+    highlightRect?.top != null &&
     typeof window !== "undefined" &&
     highlightRect.top > window.innerHeight * 0.55;
 
