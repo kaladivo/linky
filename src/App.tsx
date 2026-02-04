@@ -835,7 +835,33 @@ const App = () => {
   );
   const chatDidInitialScrollForContactRef = React.useRef<string | null>(null);
   const chatForceScrollToBottomRef = React.useRef(false);
+  const chatScrollTargetIdRef = React.useRef<string | null>(null);
   const chatLastMessageCountRef = React.useRef<Record<string, number>>({});
+
+  const triggerChatScrollToBottom = React.useCallback((messageId?: string) => {
+    chatForceScrollToBottomRef.current = true;
+    if (messageId) chatScrollTargetIdRef.current = messageId;
+
+    const tryScroll = (attempt: number) => {
+      const targetId = chatScrollTargetIdRef.current;
+      if (targetId) {
+        const el = chatMessageElByIdRef.current.get(targetId);
+        if (el) {
+          el.scrollIntoView({ block: "end" });
+          return;
+        }
+      }
+
+      const c = chatMessagesRef.current;
+      if (c) c.scrollTop = c.scrollHeight;
+
+      if (attempt < 6) {
+        requestAnimationFrame(() => tryScroll(attempt + 1));
+      }
+    };
+
+    requestAnimationFrame(() => tryScroll(0));
+  }, []);
 
   const getMintOriginAndHost = React.useCallback(
     (mint: unknown): { origin: string | null; host: string | null } => {
@@ -3204,53 +3230,68 @@ const App = () => {
     LocalNostrMessage[]
   >(() => []);
   const nostrMessageWrapIdsRef = React.useRef<Set<string>>(new Set());
+  const nostrMessagesLatestRef = React.useRef<LocalNostrMessage[]>([]);
   const [pendingPayments, setPendingPayments] = useState<LocalPendingPayment[]>(
     () => [],
   );
 
   React.useEffect(() => {
-    const ownerId = appOwnerIdRef.current;
-    if (!ownerId) {
-      return;
-    }
-    const raw = safeLocalStorageGetJson(
-      `${LOCAL_NOSTR_MESSAGES_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
-      [] as LocalNostrMessage[],
-    );
-    const normalizeMessage = (msg: LocalNostrMessage): LocalNostrMessage => {
-      const normalizedStatus =
-        msg.status === "pending" || msg.status === "sent" ? msg.status : "sent";
-      const normalizedClientId =
-        typeof msg.clientId === "string" && msg.clientId.trim()
-          ? msg.clientId.trim()
-          : null;
-      return {
-        ...msg,
-        status: normalizedStatus,
-        ...(normalizedClientId ? { clientId: normalizedClientId } : {}),
-        ...(msg.localOnly ? { localOnly: true } : {}),
-      } as LocalNostrMessage;
-    };
+    nostrMessagesLatestRef.current = nostrMessagesLocal;
+  }, [nostrMessagesLocal]);
 
-    setNostrMessagesLocal((prev) => {
-      const wrapIds = new Set<string>();
-      const deduped: LocalNostrMessage[] = [];
-      for (const msg of [...raw, ...prev]) {
-        const normalized = normalizeMessage(msg);
-        const key =
-          String(normalized.wrapId ?? "").trim() || String(normalized.id ?? "");
-        if (key && wrapIds.has(key)) continue;
-        if (key) wrapIds.add(key);
-        deduped.push(normalized);
-      }
-      deduped.sort((a, b) => a.createdAtSec - b.createdAtSec);
-      const trimmed = deduped.slice(-500);
-      nostrMessageWrapIdsRef.current = new Set(
-        trimmed.map((m) => String(m.wrapId ?? "").trim() || String(m.id ?? "")),
+  const refreshLocalNostrMessages = React.useCallback(
+    (ownerOverride?: string | null) => {
+      const ownerId = ownerOverride ?? appOwnerIdRef.current;
+      if (!ownerId) return;
+      const raw = safeLocalStorageGetJson(
+        `${LOCAL_NOSTR_MESSAGES_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
+        [] as LocalNostrMessage[],
       );
-      return trimmed;
-    });
-  }, [appOwnerId]);
+      const normalizeMessage = (msg: LocalNostrMessage): LocalNostrMessage => {
+        const normalizedStatus =
+          msg.status === "pending" || msg.status === "sent"
+            ? msg.status
+            : "sent";
+        const normalizedClientId =
+          typeof msg.clientId === "string" && msg.clientId.trim()
+            ? msg.clientId.trim()
+            : null;
+        return {
+          ...msg,
+          status: normalizedStatus,
+          ...(normalizedClientId ? { clientId: normalizedClientId } : {}),
+          ...(msg.localOnly ? { localOnly: true } : {}),
+        } as LocalNostrMessage;
+      };
+
+      setNostrMessagesLocal((prev) => {
+        const wrapIds = new Set<string>();
+        const deduped: LocalNostrMessage[] = [];
+        for (const msg of [...raw, ...prev]) {
+          const normalized = normalizeMessage(msg);
+          const key =
+            String(normalized.wrapId ?? "").trim() ||
+            String(normalized.id ?? "");
+          if (key && wrapIds.has(key)) continue;
+          if (key) wrapIds.add(key);
+          deduped.push(normalized);
+        }
+        deduped.sort((a, b) => a.createdAtSec - b.createdAtSec);
+        const trimmed = deduped.slice(-500);
+        nostrMessageWrapIdsRef.current = new Set(
+          trimmed.map(
+            (m) => String(m.wrapId ?? "").trim() || String(m.id ?? ""),
+          ),
+        );
+        return trimmed;
+      });
+    },
+    [],
+  );
+
+  React.useEffect(() => {
+    refreshLocalNostrMessages(appOwnerId);
+  }, [appOwnerId, refreshLocalNostrMessages]);
 
   const appendLocalNostrMessage = React.useCallback(
     (
@@ -3499,8 +3540,46 @@ const App = () => {
   const chatMessages = useMemo(() => {
     const id = String(chatContactId ?? "").trim();
     if (!id) return [] as LocalNostrMessage[];
-    return messagesByContactId.get(id) ?? [];
+    const list = messagesByContactId.get(id) ?? [];
+    const seenWrapIds = new Set<string>();
+    const seenClientIds = new Set<string>();
+    const seenFallbackKeys = new Set<string>();
+    const deduped: LocalNostrMessage[] = [];
+
+    for (const msg of list) {
+      const wrapId = String(msg.wrapId ?? "").trim();
+      if (wrapId) {
+        if (seenWrapIds.has(wrapId)) continue;
+        seenWrapIds.add(wrapId);
+      }
+
+      const clientId = String(msg.clientId ?? "").trim();
+      if (clientId) {
+        if (seenClientIds.has(clientId)) continue;
+        seenClientIds.add(clientId);
+      }
+
+      if (!wrapId && !clientId) {
+        const content = String(msg.content ?? "").trim();
+        const createdAtSec = Number(msg.createdAtSec ?? 0) || 0;
+        const direction = String(msg.direction ?? "");
+        const fallbackKey = `${direction}|${createdAtSec}|${content}`;
+        if (content && createdAtSec > 0) {
+          if (seenFallbackKeys.has(fallbackKey)) continue;
+          seenFallbackKeys.add(fallbackKey);
+        }
+      }
+
+      deduped.push(msg);
+    }
+
+    return deduped;
   }, [chatContactId, messagesByContactId]);
+
+  const chatMessagesLatestRef = React.useRef<LocalNostrMessage[]>([]);
+  React.useEffect(() => {
+    chatMessagesLatestRef.current = chatMessages;
+  }, [chatMessages]);
 
   React.useEffect(() => {
     const pendingTokens = cashuTokensAll.filter((row) => {
@@ -6090,6 +6169,8 @@ const App = () => {
             createdAtSec: Math.floor(Date.now() / 1000),
             status: "pending",
           });
+          refreshLocalNostrMessages();
+          triggerChatScrollToBottom(messageId);
           logPayStep("queued-offline", {
             contactId: String(selectedContact.id ?? ""),
             amountSat,
@@ -6428,6 +6509,8 @@ const App = () => {
               status: "pending",
               clientId,
             });
+            refreshLocalNostrMessages();
+            triggerChatScrollToBottom(pendingId);
 
             const wrapForMe = wrapEvent(
               baseEvent,
@@ -9740,7 +9823,6 @@ const App = () => {
     let cancelled = false;
 
     const existingWrapIds = chatSeenWrapIdsRef.current;
-    existingWrapIds.clear();
     for (const m of chatMessages) {
       const id = String(m.wrapId ?? "");
       if (id) existingWrapIds.add(id);
@@ -9767,6 +9849,7 @@ const App = () => {
             const wrapId = String(wrap?.id ?? "");
             if (!wrapId) return;
             if (existingWrapIds.has(wrapId)) return;
+            if (nostrMessageWrapIdsRef.current.has(wrapId)) return;
             existingWrapIds.add(wrapId);
 
             const inner = unwrapEvent(wrap, privBytes) as NostrToolsEvent;
@@ -9798,10 +9881,11 @@ const App = () => {
             if (cancelled) return;
 
             if (isOutgoing) {
+              const messages = chatMessagesLatestRef.current;
               const clientId = tags
                 .find((t) => Array.isArray(t) && t[0] === "client")
                 ?.at(1);
-              const pending = chatMessages.find((m) => {
+              const pending = messages.find((m) => {
                 const isOut = String(m.direction ?? "") === "out";
                 const isPending = String(m.status ?? "sent") === "pending";
                 if (!isOut || !isPending) return false;
@@ -9810,6 +9894,14 @@ const App = () => {
                 return String(m.content ?? "").trim() === content;
               });
               if (pending) {
+                const pendingWrapId = String(pending.wrapId ?? "");
+                if (
+                  String(pending.status ?? "sent") === "sent" &&
+                  pendingWrapId &&
+                  pendingWrapId === wrapId
+                ) {
+                  return;
+                }
                 updateLocalNostrMessage(String(pending.id ?? ""), {
                   status: "sent",
                   wrapId,
@@ -9823,7 +9915,7 @@ const App = () => {
                 return;
               }
 
-              const existing = chatMessages.find((m) => {
+              const existing = messages.find((m) => {
                 const isOut = String(m.direction ?? "") === "out";
                 if (!isOut) return false;
                 if (clientId)
@@ -9831,6 +9923,14 @@ const App = () => {
                 return String(m.content ?? "").trim() === content;
               });
               if (existing) {
+                const existingWrapId = String(existing.wrapId ?? "");
+                if (
+                  String(existing.status ?? "sent") === "sent" &&
+                  existingWrapId &&
+                  existingWrapId === wrapId
+                ) {
+                  return;
+                }
                 updateLocalNostrMessage(String(existing.id ?? ""), {
                   status: "sent",
                   wrapId,
@@ -9848,6 +9948,36 @@ const App = () => {
             const tagClientId = tags.find(
               (t) => Array.isArray(t) && t[0] === "client",
             )?.[1];
+
+            if (isOutgoing) {
+              const messages = chatMessagesLatestRef.current;
+              const byClient = tagClientId
+                ? messages.find(
+                    (m) =>
+                      String(m.direction ?? "") === "out" &&
+                      String(m.clientId ?? "") === String(tagClientId),
+                  )
+                : null;
+              const byContent = !tagClientId
+                ? messages.find(
+                    (m) =>
+                      String(m.direction ?? "") === "out" &&
+                      String(m.content ?? "").trim() === content,
+                  )
+                : null;
+              const existingMessage = byClient ?? byContent;
+
+              if (existingMessage) {
+                updateLocalNostrMessage(String(existingMessage.id ?? ""), {
+                  status: "sent",
+                  wrapId,
+                  pubkey: innerPub,
+                  ...(tagClientId ? { clientId: String(tagClientId) } : {}),
+                });
+                return;
+              }
+            }
+
             appendLocalNostrMessage({
               contactId: String(selectedContact.id),
               direction: isIncoming ? "in" : "out",
@@ -9909,7 +10039,6 @@ const App = () => {
     currentNsec,
     route.kind,
     selectedContact,
-    chatMessages,
     updateLocalNostrMessage,
   ]);
 
@@ -9967,6 +10096,7 @@ const App = () => {
         status: "pending",
         clientId,
       });
+      triggerChatScrollToBottom(pendingId);
 
       const isOffline =
         typeof navigator !== "undefined" && navigator.onLine === false;
@@ -11036,6 +11166,7 @@ const App = () => {
             const wrapId = String(wrap?.id ?? "");
             if (!wrapId) return;
             if (seenWrapIds.has(wrapId)) return;
+            if (nostrMessageWrapIdsRef.current.has(wrapId)) return;
             seenWrapIds.add(wrapId);
 
             const inner = unwrapEvent(wrap, privBytes) as NostrToolsEvent;
@@ -11116,6 +11247,40 @@ const App = () => {
             // handling messages for that contact.
             if (isActiveChatContact) return;
 
+            if (isOutgoing) {
+              const tagClientId = Array.isArray(inner.tags)
+                ? inner.tags.find(
+                    (t) => Array.isArray(t) && t[0] === "client",
+                  )?.[1]
+                : undefined;
+              const messages = nostrMessagesLatestRef.current;
+              const byClient = tagClientId
+                ? messages.find(
+                    (m) =>
+                      String(m.direction ?? "") === "out" &&
+                      String(m.clientId ?? "") === String(tagClientId),
+                  )
+                : null;
+              const byContent = !tagClientId
+                ? messages.find(
+                    (m) =>
+                      String(m.direction ?? "") === "out" &&
+                      String(m.content ?? "").trim() === content,
+                  )
+                : null;
+              const existingMessage = byClient ?? byContent;
+
+              if (existingMessage) {
+                updateLocalNostrMessage(String(existingMessage.id ?? ""), {
+                  status: "sent",
+                  wrapId,
+                  pubkey: senderPub,
+                  ...(tagClientId ? { clientId: String(tagClientId) } : {}),
+                });
+                return;
+              }
+            }
+
             appendLocalNostrMessage({
               contactId: String(contact.id),
               direction: isOutgoing ? "out" : "in",
@@ -11181,6 +11346,7 @@ const App = () => {
     getCashuTokenMessageInfo,
     getCredoTokenMessageInfo,
     appendLocalNostrMessage,
+    updateLocalNostrMessage,
     insert,
     maybeShowPwaNotification,
     nostrFetchRelays,
@@ -11835,11 +12001,32 @@ const App = () => {
     }
 
     if (chatForceScrollToBottomRef.current) {
-      chatForceScrollToBottomRef.current = false;
-      requestAnimationFrame(() => {
+      const targetId = chatScrollTargetIdRef.current;
+
+      const tryScroll = (attempt: number) => {
+        if (targetId) {
+          const el = chatMessageElByIdRef.current.get(targetId);
+          if (el) {
+            el.scrollIntoView({ block: "end" });
+            chatScrollTargetIdRef.current = null;
+            chatForceScrollToBottomRef.current = false;
+            return;
+          }
+        }
+
         const c = chatMessagesRef.current;
         if (c) c.scrollTop = c.scrollHeight;
-      });
+
+        if (attempt < 6) {
+          requestAnimationFrame(() => tryScroll(attempt + 1));
+          return;
+        }
+
+        chatScrollTargetIdRef.current = null;
+        chatForceScrollToBottomRef.current = false;
+      };
+
+      requestAnimationFrame(() => tryScroll(0));
       return;
     }
 
@@ -11876,7 +12063,13 @@ const App = () => {
 
   return (
     <div
-      className={showGroupFilter ? "page has-group-filter" : "page"}
+      className={
+        showGroupFilter
+          ? "page has-group-filter"
+          : route.kind === "chat"
+            ? "page chat-page"
+            : "page"
+      }
       onTouchStart={handleBottomSwipeStart}
       onTouchEnd={handleBottomSwipeEnd}
     >
