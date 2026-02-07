@@ -140,6 +140,40 @@ export async function updatePushSubscriptionRelays(relays: string[]): Promise<bo
     const npub = localStorage.getItem("linky.push.npub");
     if (!npub) return false;
 
+    if (!("serviceWorker" in navigator)) {
+      return false;
+    }
+
+    // Get existing subscription from browser
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    
+    if (!subscription) {
+      console.log("No subscription found, cannot update relays");
+      return false;
+    }
+
+    const subscriptionData: PushSubscriptionData = {
+      endpoint: subscription.endpoint,
+      expirationTime: subscription.expirationTime,
+      keys: {
+        p256dh: btoa(
+          String.fromCharCode(
+            ...new Uint8Array(
+              subscription.getKey("p256dh") || new ArrayBuffer(0)
+            )
+          )
+        ),
+        auth: btoa(
+          String.fromCharCode(
+            ...new Uint8Array(
+              subscription.getKey("auth") || new ArrayBuffer(0)
+            )
+          )
+        ),
+      },
+    };
+
     const response = await fetch(`${NOTIFICATION_SERVER_URL}/subscribe`, {
       method: "POST",
       headers: {
@@ -147,6 +181,7 @@ export async function updatePushSubscriptionRelays(relays: string[]): Promise<bo
       },
       body: JSON.stringify({
         npub,
+        subscription: subscriptionData,
         relays,
       }),
     });
