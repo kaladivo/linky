@@ -48,10 +48,16 @@ registerRoute(
 
 // Push event handler - receive push notifications
 self.addEventListener("push", (event) => {
-  if (!event.data) return;
+  console.log("[SW] Push event received!", event);
+  
+  if (!event.data) {
+    console.log("[SW] No data in push event");
+    return;
+  }
 
   try {
     const data = event.data.json();
+    console.log("[SW] Push data:", data);
 
     const title = data.title || "Nová zpráva";
     const options: NotificationOptions = {
@@ -63,9 +69,14 @@ self.addEventListener("push", (event) => {
       data: data.data || { type: "dm" },
     };
 
-    event.waitUntil(self.registration.showNotification(title, options));
+    console.log("[SW] Showing notification:", title, options);
+    event.waitUntil(
+      self.registration.showNotification(title, options)
+        .then(() => console.log("[SW] Notification shown successfully"))
+        .catch(err => console.error("[SW] Error showing notification:", err))
+    );
   } catch (error) {
-    console.error("Error showing notification:", error);
+    console.error("[SW] Error showing notification:", error);
   }
 });
 

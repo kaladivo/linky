@@ -411,6 +411,46 @@ export function AdvancedPage({
         </div>
       )}
 
+      {/* Test Notification Button */}
+      <div className="settings-row" style={{ marginTop: 10 }}>
+        <div className="settings-left">
+          <span className="settings-icon" aria-hidden="true">
+            🧪
+          </span>
+          <span className="settings-label">Test notifikace</span>
+        </div>
+        <div className="settings-right">
+          <div className="badge-box">
+            <button
+              className="ghost"
+              onClick={async () => {
+                setPushStatus("Odesílám testovací notifikaci...");
+                setPushError("");
+                
+                try {
+                  // Zkusíme zobrazit lokální notifikaci
+                  if ("serviceWorker" in navigator) {
+                    const registration = await navigator.serviceWorker.ready;
+                    await registration.showNotification("Test Linky", {
+                      body: "Toto je testovací notifikace",
+                      icon: "/pwa-192x192.png",
+                      badge: "/pwa-192x192.png",
+                    });
+                    setPushStatus("✅ Testovací notifikace odeslána lokálně");
+                  } else {
+                    setPushError("Service Worker není dostupný");
+                  }
+                } catch (error) {
+                  setPushError(`❌ Chyba: ${error}`);
+                }
+              }}
+            >
+              Odeslat test
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div
         className="muted"
         style={{ marginTop: 14, textAlign: "center", fontSize: 12 }}
