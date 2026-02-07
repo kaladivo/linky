@@ -1,5 +1,5 @@
 const NOTIFICATION_SERVER_URL = import.meta.env.VITE_NOTIFICATION_SERVER_URL || 'https://linky-notifications.onrender.com';
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BAtEOB4vWdrCLIJndc-VjK9bxRNAyZcH2XmVfpnRuCJE70mNnIlVpfoGuvwJmYNGUmnXYhIoUOMDSkthf6_IyTo';
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BNQ07tP7hxCzKMTPjoKu-uMBvzkpz7t6fwJp03K_A7teSk-UsTdl1_V8M5dmhcP0cLwaWWMZw_67rIST0HzzWss';
 
 type PushSubscriptionData = {
   endpoint: string;
@@ -57,10 +57,14 @@ export async function registerPushNotifications(
 
     if (!subscription) {
       console.log("Vytvářím nový subscription...");
+      console.log("VAPID_KEY:", VAPID_PUBLIC_KEY);
+      console.log("VAPID_KEY length:", VAPID_PUBLIC_KEY.length);
       try {
+        const appServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+        console.log("Converted key length:", appServerKey.length);
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
+          applicationServerKey: appServerKey,
         });
         console.log("Subscription vytvořen");
       } catch (subError) {
