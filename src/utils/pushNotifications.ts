@@ -64,7 +64,7 @@ export async function registerPushNotifications(
         console.log("Converted key length:", appServerKey.length);
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: appServerKey,
+          applicationServerKey: appServerKey.buffer.slice(appServerKey.byteOffset, appServerKey.byteOffset + appServerKey.byteLength) as ArrayBuffer,
         });
         console.log("Subscription vytvořen");
       } catch (subError) {
