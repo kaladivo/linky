@@ -360,12 +360,12 @@ export function AdvancedPage({
                   if (permission === "granted") {
                     setPushStatus("Registruji push notifikace...");
                     const { registerPushNotifications } = await import("../utils/pushNotifications");
-                    const success = await registerPushNotifications(currentNpub, relayUrls.slice(0, 3));
+                    const result = await registerPushNotifications(currentNpub, relayUrls.slice(0, 3));
                     
-                    if (success) {
+                    if (result.success) {
                       setPushStatus("✅ Notifikace úspěšně zaregistrovány");
                     } else {
-                      setPushError("❌ Registrace selhala");
+                      setPushError(`❌ ${result.error || "Registrace selhala"}`);
                     }
                   } else {
                     setPushError(`❌ Oprávnění zamítnuto: ${permission}`);

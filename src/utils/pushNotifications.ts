@@ -34,26 +34,40 @@ export async function requestNotificationPermission(): Promise<boolean> {
 export async function registerPushNotifications(
   npub: string,
   relays: string[]
-): Promise<boolean> {
+): Promise<{ success: boolean; error?: string }> {
   try {
     if (!("serviceWorker" in navigator)) {
-      console.log("Service workers are not supported");
-      return false;
+      const msg = "Service Worker není podporován";
+      console.log(msg);
+      return { success: false, error: msg };
     }
 
     if (!VAPID_PUBLIC_KEY) {
-      console.log("VAPID public key is not configured");
-      return false;
+      const msg = "VAPID public key není nakonfigurován";
+      console.log(msg);
+      return { success: false, error: msg };
     }
 
+    console.log("Získávám Service Worker registration...");
     const registration = await navigator.serviceWorker.ready;
+    console.log("Service Worker ready");
+    
     let subscription = await registration.pushManager.getSubscription();
+    console.log("Existing subscription:", subscription ? "ano" : "ne");
 
     if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
-      });
+      console.log("Vytvářím nový subscription...");
+      try {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
+        });
+        console.log("Subscription vytvořen");
+      } catch (subError) {
+        const msg = `Chyba při vytváření subscription: ${subError}`;
+        console.error(msg);
+        return { success: false, error: msg };
+      }
     }
 
     const subscriptionData: PushSubscriptionData = {
@@ -77,6 +91,9 @@ export async function registerPushNotifications(
       },
     };
 
+    console.log("Odesílám na server:", NOTIFICATION_SERVER_URL);
+    console.log("Data:", { npub, relays: relays.slice(0, 3) });
+    
     const response = await fetch(`${NOTIFICATION_SERVER_URL}/subscribe`, {
       method: "POST",
       headers: {
@@ -89,16 +106,21 @@ export async function registerPushNotifications(
       }),
     });
 
+    console.log("Odpověď serveru:", response.status);
+    
     if (!response.ok) {
-      console.error("Failed to register push notifications:", response.status);
-      return false;
+      const text = await response.text();
+      const msg = `Server vrátil chybu ${response.status}: ${text}`;
+      console.error(msg);
+      return { success: false, error: msg };
     }
 
     localStorage.setItem("linky.push.npub", npub);
-    return true;
+    return { success: true };
   } catch (error) {
+    const msg = `Chyba: ${error}`;
     console.error("Error registering push notifications:", error);
-    return false;
+    return { success: false, error: msg };
   }
 }
 
