@@ -23,7 +23,6 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 
 export async function requestNotificationPermission(): Promise<boolean> {
   if (!("Notification" in window)) {
-    console.log("This browser does not support notifications");
     return false;
   }
 
@@ -37,40 +36,25 @@ export async function registerPushNotifications(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (!("serviceWorker" in navigator)) {
-      const msg = "Service Worker není podporován";
-      console.log(msg);
-      return { success: false, error: msg };
+      return { success: false, error: "Service Worker není podporován" };
     }
 
     if (!VAPID_PUBLIC_KEY) {
-      const msg = "VAPID public key není nakonfigurován";
-      console.log(msg);
-      return { success: false, error: msg };
+      return { success: false, error: "VAPID public key není nakonfigurován" };
     }
 
-    console.log("Získávám Service Worker registration...");
     const registration = await navigator.serviceWorker.ready;
-    console.log("Service Worker ready");
-    
     let subscription = await registration.pushManager.getSubscription();
-    console.log("Existing subscription:", subscription ? "ano" : "ne");
 
     if (!subscription) {
-      console.log("Vytvářím nový subscription...");
-      console.log("VAPID_KEY:", VAPID_PUBLIC_KEY);
-      console.log("VAPID_KEY length:", VAPID_PUBLIC_KEY.length);
       try {
         const appServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-        console.log("Converted key length:", appServerKey.length);
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: appServerKey.buffer.slice(appServerKey.byteOffset, appServerKey.byteOffset + appServerKey.byteLength) as ArrayBuffer,
         });
-        console.log("Subscription vytvořen");
       } catch (subError) {
-        const msg = `Chyba při vytváření subscription: ${subError}`;
-        console.error(msg);
-        return { success: false, error: msg };
+        return { success: false, error: `Chyba při vytváření subscription: ${subError}` };
       }
     }
 
@@ -95,9 +79,6 @@ export async function registerPushNotifications(
       },
     };
 
-    console.log("Odesílám na server:", NOTIFICATION_SERVER_URL);
-    console.log("Data:", { npub, relays: relays.slice(0, 3) });
-    
     const response = await fetch(`${NOTIFICATION_SERVER_URL}/subscribe`, {
       method: "POST",
       headers: {
@@ -110,21 +91,15 @@ export async function registerPushNotifications(
       }),
     });
 
-    console.log("Odpověď serveru:", response.status);
-    
     if (!response.ok) {
       const text = await response.text();
-      const msg = `Server vrátil chybu ${response.status}: ${text}`;
-      console.error(msg);
-      return { success: false, error: msg };
+      return { success: false, error: `Server vrátil chybu ${response.status}: ${text}` };
     }
 
     localStorage.setItem("linky.push.npub", npub);
     return { success: true };
   } catch (error) {
-    const msg = `Chyba: ${error}`;
-    console.error("Error registering push notifications:", error);
-    return { success: false, error: msg };
+    return { success: false, error: `Chyba: ${error}` };
   }
 }
 
@@ -151,8 +126,7 @@ export async function unregisterPushNotifications(): Promise<boolean> {
 
     localStorage.removeItem("linky.push.npub");
     return response.ok;
-  } catch (error) {
-    console.error("Error unregistering push notifications:", error);
+  } catch {
     return false;
   }
 }
@@ -170,12 +144,10 @@ export async function updatePushSubscriptionRelays(relays: string[]): Promise<bo
       return false;
     }
 
-    // Get existing subscription from browser
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
     
     if (!subscription) {
-      console.log("No subscription found, cannot update relays");
       return false;
     }
 
@@ -213,8 +185,7 @@ export async function updatePushSubscriptionRelays(relays: string[]): Promise<bo
     });
 
     return response.ok;
-  } catch (error) {
-    console.error("Error updating push relays:", error);
+  } catch {
     return false;
   }
 }

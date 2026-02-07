@@ -67,13 +67,46 @@ export function AdvancedPage({
   const navigateTo = useNavigation();
   const [pushStatus, setPushStatus] = useState<string>("");
   const [pushError, setPushError] = useState<string>("");
+
+  const handleRegisterNotifications = async () => {
+    setPushStatus("Registruji...");
+    setPushError("");
+    
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushError("Notifikace nejsou podporovány");
+      return;
+    }
+    
+    if (!currentNpub) {
+      setPushError("Nejste přihlášeni");
+      return;
+    }
+    
+    try {
+      const permission = await Notification.requestPermission();
+      
+      if (permission === "granted") {
+        const { registerPushNotifications } = await import("../utils/pushNotifications");
+        const result = await registerPushNotifications(currentNpub, relayUrls.slice(0, 3));
+        
+        if (result.success) {
+          setPushStatus("✅ Zaregistrováno");
+        } else {
+          setPushError(`❌ ${result.error || "Chyba"}`);
+        }
+      } else {
+        setPushError("❌ Zamítnuto");
+      }
+    } catch {
+      setPushError("❌ Chyba");
+    }
+  };
+
   return (
     <section className="panel">
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">
-            🦤
-          </span>
+          <span className="settings-icon" aria-hidden="true">🦤</span>
           <span className="settings-label">{t("nostrKeys")}</span>
         </div>
         <div className="settings-right">
@@ -92,18 +125,12 @@ export function AdvancedPage({
 
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">
-            🌱
-          </span>
+          <span className="settings-icon" aria-hidden="true">🌱</span>
           <span className="settings-label">{t("seed")}</span>
         </div>
         <div className="settings-right">
           <div className="badge-box">
-            <button
-              className="ghost"
-              onClick={copySeed}
-              disabled={!seedMnemonic}
-            >
+            <button className="ghost" onClick={copySeed} disabled={!seedMnemonic}>
               {t("copyCurrent")}
             </button>
           </div>
@@ -112,18 +139,14 @@ export function AdvancedPage({
 
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">
-            🪙
-          </span>
+          <span className="settings-icon" aria-hidden="true">🪙</span>
           <span className="settings-label">{t("tokens")}</span>
         </div>
         <div className="settings-right">
           <div className="badge-box">
             <button
               className="ghost"
-              onClick={() => {
-                void restoreMissingTokens();
-              }}
+              onClick={() => void restoreMissingTokens()}
               disabled={!seedMnemonic || tokensRestoreIsBusy || cashuIsBusy}
             >
               {tokensRestoreIsBusy ? t("restoring") : t("restore")}
@@ -134,9 +157,7 @@ export function AdvancedPage({
 
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">
-            🥜
-          </span>
+          <span className="settings-icon" aria-hidden="true">🥜</span>
           <span className="settings-label">{t("payWithCashu")}</span>
         </div>
         <div className="settings-right">
@@ -154,9 +175,7 @@ export function AdvancedPage({
 
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">
-            ❤️
-          </span>
+          <span className="settings-icon" aria-hidden="true">❤️</span>
           <span className="settings-label">{t("allowPromises")}</span>
         </div>
         <div className="settings-right">
@@ -180,9 +199,7 @@ export function AdvancedPage({
         title={t("nostrRelay")}
       >
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">
-            📡
-          </span>
+          <span className="settings-icon" aria-hidden="true">📡</span>
           <span className="settings-label">{t("nostrRelay")}</span>
         </div>
         <div className="settings-right">
@@ -201,9 +218,7 @@ export function AdvancedPage({
             title={nostrRelayOverallStatus}
             style={{ marginLeft: 10 }}
           />
-          <span className="settings-chevron" aria-hidden="true">
-            &gt;
-          </span>
+          <span className="settings-chevron" aria-hidden="true">&gt;</span>
         </div>
       </button>
 
@@ -215,9 +230,7 @@ export function AdvancedPage({
         title={t("evoluServer")}
       >
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">
-            ☁
-          </span>
+          <span className="settings-icon" aria-hidden="true">☁</span>
           <span className="settings-label">{t("evoluServer")}</span>
         </div>
         <div className="settings-right">
@@ -236,9 +249,7 @@ export function AdvancedPage({
             title={evoluOverallStatus}
             style={{ marginLeft: 10 }}
           />
-          <span className="settings-chevron" aria-hidden="true">
-            &gt;
-          </span>
+          <span className="settings-chevron" aria-hidden="true">&gt;</span>
         </div>
       </button>
 
@@ -250,9 +261,7 @@ export function AdvancedPage({
         title={t("mints")}
       >
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">
-            🏦
-          </span>
+          <span className="settings-icon" aria-hidden="true">🏦</span>
           <span className="settings-label">{t("mints")}</span>
         </div>
         <div className="settings-right">
@@ -261,17 +270,13 @@ export function AdvancedPage({
           ) : (
             <span className="muted">—</span>
           )}
-          <span className="settings-chevron" aria-hidden="true">
-            &gt;
-          </span>
+          <span className="settings-chevron" aria-hidden="true">&gt;</span>
         </div>
       </button>
 
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">
-            📦
-          </span>
+          <span className="settings-icon" aria-hidden="true">📦</span>
           <span className="settings-label">{t("data")}</span>
         </div>
         <div className="settings-right">
@@ -286,13 +291,44 @@ export function AdvancedPage({
         </div>
       </div>
 
+      {/* Push Notifications */}
+      <div className="settings-row" style={{ marginTop: 20, borderTop: "1px solid #eee", paddingTop: 20 }}>
+        <div className="settings-left">
+          <span className="settings-icon" aria-hidden="true">🔔</span>
+          <span className="settings-label">Notifikace</span>
+        </div>
+        <div className="settings-right">
+          <button
+            className="ghost"
+            onClick={handleRegisterNotifications}
+            disabled={!currentNpub}
+          >
+            Povolit
+          </button>
+        </div>
+      </div>
+      
+      {pushStatus && (
+        <div className="settings-row">
+          <div style={{ padding: "8px", fontSize: "12px", color: "#666" }}>
+            {pushStatus}
+          </div>
+        </div>
+      )}
+      
+      {pushError && (
+        <div className="settings-row">
+          <div style={{ padding: "8px", fontSize: "12px", color: "#c00" }}>
+            {pushError}
+          </div>
+        </div>
+      )}
+
       <div className="settings-row">
         <button
           type="button"
           className="btn-wide secondary"
-          onClick={() => {
-            void dedupeContacts();
-          }}
+          onClick={() => void dedupeContacts()}
           disabled={dedupeContactsIsBusy}
         >
           {t("dedupeContacts")}
@@ -321,140 +357,7 @@ export function AdvancedPage({
         </button>
       </div>
 
-      {/* Push Notifications Section */}
-      <div className="settings-row" style={{ marginTop: 20, borderTop: "1px solid #eee", paddingTop: 20 }}>
-        <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">
-            🔔
-          </span>
-          <span className="settings-label">Notifikace</span>
-        </div>
-        <div className="settings-right">
-          <div className="badge-box">
-            <button
-              className="ghost"
-              onClick={async () => {
-                setPushStatus("Kontroluji podporu...");
-                setPushError("");
-                
-                if (!("serviceWorker" in navigator)) {
-                  setPushError("Service Worker není podporován");
-                  return;
-                }
-                
-                if (!("PushManager" in window)) {
-                  setPushError("Push API není podporováno");
-                  return;
-                }
-                
-                if (!currentNpub) {
-                  setPushError("Nejste přihlášeni");
-                  return;
-                }
-                
-                setPushStatus("Žádám o oprávnění...");
-                try {
-                  const permission = await Notification.requestPermission();
-                  setPushStatus(`Oprávnění: ${permission}`);
-                  
-                  if (permission === "granted") {
-                    setPushStatus("Registruji push notifikace...");
-                    const { registerPushNotifications } = await import("../utils/pushNotifications");
-                    const result = await registerPushNotifications(currentNpub, relayUrls.slice(0, 3));
-                    
-                    if (result.success) {
-                      setPushStatus("✅ Notifikace úspěšně zaregistrovány");
-                    } else {
-                      setPushError(`❌ ${result.error || "Registrace selhala"}`);
-                    }
-                  } else {
-                    setPushError(`❌ Oprávnění zamítnuto: ${permission}`);
-                  }
-                } catch (error) {
-                  setPushError(`❌ Chyba: ${error}`);
-                }
-              }}
-              disabled={!currentNpub}
-            >
-              Registrovat notifikace
-            </button>
-          </div>
-        </div>
-      </div>
-      
-      {pushStatus && (
-        <div className="settings-row">
-          <div style={{ 
-            padding: "10px", 
-            background: "#f0f0f0", 
-            borderRadius: "4px",
-            fontSize: "12px",
-            width: "100%"
-          }}>
-            {pushStatus}
-          </div>
-        </div>
-      )}
-      
-      {pushError && (
-        <div className="settings-row">
-          <div style={{ 
-            padding: "10px", 
-            background: "#fee", 
-            color: "#c00",
-            borderRadius: "4px",
-            fontSize: "12px",
-            width: "100%"
-          }}>
-            {pushError}
-          </div>
-        </div>
-      )}
-
-      {/* Test Notification Button */}
-      <div className="settings-row" style={{ marginTop: 10 }}>
-        <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">
-            🧪
-          </span>
-          <span className="settings-label">Test notifikace</span>
-        </div>
-        <div className="settings-right">
-          <div className="badge-box">
-            <button
-              className="ghost"
-              onClick={async () => {
-                setPushStatus("Odesílám testovací notifikaci...");
-                setPushError("");
-                
-                try {
-                  // Zkusíme zobrazit lokální notifikaci
-                  if ("serviceWorker" in navigator) {
-                    const registration = await navigator.serviceWorker.ready;
-                    await registration.showNotification("Test Linky", {
-                      body: "Toto je testovací notifikace",
-                      icon: "/pwa-192x192.png",
-                      badge: "/pwa-192x192.png",
-                    });
-                    setPushStatus("✅ Testovací notifikace odeslána lokálně");
-                  } else {
-                    setPushError("Service Worker není dostupný");
-                  }
-                } catch (error) {
-                  setPushError(`❌ Chyba: ${error}`);
-                }
-              }}
-            >
-              Odeslat test
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div
-        className="muted"
-        style={{ marginTop: 14, textAlign: "center", fontSize: 12 }}
-      >
+      <div className="muted" style={{ marginTop: 14, textAlign: "center", fontSize: 12 }}>
         {t("appVersionLabel")}: v{__APP_VERSION__}
       </div>
     </section>
