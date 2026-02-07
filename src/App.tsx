@@ -12523,6 +12523,7 @@ const App = () => {
         >
           {route.kind === "advanced" && (
             <AdvancedPage
+              currentNpub={currentNpub}
               currentNsec={currentNsec}
               seedMnemonic={seedMnemonic}
               tokensRestoreIsBusy={tokensRestoreIsBusy}

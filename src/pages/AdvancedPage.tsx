@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigation } from "../hooks/useRouting";
 
 interface AdvancedPageProps {
@@ -8,6 +8,7 @@ interface AdvancedPageProps {
   connectedRelayCount: number;
   copyNostrKeys: () => void;
   copySeed: () => void;
+  currentNpub: string | null;
   currentNsec: string | null;
   dedupeContacts: () => Promise<void>;
   dedupeContactsIsBusy: boolean;
@@ -39,6 +40,7 @@ export function AdvancedPage({
   connectedRelayCount,
   copyNostrKeys,
   copySeed,
+  currentNpub,
   currentNsec,
   dedupeContacts,
   dedupeContactsIsBusy,
@@ -63,6 +65,8 @@ export function AdvancedPage({
   tokensRestoreIsBusy,
 }: AdvancedPageProps): React.ReactElement {
   const navigateTo = useNavigation();
+  const [pushStatus, setPushStatus] = useState<string>("");
+  const [pushError, setPushError] = useState<string>("");
   return (
     <section className="panel">
       <div className="settings-row">
@@ -316,6 +320,96 @@ export function AdvancedPage({
           {t("logout")}
         </button>
       </div>
+
+      {/* Push Notifications Section */}
+      <div className="settings-row" style={{ marginTop: 20, borderTop: "1px solid #eee", paddingTop: 20 }}>
+        <div className="settings-left">
+          <span className="settings-icon" aria-hidden="true">
+            🔔
+          </span>
+          <span className="settings-label">Notifikace</span>
+        </div>
+        <div className="settings-right">
+          <div className="badge-box">
+            <button
+              className="ghost"
+              onClick={async () => {
+                setPushStatus("Kontroluji podporu...");
+                setPushError("");
+                
+                if (!("serviceWorker" in navigator)) {
+                  setPushError("Service Worker není podporován");
+                  return;
+                }
+                
+                if (!("PushManager" in window)) {
+                  setPushError("Push API není podporováno");
+                  return;
+                }
+                
+                if (!currentNpub) {
+                  setPushError("Nejste přihlášeni");
+                  return;
+                }
+                
+                setPushStatus("Žádám o oprávnění...");
+                try {
+                  const permission = await Notification.requestPermission();
+                  setPushStatus(`Oprávnění: ${permission}`);
+                  
+                  if (permission === "granted") {
+                    setPushStatus("Registruji push notifikace...");
+                    const { registerPushNotifications } = await import("../utils/pushNotifications");
+                    const success = await registerPushNotifications(currentNpub, relayUrls.slice(0, 3));
+                    
+                    if (success) {
+                      setPushStatus("✅ Notifikace úspěšně zaregistrovány");
+                    } else {
+                      setPushError("❌ Registrace selhala");
+                    }
+                  } else {
+                    setPushError(`❌ Oprávnění zamítnuto: ${permission}`);
+                  }
+                } catch (error) {
+                  setPushError(`❌ Chyba: ${error}`);
+                }
+              }}
+              disabled={!currentNpub}
+            >
+              Registrovat notifikace
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      {pushStatus && (
+        <div className="settings-row">
+          <div style={{ 
+            padding: "10px", 
+            background: "#f0f0f0", 
+            borderRadius: "4px",
+            fontSize: "12px",
+            width: "100%"
+          }}>
+            {pushStatus}
+          </div>
+        </div>
+      )}
+      
+      {pushError && (
+        <div className="settings-row">
+          <div style={{ 
+            padding: "10px", 
+            background: "#fee", 
+            color: "#c00",
+            borderRadius: "4px",
+            fontSize: "12px",
+            width: "100%"
+          }}>
+            {pushError}
+          </div>
+        </div>
+      )}
 
       <div
         className="muted"
