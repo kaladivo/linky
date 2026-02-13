@@ -16,3 +16,17 @@ export const isHttpUrl = (value: unknown): value is string => {
     return false;
   }
 };
+
+export const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object") return null;
+  return value as Record<string, unknown>;
+};
+
+export const makeLocalId = (): string => {
+  try {
+    return globalThis.crypto?.randomUUID?.() ?? "";
+  } catch {
+    // ignore
+  }
+  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+};

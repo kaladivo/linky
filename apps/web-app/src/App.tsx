@@ -98,29 +98,47 @@ import {
   CONTACTS_ONBOARDING_HAS_BACKUPED_KEYS_STORAGE_KEY,
   CONTACTS_ONBOARDING_HAS_PAID_STORAGE_KEY,
   FEEDBACK_CONTACT_NPUB,
+  LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY,
+  LOCAL_MINT_INFO_STORAGE_KEY_PREFIX,
+  LOCAL_NOSTR_MESSAGES_STORAGE_KEY_PREFIX,
+  LOCAL_PAYMENT_EVENTS_STORAGE_KEY_PREFIX,
+  LOCAL_PENDING_PAYMENTS_STORAGE_KEY_PREFIX,
   NO_GROUP_FILTER,
   NOSTR_NSEC_STORAGE_KEY,
   PAY_WITH_CASHU_STORAGE_KEY,
+  PROMISE_EXPIRES_SEC,
+  PROMISE_TOTAL_CAP_SAT,
   UNIT_TOGGLE_STORAGE_KEY,
 } from "./utils/constants";
-import { formatInteger, getBestNostrName } from "./utils/formatting";
+import { getCredoRemainingAmount } from "./utils/credo";
 import {
+  formatInteger,
+  getBestNostrName,
+  previewTokenText,
+} from "./utils/formatting";
+import { createSquareAvatarDataUrl } from "./utils/image";
+import {
+  CASHU_DEFAULT_MINT_OVERRIDE_STORAGE_KEY,
+  CASHU_SEEN_MINTS_STORAGE_KEY,
+  extractPpk,
+  getMintDuckDuckGoIcon,
+  getMintIconOverride,
+  getMintOriginAndHost,
+  MAIN_MINT_URL,
+  normalizeMintUrl,
+  PRESET_MINTS,
+} from "./utils/mint";
+import {
+  getInitialAllowPromisesEnabled,
+  getInitialNostrNsec,
+  getInitialPayWithCashuEnabled,
+  getInitialUseBitcoinSymbol,
   safeLocalStorageGet,
   safeLocalStorageGetJson,
   safeLocalStorageSet,
   safeLocalStorageSetJson,
 } from "./utils/storage";
-
-const LAST_ACCEPTED_CASHU_TOKEN_STORAGE_KEY = "linky.lastAcceptedCashuToken.v1";
-
-const PROMISE_TOTAL_CAP_SAT = 100_000;
-const PROMISE_EXPIRES_SEC = 30 * 24 * 60 * 60;
-
-const LOCAL_PAYMENT_EVENTS_STORAGE_KEY_PREFIX = "linky.local.paymentEvents.v1";
-const LOCAL_NOSTR_MESSAGES_STORAGE_KEY_PREFIX = "linky.local.nostrMessages.v1";
-const LOCAL_MINT_INFO_STORAGE_KEY_PREFIX = "linky.local.mintInfo.v1";
-const LOCAL_PENDING_PAYMENTS_STORAGE_KEY_PREFIX =
-  "linky.local.pendingPayments.v1";
+import { asRecord, makeLocalId } from "./utils/validation";
 
 const inMemoryNostrPictureCache = new Map<string, string | null>();
 const inMemoryMintIconCache = new Map<string, string | null>();
@@ -244,65 +262,11 @@ type ContactFormState = {
   npub: string;
 };
 
-const asRecord = (value: unknown): Record<string, unknown> | null => {
-  if (!value || typeof value !== "object") return null;
-  return value as Record<string, unknown>;
-};
-
-const previewTokenText = (token: string | null): string | null => {
-  if (!token) return null;
-  const trimmed = String(token).trim();
-  if (!trimmed) return null;
-  return trimmed.length > 16 ? `${trimmed.slice(0, 16)}…` : trimmed;
-};
-
 const logPayStep = (step: string, data?: Record<string, unknown>): void => {
   try {
     console.log("[linky][pay]", step, data ?? {});
   } catch {
     // ignore logging errors
-  }
-};
-
-const getInitialUseBitcoinSymbol = (): boolean => {
-  try {
-    return localStorage.getItem(UNIT_TOGGLE_STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
-
-const getInitialPayWithCashuEnabled = (): boolean => {
-  try {
-    const raw = localStorage.getItem(PAY_WITH_CASHU_STORAGE_KEY);
-    const v = String(raw ?? "").trim();
-    // Default: enabled.
-    if (!v) return true;
-    return v === "1";
-  } catch {
-    return true;
-  }
-};
-
-const getInitialAllowPromisesEnabled = (): boolean => {
-  try {
-    const raw = localStorage.getItem(ALLOW_PROMISES_STORAGE_KEY);
-    const v = String(raw ?? "").trim();
-    // Default: disabled.
-    if (!v) return false;
-    return v === "1";
-  } catch {
-    return false;
-  }
-};
-
-const getInitialNostrNsec = (): string | null => {
-  try {
-    const raw = localStorage.getItem(NOSTR_NSEC_STORAGE_KEY);
-    const v = String(raw ?? "").trim();
-    return v ? v : null;
-  } catch {
-    return null;
   }
 };
 
@@ -355,46 +319,9 @@ const extractCashuTokenMeta = (row: {
   return { tokenText, mint, unit, amount };
 };
 
-// Helper removed: unused decodeCashuTokenSync
-
 const App = () => {
   const { insert, update, upsert } = useEvolu();
 
-  const normalizeMintUrl = React.useCallback((value: unknown): string => {
-    const raw = String(value ?? "").trim();
-    if (!raw) return "";
-    const stripped = raw.replace(/\/+$/, "");
-
-    try {
-      const u = new URL(stripped);
-      const host = u.host.toLowerCase();
-      const pathname = u.pathname.replace(/\/+$/, "");
-
-      // Canonicalize our main mint: always use the /Bitcoin variant.
-      if (host === "mint.minibits.cash") {
-        return "https://mint.minibits.cash/Bitcoin";
-      }
-
-      // Keep path for other mints (some are hosted under a path), but drop
-      // search/hash for stable identity.
-      return `${u.origin}${pathname}`.replace(/\/+$/, "");
-    } catch {
-      return stripped;
-    }
-  }, []);
-
-  const MAIN_MINT_URL = "https://mint.minibits.cash/Bitcoin";
-
-  const PRESET_MINTS = [
-    "https://cashu.cz",
-    "https://testnut.cashu.space",
-    "https://mint.minibits.cash/Bitcoin",
-    "https://kashu.me",
-    "https://cashu.21m.lol",
-  ];
-
-  const CASHU_DEFAULT_MINT_OVERRIDE_STORAGE_KEY =
-    "linky.cashu.defaultMintOverride.v1";
   const hasMintOverrideRef = React.useRef(false);
 
   const appOwnerIdRef = React.useRef<Evolu.OwnerId | null>(null);
@@ -403,8 +330,6 @@ const App = () => {
     const ownerId = appOwnerIdRef.current;
     return `${prefix}.${String(ownerId ?? "anon")}`;
   }, []);
-
-  const CASHU_SEEN_MINTS_STORAGE_KEY = "linky.cashu.seenMints.v1";
 
   const readSeenMintsFromStorage = React.useCallback((): string[] => {
     try {
@@ -440,15 +365,6 @@ const App = () => {
     },
     [makeLocalStorageKey, readSeenMintsFromStorage],
   );
-
-  const makeLocalId = (): string => {
-    try {
-      return globalThis.crypto?.randomUUID?.() ?? "";
-    } catch {
-      // ignore
-    }
-    return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  };
 
   const route = useRouting();
   const { toasts, pushToast } = useToasts();
@@ -883,26 +799,6 @@ const App = () => {
     requestAnimationFrame(() => tryScroll(0));
   }, []);
 
-  const getMintOriginAndHost = React.useCallback(
-    (mint: unknown): { origin: string | null; host: string | null } => {
-      const raw = String(mint ?? "").trim();
-      if (!raw) return { origin: null, host: null };
-      try {
-        const u = new URL(raw);
-        return { origin: u.origin, host: u.host };
-      } catch {
-        const candidate = raw.match(/^https?:\/\//i) ? raw : `https://${raw}`;
-        try {
-          const u = new URL(candidate);
-          return { origin: u.origin, host: u.host };
-        } catch {
-          return { origin: null, host: raw };
-        }
-      }
-    },
-    [],
-  );
-
   const [myProfileName, setMyProfileName] = useState<string | null>(null);
   const [myProfilePicture, setMyProfilePicture] = useState<string | null>(null);
   const [myProfileQr, setMyProfileQr] = useState<string | null>(null);
@@ -1319,15 +1215,7 @@ const App = () => {
         }
       }
     };
-  }, [
-    currentNpub,
-    defaultMintUrl,
-    myProfileName,
-    route.kind,
-    t,
-    topupAmount,
-    normalizeMintUrl,
-  ]);
+  }, [currentNpub, defaultMintUrl, myProfileName, route.kind, t, topupAmount]);
 
   React.useEffect(() => {
     if (route.kind !== "topupInvoice") return;
@@ -2234,16 +2122,6 @@ const App = () => {
     [],
   );
 
-  const getCredoRemainingAmount = React.useCallback((row: unknown): number => {
-    const r = row as {
-      amount?: unknown;
-      settledAmount?: unknown;
-    };
-    const amount = Number(r.amount ?? 0) || 0;
-    const settled = Number(r.settledAmount ?? 0) || 0;
-    return Math.max(0, amount - settled);
-  }, []);
-
   const isCredoPromiseKnown = React.useCallback(
     (promiseId: string): boolean => {
       const id = String(promiseId ?? "").trim();
@@ -2680,7 +2558,7 @@ const App = () => {
         return bSeen - aSeen;
       })
       .map(([canonicalUrl, row]) => ({ canonicalUrl, row }));
-  }, [defaultMintUrl, mintInfo, normalizeMintUrl]);
+  }, [defaultMintUrl, mintInfo]);
 
   const mintInfoByUrl = useMemo(() => {
     const map = new Map<string, (typeof mintInfoAll)[number]>();
@@ -2805,7 +2683,7 @@ const App = () => {
         return next;
       });
     },
-    [isMintDeleted, makeLocalId, mintInfoByUrl, normalizeMintUrl],
+    [isMintDeleted, mintInfoByUrl],
   );
 
   const encounteredMintUrls = useMemo(() => {
@@ -2820,7 +2698,7 @@ const App = () => {
       if (normalized) set.add(normalized);
     }
     return Array.from(set.values()).sort();
-  }, [cashuTokensAll, normalizeMintUrl]);
+  }, [cashuTokensAll]);
 
   const [mintRuntimeByUrl, setMintRuntimeByUrl] = useState<
     Record<string, { lastCheckedAtSec: number; latencyMs: number | null }>
@@ -2838,7 +2716,7 @@ const App = () => {
       if (!key) return null;
       return mintRuntimeByUrl[key] ?? null;
     },
-    [mintRuntimeByUrl, normalizeMintUrl],
+    [mintRuntimeByUrl],
   );
 
   const recordMintRuntime = React.useCallback(
@@ -2850,36 +2728,8 @@ const App = () => {
       if (!key) return;
       setMintRuntimeByUrl((prev) => ({ ...prev, [key]: patch }));
     },
-    [normalizeMintUrl],
+    [],
   );
-
-  const extractPpk = (value: unknown): number | null => {
-    const seen = new Set<unknown>();
-    const queue: Array<{ v: unknown; depth: number }> = [
-      { v: value, depth: 0 },
-    ];
-    while (queue.length) {
-      const item = queue.shift();
-      if (!item) break;
-      const { v, depth } = item;
-      if (!v || typeof v !== "object") continue;
-      if (seen.has(v)) continue;
-      seen.add(v);
-
-      const rec = v as Record<string, unknown>;
-      for (const [k, inner] of Object.entries(rec)) {
-        if (k.toLowerCase() === "ppk") {
-          if (typeof inner === "number" && Number.isFinite(inner)) return inner;
-          const num = Number(String(inner ?? "").trim());
-          if (Number.isFinite(num)) return num;
-        }
-        if (depth < 3 && inner && typeof inner === "object") {
-          queue.push({ v: inner, depth: depth + 1 });
-        }
-      }
-    }
-    return null;
-  };
 
   const refreshMintInfo = React.useCallback(
     async (mintUrl: string) => {
@@ -3061,10 +2911,8 @@ const App = () => {
       }
     },
     [
-      extractPpk,
       isMintDeleted,
       mintInfoByUrl,
-      normalizeMintUrl,
       recordMintRuntime,
       touchMintInfo,
       setMintInfoAll,
@@ -3100,7 +2948,6 @@ const App = () => {
     getMintRuntime,
     isMintDeleted,
     mintInfoByUrl,
-    normalizeMintUrl,
     refreshMintInfo,
     touchMintInfo,
   ]);
@@ -3249,7 +3096,7 @@ const App = () => {
       `${LOCAL_MINT_INFO_STORAGE_KEY_PREFIX}.${String(ownerId)}`,
       next,
     );
-  }, [mintInfoAll, normalizeMintUrl]);
+  }, [mintInfoAll]);
 
   // Payment history and tutorial state are local-only (not stored in Evolu).
 
@@ -3694,7 +3541,7 @@ const App = () => {
       if (expiresAt && nowSec >= expiresAt) return false;
       return getCredoRemainingAmount(row) > 0;
     });
-  }, [credoTokens, getCredoRemainingAmount]);
+  }, [credoTokens]);
 
   const totalCredoOutstandingOut = useMemo(() => {
     return credoTokensActive.reduce((sum, row) => {
@@ -3702,7 +3549,7 @@ const App = () => {
       if (dir !== "out") return sum;
       return sum + getCredoRemainingAmount(row);
     }, 0);
-  }, [credoTokensActive, getCredoRemainingAmount]);
+  }, [credoTokensActive]);
 
   const totalCredoOutstandingIn = useMemo(() => {
     return credoTokensActive.reduce((sum, row) => {
@@ -3710,7 +3557,7 @@ const App = () => {
       if (dir !== "in") return sum;
       return sum + getCredoRemainingAmount(row);
     }, 0);
-  }, [credoTokensActive, getCredoRemainingAmount]);
+  }, [credoTokensActive]);
 
   const credoOweTokens = useMemo(
     () =>
@@ -3745,7 +3592,7 @@ const App = () => {
         return sum + getCredoRemainingAmount(row);
       }, 0);
     },
-    [credoTokensActive, getCredoRemainingAmount],
+    [credoTokensActive],
   );
 
   const getCredoNetForContact = React.useCallback(
@@ -3769,7 +3616,7 @@ const App = () => {
       }
       return promised - owe;
     },
-    [credoTokensActive, getCredoRemainingAmount],
+    [credoTokensActive],
   );
 
   React.useEffect(() => {
@@ -3873,7 +3720,7 @@ const App = () => {
     const draft = String(defaultMintUrlDraft ?? "").trim();
     if (draft) return;
     setDefaultMintUrlDraft(normalizeMintUrl(defaultMintUrl));
-  }, [defaultMintUrl, defaultMintUrlDraft, normalizeMintUrl]);
+  }, [defaultMintUrl, defaultMintUrlDraft]);
 
   const makeNip98AuthHeader = React.useCallback(
     async (url: string, method: string, payload?: Record<string, unknown>) => {
@@ -3919,7 +3766,7 @@ const App = () => {
         throw new Error("npub.cash mint update failed");
       }
     },
-    [currentNpub, currentNsec, makeNip98AuthHeader, normalizeMintUrl],
+    [currentNpub, currentNsec, makeNip98AuthHeader],
   );
 
   const applyDefaultMintSelection = React.useCallback(
@@ -3957,14 +3804,7 @@ const App = () => {
       npubCashMintSyncRef.current = cleaned;
       setStatus(t("mintSaved"));
     },
-    [
-      makeLocalStorageKey,
-      normalizeMintUrl,
-      pushToast,
-      setDefaultMintUrl,
-      t,
-      updateNpubCashMint,
-    ],
+    [makeLocalStorageKey, pushToast, setDefaultMintUrl, t, updateNpubCashMint],
   );
 
   React.useEffect(() => {
@@ -3978,7 +3818,7 @@ const App = () => {
       npubCashMintSyncRef.current = null;
       pushToast(t("mintUpdateFailed"));
     });
-  }, [defaultMintUrl, normalizeMintUrl, pushToast, t, updateNpubCashMint]);
+  }, [defaultMintUrl, pushToast, t, updateNpubCashMint]);
 
   const acceptAndStoreCashuToken = React.useCallback(
     async (tokenText: string) => {
@@ -5181,7 +5021,7 @@ const App = () => {
           return b.sum - a.sum;
         });
     },
-    [mintInfoByUrl, normalizeMintUrl],
+    [mintInfoByUrl],
   );
 
   const PUBLISH_RETRY_DELAY_MS = 1500;
@@ -5887,11 +5727,9 @@ const App = () => {
       enqueuePendingPayment,
       formatInteger,
       getCredoAvailableForContact,
-      getCredoRemainingAmount,
       insert,
       insertCredoPromise,
       logPaymentEvent,
-      normalizeMintUrl,
       pushToast,
       showPaidOverlay,
       t,
@@ -8885,7 +8723,7 @@ const App = () => {
         setCashuIsBusy(false);
       }
     },
-    [cashuIsBusy, cashuTokensAll, normalizeMintUrl, pushToast, t, update],
+    [cashuIsBusy, cashuTokensAll, pushToast, t, update],
   );
 
   const checkAllCashuTokensAndDeleteInvalid = React.useCallback(async () => {
@@ -8921,7 +8759,6 @@ const App = () => {
     cashuTokensAll,
     checkAndRefreshCashuToken,
     handleDeleteCashuToken,
-    normalizeMintUrl,
   ]);
 
   const requestDeleteCashuToken = (id: CashuTokenId) => {
@@ -10207,7 +10044,6 @@ const App = () => {
     isMintDeleted,
     logPaymentEvent,
     mintInfoDeduped,
-    normalizeMintUrl,
     pushToast,
     resolveOwnerIdForWrite,
     t,
@@ -11051,51 +10887,6 @@ const App = () => {
     }
   };
 
-  const createSquareAvatarDataUrl = React.useCallback(
-    async (file: File, sizePx: number): Promise<string> => {
-      if (!file.type.startsWith("image/")) {
-        throw new Error("Unsupported file");
-      }
-
-      const objectUrl = URL.createObjectURL(file);
-      try {
-        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-          const el = new Image();
-          el.onload = () => resolve(el);
-          el.onerror = () => reject(new Error("Image load failed"));
-          el.src = objectUrl;
-        });
-
-        const sw = img.naturalWidth || img.width;
-        const sh = img.naturalHeight || img.height;
-        if (!sw || !sh) throw new Error("Invalid image");
-
-        const side = Math.min(sw, sh);
-        const sx = Math.floor((sw - side) / 2);
-        const sy = Math.floor((sh - side) / 2);
-
-        const canvas = document.createElement("canvas");
-        canvas.width = sizePx;
-        canvas.height = sizePx;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("Canvas not available");
-
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, sizePx, sizePx);
-
-        return canvas.toDataURL("image/jpeg", 0.85);
-      } finally {
-        try {
-          URL.revokeObjectURL(objectUrl);
-        } catch {
-          // ignore
-        }
-      }
-    },
-    [],
-  );
-
   const onPickProfilePhoto = React.useCallback(async () => {
     profilePhotoInputRef.current?.click();
   }, []);
@@ -11112,7 +10903,7 @@ const App = () => {
         setStatus(`${t("errorPrefix")}: ${String(err ?? "unknown")}`);
       }
     },
-    [createSquareAvatarDataUrl, setStatus, t],
+    [setStatus, t],
   );
 
   const saveNewRelay = () => {
@@ -11197,31 +10988,8 @@ const App = () => {
         return null;
       }
     },
-    [getMintOriginAndHost, mintInfoByUrl, normalizeMintUrl],
+    [mintInfoByUrl],
   );
-
-  const getMintDuckDuckGoIcon = React.useCallback((host: string | null) => {
-    if (!host) return null;
-    return `https://icons.duckduckgo.com/ip3/${host}.ico`;
-  }, []);
-
-  const getMintIconOverride = React.useCallback((host: string | null) => {
-    if (!host) return null;
-    const key = host.toLowerCase();
-    if (key === "mint.minibits.cash") {
-      return "https://play-lh.googleusercontent.com/raLGxOOzbxOsEx25gr-rISzJOdbgVPG11JHuI2yV57TxqPD_fYBof9TRh-vUE-XyhgmN=w40-h480-rw";
-    }
-    if (key === "linky.cashu.cz") {
-      return "https://linky-weld.vercel.app/icon.svg";
-    }
-    if (key === "kashu.me") {
-      return "https://image.nostr.build/ca72a338d053ffa0f283a1399ebc772bef43814e4998c1fff8aa143b1ea6f29e.jpg";
-    }
-    if (key === "cashu.21m.lol") {
-      return "https://em-content.zobj.net/source/apple/391/zany-face_1f92a.png";
-    }
-    return null;
-  }, []);
 
   const getMintIconUrl = React.useCallback(
     (
@@ -11261,13 +11029,7 @@ const App = () => {
         failed: false,
       };
     },
-    [
-      getMintIconOverride,
-      getMintDuckDuckGoIcon,
-      getMintInfoIconUrl,
-      getMintOriginAndHost,
-      mintIconUrlByMint,
-    ],
+    [getMintInfoIconUrl, mintIconUrlByMint],
   );
 
   const requestDeleteSelectedRelay = () => {

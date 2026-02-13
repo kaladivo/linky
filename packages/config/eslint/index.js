@@ -19,6 +19,9 @@ export const webAppEslintConfig = defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    // rules: {
+    //   "react-hooks/exhaustive-deps": "error",
+    // },
   },
 ]);
 

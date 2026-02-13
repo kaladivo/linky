@@ -106,6 +106,13 @@ export const formatContactMessageTimestamp = (
   }).format(d);
 };
 
+export const previewTokenText = (token: string | null): string | null => {
+  if (!token) return null;
+  const trimmed = String(token).trim();
+  if (!trimmed) return null;
+  return trimmed.length > 16 ? `${trimmed.slice(0, 16)}…` : trimmed;
+};
+
 export const formatChatDayLabel = (
   ms: number,
   lang: string | undefined,
