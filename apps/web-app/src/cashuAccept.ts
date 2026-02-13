@@ -94,7 +94,12 @@ export const acceptCashuToken = async (
             used: Array.isArray(proofs) ? proofs.length : 0,
           });
 
-          return proofs as any;
+          return proofs as Array<{
+            amount: number;
+            secret: string;
+            C: string;
+            id: string;
+          }>;
         },
       )
     : wallet.receive(decoded))) as Array<{

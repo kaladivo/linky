@@ -27,7 +27,7 @@ registerRoute(
         maxAgeSeconds: 60 * 60 * 24 * 30,
       }),
     ],
-  })
+  }),
 );
 
 // Navigation route
@@ -40,8 +40,8 @@ registerRoute(
     },
     {
       allowlist: [/^\/$/],
-    }
-  )
+    },
+  ),
 );
 
 // Push event handler
@@ -51,7 +51,7 @@ self.addEventListener("push", (event) => {
   try {
     const data = event.data.json();
     const contactNpub = data.data?.contactNpub;
-    
+
     const options: NotificationOptions = {
       body: data.body || "New message",
       icon: "/pwa-192x192.png",
@@ -69,7 +69,7 @@ self.addEventListener("push", (event) => {
     }
 
     event.waitUntil(
-      self.registration.showNotification(data.title || "Linky", options)
+      self.registration.showNotification(data.title || "Linky", options),
     );
   } catch {
     // Ignore errors
@@ -106,7 +106,7 @@ self.addEventListener("notificationclick", (event) => {
         if (self.clients.openWindow) {
           return self.clients.openWindow(url);
         }
-      })
+      }),
   );
 });
 

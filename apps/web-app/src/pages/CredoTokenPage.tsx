@@ -1,4 +1,4 @@
-import type { FC } from "react";
+import { type FC, useState } from "react";
 import type { CredoTokenId } from "../evolu";
 import {
   formatDurationShort,
@@ -22,9 +22,9 @@ interface Contact {
 
 interface CredoTokenPageProps {
   contacts: readonly Contact[];
-  credoTokensAll: readonly any[];
+  credoTokensAll: readonly Record<string, unknown>[];
   displayUnit: string;
-  getCredoRemainingAmount: (row: any) => number;
+  getCredoRemainingAmount: (row: Record<string, unknown>) => number;
   routeId: CredoTokenId;
   t: (key: string) => string;
 }
@@ -37,6 +37,9 @@ export const CredoTokenPage: FC<CredoTokenPageProps> = ({
   routeId,
   t,
 }) => {
+  // Must call all hooks before any conditional returns
+  const [nowSec] = useState(() => Math.floor(Date.now() / 1000));
+
   const row = credoTokensAll.find(
     (tkn) =>
       String(tkn?.id ?? "") === String(routeId as unknown as string) &&
@@ -52,10 +55,11 @@ export const CredoTokenPage: FC<CredoTokenPageProps> = ({
   }
 
   const amount = getCredoRemainingAmount(row);
-  const direction = String((row as CredoTokenRow)?.direction ?? "");
+  const typedRow = row as unknown as CredoTokenRow;
+  const direction = String(typedRow?.direction ?? "");
   const isOwe = direction === "out";
-  const issuer = String((row as CredoTokenRow)?.issuer ?? "").trim();
-  const recipient = String((row as CredoTokenRow)?.recipient ?? "").trim();
+  const issuer = String(typedRow?.issuer ?? "").trim();
+  const recipient = String(typedRow?.recipient ?? "").trim();
   const counterpartyNpub = isOwe ? recipient : issuer;
   const counterparty = counterpartyNpub
     ? contacts.find((c) => String(c.npub ?? "").trim() === counterpartyNpub)
@@ -65,8 +69,7 @@ export const CredoTokenPage: FC<CredoTokenPageProps> = ({
     : counterpartyNpub
       ? formatShortNpub(counterpartyNpub)
       : null;
-  const expiresAtSec = Number((row as CredoTokenRow)?.expiresAtSec ?? 0) || 0;
-  const nowSec = Math.floor(Date.now() / 1000);
+  const expiresAtSec = Number(typedRow?.expiresAtSec ?? 0) || 0;
   const remainingSec = expiresAtSec - nowSec;
   const expiryLabel =
     remainingSec <= 0

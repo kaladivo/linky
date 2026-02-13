@@ -11,12 +11,12 @@ interface CashuTokenNewPageProps {
   cashuDraft: string;
   cashuDraftRef: React.RefObject<HTMLTextAreaElement | null>;
   cashuIsBusy: boolean;
-  cashuTokens: readonly any[];
+  cashuTokens: readonly Record<string, unknown>[];
   checkAllCashuTokensAndDeleteInvalid: () => Promise<void>;
-  credoOweTokens: any[];
-  credoPromisedTokens: any[];
+  credoOweTokens: Record<string, unknown>[];
+  credoPromisedTokens: Record<string, unknown>[];
   displayUnit: string;
-  getCredoRemainingAmount: (row: any) => number;
+  getCredoRemainingAmount: (row: Record<string, unknown>) => number;
   getMintIconUrl: (mint: unknown) => {
     origin: string | null;
     url: string | null;

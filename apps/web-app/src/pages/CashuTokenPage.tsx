@@ -4,7 +4,7 @@ import type { CashuTokenId } from "../evolu";
 
 interface CashuTokenPageProps {
   cashuIsBusy: boolean;
-  cashuTokensAll: readonly any[];
+  cashuTokensAll: readonly Record<string, unknown>[];
   checkAndRefreshCashuToken: (
     id: CashuTokenId,
   ) => Promise<"ok" | "invalid" | "transient" | "skipped">;

@@ -1,3 +1,4 @@
+import type { Proof as CashuProof } from "@cashu/cashu-ts";
 import * as Evolu from "@evolu/common";
 import { useOwner, useQuery } from "@evolu/react";
 import { entropyToMnemonic } from "@scure/bip39";
@@ -1221,7 +1222,7 @@ const App = () => {
           let mintQuote: unknown = null;
           try {
             mintQuote = rawText ? JSON.parse(rawText) : null;
-          } catch (parseError) {
+          } catch {
             throw new Error(
               `Mint quote parse failed (${quoteRes.status}): ${rawText.slice(
                 0,
@@ -2109,7 +2110,15 @@ const App = () => {
   const cashuTokensWithMeta = useMemo(
     () =>
       cashuTokens.map((row) => {
-        const meta = extractCashuTokenMeta(row as any);
+        const meta = extractCashuTokenMeta(
+          row as {
+            token?: unknown;
+            rawToken?: unknown;
+            mint?: unknown;
+            unit?: unknown;
+            amount?: unknown;
+          },
+        );
         return {
           ...row,
           mint: meta.mint ?? null,
@@ -8588,7 +8597,16 @@ const App = () => {
           const candidateText = String(c.token ?? c.rawToken ?? "").trim();
           if (!candidateText) continue;
 
-          let candidateDecoded: any = null;
+          let candidateDecoded: {
+            mint?: string;
+            unit?: string;
+            proofs?: Array<{
+              amount?: unknown;
+              secret?: unknown;
+              C?: unknown;
+              id?: unknown;
+            }>;
+          } | null = null;
           try {
             candidateDecoded = getDecodedToken(candidateText);
           } catch {
@@ -9269,7 +9287,7 @@ const App = () => {
         key={String(contact.id ?? "")}
         contact={contact}
         avatarUrl={avatarUrl}
-        lastMessage={last ?? undefined}
+        lastMessage={last ?? null}
         hasAttention={hasAttention}
         promiseNet={promiseNet}
         displayUnit={displayUnit}
@@ -9367,7 +9385,8 @@ const App = () => {
     if (editingId) {
       // Build update payload with only changed fields to minimize history entries
       const initial = contactEditInitialRef.current;
-      const changedFields: any = { id: editingId };
+      const changedFields: { id: typeof editingId } & Record<string, unknown> =
+        { id: editingId };
 
       if (initial?.id === editingId) {
         const nextName = payload.name ? String(payload.name) : null;
@@ -9862,11 +9881,13 @@ const App = () => {
             const mintUrl = String(decoded?.mint ?? r.mint ?? "").trim();
             if (!mintUrl) continue;
             const unit = String(decoded?.unit ?? r.unit ?? "").trim() || "sat";
-            const proofs = Array.isArray(decoded?.proofs) ? decoded.proofs : [];
+            const proofs: CashuProof[] = Array.isArray(decoded?.proofs)
+              ? decoded.proofs
+              : [];
 
             const set = ensureSet(mintUrl, unit);
             for (const p of proofs) {
-              const secret = String((p as any)?.secret ?? "").trim();
+              const secret = String(p?.secret ?? "").trim();
               if (secret) set.add(secret);
             }
           } catch {
@@ -9976,9 +9997,13 @@ const App = () => {
 
             const keysets = await wallet.getKeySets();
             for (const ks of keysets) {
-              const ksUnit = String((ks as any)?.unit ?? "").trim();
+              const ksUnit = String(
+                (ks as Record<string, unknown>)?.unit ?? "",
+              ).trim();
               if (ksUnit && ksUnit !== wallet.unit) continue;
-              const keysetId = String((ks as any)?.id ?? "").trim();
+              const keysetId = String(
+                (ks as Record<string, unknown>)?.id ?? "",
+              ).trim();
               if (!keysetId) continue;
 
               const savedCursor = getCashuRestoreCursor({
@@ -10007,12 +10032,12 @@ const App = () => {
                 await wallet.batchRestore(300, 100, counterStart, keysetId);
 
               let restored: {
-                proofs: any[];
+                proofs: CashuProof[];
                 lastCounterWithSignature?: number;
               };
               try {
                 restored = await batchRestore(start);
-              } catch (e) {
+              } catch {
                 continue;
               }
 
@@ -10034,23 +10059,23 @@ const App = () => {
 
               const knownSecrets = ensureSet(mintUrl, wallet.unit);
 
-              const filterFresh = (proofs: any[]) =>
-                (proofs ?? []).filter((p: any) => {
+              const filterFresh = (proofs: CashuProof[]) =>
+                (proofs ?? []).filter((p) => {
                   const secret = String(p?.secret ?? "").trim();
                   return secret && !knownSecrets.has(secret);
                 });
 
-              const filterSpendable = async (proofs: any[]) => {
+              const filterSpendable = async (proofs: CashuProof[]) => {
                 if (proofs.length === 0) return proofs;
                 try {
                   const states = await wallet.checkProofsStates(proofs);
                   return proofs.filter((_, idx) => {
                     const state = String(
-                      (states as any)?.[idx]?.state ?? "",
+                      (states as Record<string, unknown>[])?.[idx]?.state ?? "",
                     ).trim();
                     return state === "UNSPENT";
                   });
-                } catch (e) {
+                } catch {
                   return proofs;
                 }
               };
@@ -10094,7 +10119,9 @@ const App = () => {
                   restored = deep;
                   freshProofs = filterFresh(restored.proofs ?? []);
                   spendableProofs = await filterSpendable(freshProofs);
-                } catch (e) {}
+                } catch {
+                  /* restore attempt failed, skip */
+                }
               }
 
               if (spendableProofs.length === 0) continue;
@@ -10111,7 +10138,7 @@ const App = () => {
               for (let i = 0; i < spendableProofs.length; i += chunkSize) {
                 const chunk = spendableProofs.slice(i, i + chunkSize);
                 const amount = chunk.reduce(
-                  (sum: number, p: any) => sum + (Number(p?.amount ?? 0) || 0),
+                  (sum: number, p) => sum + (Number(p?.amount ?? 0) || 0),
                   0,
                 );
                 if (!Number.isFinite(amount) || amount <= 0) continue;
@@ -12758,7 +12785,9 @@ const App = () => {
                     visibleContacts={visibleContacts}
                     conversationsLabel={conversationsLabel}
                     otherContactsLabel={otherContactsLabel}
-                    renderContactCard={renderContactCard}
+                    renderContactCard={(c) =>
+                      renderContactCard(c as (typeof contacts)[number])
+                    }
                     bottomTabActive={bottomTabActive}
                     openNewContactPage={openNewContactPage}
                     showBottomTabBar={false}

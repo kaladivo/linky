@@ -169,7 +169,6 @@ export function EvoluServerPage({
               </>
             );
           })()}
-
         </>
       ) : (
         <p className="lede">{t("errorPrefix")}</p>

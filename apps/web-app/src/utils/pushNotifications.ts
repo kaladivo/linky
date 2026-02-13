@@ -1,5 +1,9 @@
-const NOTIFICATION_SERVER_URL = import.meta.env.VITE_NOTIFICATION_SERVER_URL || 'https://linky-notifications.onrender.com';
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BNQ07tP7hxCzKMTPjoKu-uMBvzkpz7t6fwJp03K_A7teSk-UsTdl1_V8M5dmhcP0cLwaWWMZw_67rIST0HzzWss';
+const NOTIFICATION_SERVER_URL =
+  import.meta.env.VITE_NOTIFICATION_SERVER_URL ||
+  "https://linky-notifications.onrender.com";
+const VAPID_PUBLIC_KEY =
+  import.meta.env.VITE_VAPID_PUBLIC_KEY ||
+  "BNQ07tP7hxCzKMTPjoKu-uMBvzkpz7t6fwJp03K_A7teSk-UsTdl1_V8M5dmhcP0cLwaWWMZw_67rIST0HzzWss";
 
 type PushSubscriptionData = {
   endpoint: string;
@@ -32,7 +36,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
 export async function registerPushNotifications(
   npub: string,
-  relays: string[]
+  relays: string[],
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (!("serviceWorker" in navigator)) {
@@ -51,10 +55,16 @@ export async function registerPushNotifications(
         const appServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: appServerKey.buffer.slice(appServerKey.byteOffset, appServerKey.byteOffset + appServerKey.byteLength) as ArrayBuffer,
+          applicationServerKey: appServerKey.buffer.slice(
+            appServerKey.byteOffset,
+            appServerKey.byteOffset + appServerKey.byteLength,
+          ) as ArrayBuffer,
         });
       } catch (subError) {
-        return { success: false, error: `Chyba při vytváření subscription: ${subError}` };
+        return {
+          success: false,
+          error: `Chyba při vytváření subscription: ${subError}`,
+        };
       }
     }
 
@@ -65,16 +75,16 @@ export async function registerPushNotifications(
         p256dh: btoa(
           String.fromCharCode(
             ...new Uint8Array(
-              subscription.getKey("p256dh") || new ArrayBuffer(0)
-            )
-          )
+              subscription.getKey("p256dh") || new ArrayBuffer(0),
+            ),
+          ),
         ),
         auth: btoa(
           String.fromCharCode(
             ...new Uint8Array(
-              subscription.getKey("auth") || new ArrayBuffer(0)
-            )
-          )
+              subscription.getKey("auth") || new ArrayBuffer(0),
+            ),
+          ),
         ),
       },
     };
@@ -93,7 +103,10 @@ export async function registerPushNotifications(
 
     if (!response.ok) {
       const text = await response.text();
-      return { success: false, error: `Server vrátil chybu ${response.status}: ${text}` };
+      return {
+        success: false,
+        error: `Server vrátil chybu ${response.status}: ${text}`,
+      };
     }
 
     localStorage.setItem("linky.push.npub", npub);
@@ -135,7 +148,9 @@ export function isPushRegistered(): boolean {
   return localStorage.getItem("linky.push.npub") !== null;
 }
 
-export async function updatePushSubscriptionRelays(relays: string[]): Promise<boolean> {
+export async function updatePushSubscriptionRelays(
+  relays: string[],
+): Promise<boolean> {
   try {
     const npub = localStorage.getItem("linky.push.npub");
     if (!npub) return false;
@@ -146,7 +161,7 @@ export async function updatePushSubscriptionRelays(relays: string[]): Promise<bo
 
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
-    
+
     if (!subscription) {
       return false;
     }
@@ -158,16 +173,16 @@ export async function updatePushSubscriptionRelays(relays: string[]): Promise<bo
         p256dh: btoa(
           String.fromCharCode(
             ...new Uint8Array(
-              subscription.getKey("p256dh") || new ArrayBuffer(0)
-            )
-          )
+              subscription.getKey("p256dh") || new ArrayBuffer(0),
+            ),
+          ),
         ),
         auth: btoa(
           String.fromCharCode(
             ...new Uint8Array(
-              subscription.getKey("auth") || new ArrayBuffer(0)
-            )
-          )
+              subscription.getKey("auth") || new ArrayBuffer(0),
+            ),
+          ),
         ),
       },
     };

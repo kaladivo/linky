@@ -6,7 +6,7 @@ export const getCashuLib = () => {
       .then((mod) => {
         // Cache module on window for synchronous access by decodeCashuTokenSync
         try {
-          (window as any).__CASHU_MODULE__ = mod;
+          (window as unknown as Record<string, unknown>).__CASHU_MODULE__ = mod;
         } catch {
           // Ignore if window is not available
         }

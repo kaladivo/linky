@@ -71,24 +71,28 @@ export function AdvancedPage({
   const handleRegisterNotifications = async () => {
     setPushStatus("Registruji...");
     setPushError("");
-    
+
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
       setPushError("Notifikace nejsou podporovány");
       return;
     }
-    
+
     if (!currentNpub) {
       setPushError("Nejste přihlášeni");
       return;
     }
-    
+
     try {
       const permission = await Notification.requestPermission();
-      
+
       if (permission === "granted") {
-        const { registerPushNotifications } = await import("../utils/pushNotifications");
-        const result = await registerPushNotifications(currentNpub, relayUrls.slice(0, 3));
-        
+        const { registerPushNotifications } =
+          await import("../utils/pushNotifications");
+        const result = await registerPushNotifications(
+          currentNpub,
+          relayUrls.slice(0, 3),
+        );
+
         if (result.success) {
           setPushStatus("✅ Zaregistrováno");
         } else {
@@ -106,7 +110,9 @@ export function AdvancedPage({
     <section className="panel">
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">🦤</span>
+          <span className="settings-icon" aria-hidden="true">
+            🦤
+          </span>
           <span className="settings-label">{t("nostrKeys")}</span>
         </div>
         <div className="settings-right">
@@ -125,12 +131,18 @@ export function AdvancedPage({
 
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">🌱</span>
+          <span className="settings-icon" aria-hidden="true">
+            🌱
+          </span>
           <span className="settings-label">{t("seed")}</span>
         </div>
         <div className="settings-right">
           <div className="badge-box">
-            <button className="ghost" onClick={copySeed} disabled={!seedMnemonic}>
+            <button
+              className="ghost"
+              onClick={copySeed}
+              disabled={!seedMnemonic}
+            >
               {t("copyCurrent")}
             </button>
           </div>
@@ -139,7 +151,9 @@ export function AdvancedPage({
 
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">🪙</span>
+          <span className="settings-icon" aria-hidden="true">
+            🪙
+          </span>
           <span className="settings-label">{t("tokens")}</span>
         </div>
         <div className="settings-right">
@@ -157,7 +171,9 @@ export function AdvancedPage({
 
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">🥜</span>
+          <span className="settings-icon" aria-hidden="true">
+            🥜
+          </span>
           <span className="settings-label">{t("payWithCashu")}</span>
         </div>
         <div className="settings-right">
@@ -175,7 +191,9 @@ export function AdvancedPage({
 
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">❤️</span>
+          <span className="settings-icon" aria-hidden="true">
+            ❤️
+          </span>
           <span className="settings-label">{t("allowPromises")}</span>
         </div>
         <div className="settings-right">
@@ -199,7 +217,9 @@ export function AdvancedPage({
         title={t("nostrRelay")}
       >
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">📡</span>
+          <span className="settings-icon" aria-hidden="true">
+            📡
+          </span>
           <span className="settings-label">{t("nostrRelay")}</span>
         </div>
         <div className="settings-right">
@@ -218,7 +238,9 @@ export function AdvancedPage({
             title={nostrRelayOverallStatus}
             style={{ marginLeft: 10 }}
           />
-          <span className="settings-chevron" aria-hidden="true">&gt;</span>
+          <span className="settings-chevron" aria-hidden="true">
+            &gt;
+          </span>
         </div>
       </button>
 
@@ -230,7 +252,9 @@ export function AdvancedPage({
         title={t("evoluServer")}
       >
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">☁</span>
+          <span className="settings-icon" aria-hidden="true">
+            ☁
+          </span>
           <span className="settings-label">{t("evoluServer")}</span>
         </div>
         <div className="settings-right">
@@ -249,7 +273,9 @@ export function AdvancedPage({
             title={evoluOverallStatus}
             style={{ marginLeft: 10 }}
           />
-          <span className="settings-chevron" aria-hidden="true">&gt;</span>
+          <span className="settings-chevron" aria-hidden="true">
+            &gt;
+          </span>
         </div>
       </button>
 
@@ -261,7 +287,9 @@ export function AdvancedPage({
         title={t("mints")}
       >
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">🏦</span>
+          <span className="settings-icon" aria-hidden="true">
+            🏦
+          </span>
           <span className="settings-label">{t("mints")}</span>
         </div>
         <div className="settings-right">
@@ -270,13 +298,17 @@ export function AdvancedPage({
           ) : (
             <span className="muted">—</span>
           )}
-          <span className="settings-chevron" aria-hidden="true">&gt;</span>
+          <span className="settings-chevron" aria-hidden="true">
+            &gt;
+          </span>
         </div>
       </button>
 
       <div className="settings-row">
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">📦</span>
+          <span className="settings-icon" aria-hidden="true">
+            📦
+          </span>
           <span className="settings-label">{t("data")}</span>
         </div>
         <div className="settings-right">
@@ -292,9 +324,14 @@ export function AdvancedPage({
       </div>
 
       {/* Push Notifications */}
-      <div className="settings-row" style={{ marginTop: 20, borderTop: "1px solid #eee", paddingTop: 20 }}>
+      <div
+        className="settings-row"
+        style={{ marginTop: 20, borderTop: "1px solid #eee", paddingTop: 20 }}
+      >
         <div className="settings-left">
-          <span className="settings-icon" aria-hidden="true">🔔</span>
+          <span className="settings-icon" aria-hidden="true">
+            🔔
+          </span>
           <span className="settings-label">Notifikace</span>
         </div>
         <div className="settings-right">
@@ -307,7 +344,7 @@ export function AdvancedPage({
           </button>
         </div>
       </div>
-      
+
       {pushStatus && (
         <div className="settings-row">
           <div style={{ padding: "8px", fontSize: "12px", color: "#666" }}>
@@ -315,7 +352,7 @@ export function AdvancedPage({
           </div>
         </div>
       )}
-      
+
       {pushError && (
         <div className="settings-row">
           <div style={{ padding: "8px", fontSize: "12px", color: "#c00" }}>
@@ -357,7 +394,10 @@ export function AdvancedPage({
         </button>
       </div>
 
-      <div className="muted" style={{ marginTop: 14, textAlign: "center", fontSize: 12 }}>
+      <div
+        className="muted"
+        style={{ marginTop: 14, textAlign: "center", fontSize: 12 }}
+      >
         {t("appVersionLabel")}: v{__APP_VERSION__}
       </div>
     </section>

@@ -43,7 +43,7 @@ interface ContactCardProps {
     failed?: boolean;
   };
   hasAttention: boolean;
-  lastMessage: LocalNostrMessage | null | undefined;
+  lastMessage?: LocalNostrMessage | null;
   onMintIconError: (origin: string, nextUrl: string | null) => void;
   onMintIconLoad: (origin: string, url: string) => void;
   onSelect: (contact: Contact) => void;
@@ -85,7 +85,7 @@ export const ContactCard: React.FC<ContactCardProps> = ({
       : preview
     : "";
 
-  const handleClick = () => onSelect(contact as any);
+  const handleClick = () => onSelect(contact);
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();

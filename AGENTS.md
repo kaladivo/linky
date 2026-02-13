@@ -10,13 +10,13 @@ See @README.md for project overview and @docs/credo.md for the Credo protocol sp
 bun install                # Install dependencies
 bun run dev                # Start Vite dev server
 bun run build              # Production build (tsc -b && vite build)
-bun run check-code         # Run ALL checks: typecheck + eslint + prettier
+bun run check-code         # Run ALL checks: typecheck → eslint --fix → prettier --write
 bun run typecheck          # TypeScript type checking only
-bun run eslint             # Lint all workspaces
-bun run prettier           # Format check all workspaces
+bun run eslint             # Lint + autofix all workspaces
+bun run prettier           # Format + autofix all workspaces
 ```
 
-IMPORTANT: Always run `bun run check-code` after making changes to verify nothing is broken.
+IMPORTANT: Always run `bun run check-code` after making changes. It runs typecheck first, then eslint and prettier which autofix what they can. If typecheck or non-autofixable eslint errors remain, fix them manually and re-run until all checks pass.
 
 ## Monorepo Structure
 

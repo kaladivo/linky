@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 
 interface EvoluCurrentDataPageProps {
-  loadCurrentData: () => Promise<Record<string, any[]>>;
+  loadCurrentData: () => Promise<Record<string, Record<string, unknown>[]>>;
   t: (key: string) => string;
 }
 
@@ -9,7 +9,9 @@ export function EvoluCurrentDataPage({
   loadCurrentData,
   t,
 }: EvoluCurrentDataPageProps): React.ReactElement {
-  const [currentData, setCurrentData] = useState<Record<string, any[]>>({});
+  const [currentData, setCurrentData] = useState<
+    Record<string, Record<string, unknown>[]>
+  >({});
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
 
@@ -21,7 +23,7 @@ export function EvoluCurrentDataPage({
   }, [loadCurrentData]);
 
   const tableNames = Object.keys(currentData).filter(
-    (name) => currentData[name]?.length > 0
+    (name) => currentData[name]?.length > 0,
   );
 
   const filteredData = selectedTable
@@ -40,7 +42,11 @@ export function EvoluCurrentDataPage({
     <section className="panel" style={{ paddingTop: 8 }}>
       {/* Filter by table - same style as contacts page */}
       {tableNames.length > 0 && (
-        <nav className="group-filter-bar" aria-label={t("filterByTable")} style={{ marginBottom: 16 }}>
+        <nav
+          className="group-filter-bar"
+          aria-label={t("filterByTable")}
+          style={{ marginBottom: 16 }}
+        >
           <div className="group-filter-inner">
             <button
               type="button"
@@ -75,28 +81,53 @@ export function EvoluCurrentDataPage({
       <div style={{ maxHeight: 600, overflow: "auto" }}>
         {Object.entries(filteredData).map(([tableName, rows]) => (
           <div key={tableName} style={{ marginBottom: 24 }}>
-            <h3 style={{ marginBottom: 8 }}>{tableName} ({rows.length} rows)</h3>
+            <h3 style={{ marginBottom: 8 }}>
+              {tableName} ({rows.length} rows)
+            </h3>
             {rows.length > 0 ? (
-              <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
+              <table
+                style={{
+                  width: "100%",
+                  fontSize: 11,
+                  borderCollapse: "collapse",
+                }}
+              >
                 <thead>
-                  <tr style={{ backgroundColor: "var(--color-bg-tertiary)", borderBottom: "1px solid var(--color-border)" }}>
-                    {Object.keys(rows[0]).filter(k => !['createdAt', 'updatedAt'].includes(k)).map((key) => (
-                      <th key={key} style={{ padding: 4, textAlign: "left" }}>
-                        {key}
-                      </th>
-                    ))}
+                  <tr
+                    style={{
+                      backgroundColor: "var(--color-bg-tertiary)",
+                      borderBottom: "1px solid var(--color-border)",
+                    }}
+                  >
+                    {Object.keys(rows[0])
+                      .filter((k) => !["createdAt", "updatedAt"].includes(k))
+                      .map((key) => (
+                        <th key={key} style={{ padding: 4, textAlign: "left" }}>
+                          {key}
+                        </th>
+                      ))}
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row, idx) => (
                     <tr key={idx}>
-                      {Object.entries(row).filter(([k]) => !['createdAt', 'updatedAt'].includes(k)).map(([_, val], vidx) => (
-                        <td key={vidx} style={{ padding: 4, borderBottom: "1px solid var(--color-border)" }}>
-                          {typeof val === "object" && val !== null
-                            ? JSON.stringify(val).slice(0, 50)
-                            : String(val ?? "").slice(0, 50)}
-                        </td>
-                      ))}
+                      {Object.entries(row)
+                        .filter(
+                          ([k]) => !["createdAt", "updatedAt"].includes(k),
+                        )
+                        .map(([, val], vidx) => (
+                          <td
+                            key={vidx}
+                            style={{
+                              padding: 4,
+                              borderBottom: "1px solid var(--color-border)",
+                            }}
+                          >
+                            {typeof val === "object" && val !== null
+                              ? JSON.stringify(val).slice(0, 50)
+                              : String(val ?? "").slice(0, 50)}
+                          </td>
+                        ))}
                     </tr>
                   ))}
                 </tbody>

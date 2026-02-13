@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 
 export const useToasts = () => {
   const [toasts, setToasts] = useState<Array<{ id: string; message: string }>>(
-    []
+    [],
   );
   const toastTimersRef = useRef<Map<string, number>>(new Map());
 

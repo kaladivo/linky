@@ -5,7 +5,16 @@ const isSafeUrl = (value: string): boolean => {
   return true;
 };
 
-export default async function handler(req: any, res: any) {
+export default async function handler(
+  req: { query?: Record<string, string | string[] | undefined> },
+  res: {
+    status: (code: number) => {
+      json: (body: Record<string, unknown>) => void;
+      send: (body: string) => void;
+    };
+    setHeader: (name: string, value: string) => void;
+  },
+) {
   try {
     const raw = Array.isArray(req.query?.url)
       ? req.query.url[0]

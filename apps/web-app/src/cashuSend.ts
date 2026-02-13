@@ -176,7 +176,7 @@ export const createSendTokenWithTokensAtMint = async (args: {
               used: keepLen + sendLen,
             });
 
-            return swapped as any;
+            return swapped as { keep: Proof[]; send: Proof[] };
           },
         )
       : wallet.swap(sendAmount, allProofs));

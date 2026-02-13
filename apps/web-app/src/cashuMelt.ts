@@ -136,7 +136,7 @@ export const meltInvoiceWithTokensAtMint = async (args: {
       const swapOnce = async (counter: number) =>
         await wallet.swap(total, allProofs, { counter });
 
-      let swapped: any;
+      let swapped: { keep: Proof[]; send: Proof[] } | undefined;
       let lastError: unknown;
       if (typeof counter0 === "number") {
         let counter = counter0;
@@ -202,7 +202,9 @@ export const meltInvoiceWithTokensAtMint = async (args: {
 
       try {
         const meltOnce = async (counter: number) =>
-          (await wallet.meltProofs(quote, swapped.send, { counter })) as any;
+          (await wallet.meltProofs(quote, swapped!.send, {
+            counter,
+          })) as Record<string, unknown> & { change?: Proof[] };
 
         if (typeof counterAfterSwap === "number") {
           let counter = counterAfterSwap;
@@ -230,7 +232,10 @@ export const meltInvoiceWithTokensAtMint = async (args: {
           }
           if (!melt) throw lastError ?? new Error("melt failed");
         } else {
-          melt = (await wallet.meltProofs(quote, swapped.send)) as any;
+          melt = (await wallet.meltProofs(quote, swapped!.send)) as Record<
+            string,
+            unknown
+          > & { change?: Proof[] };
         }
       } catch (e) {
         return {

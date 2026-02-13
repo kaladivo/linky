@@ -5,7 +5,7 @@ import { BottomTabBar } from "../components/BottomTabBar";
 interface ContactsPageProps {
   activeGroup: string | null;
   bottomTabActive: "contacts" | "wallet" | null;
-  contacts: readonly any[];
+  contacts: readonly unknown[];
   contactsSearch: string;
   contactsSearchInputRef: React.RefObject<HTMLInputElement | null>;
   contactsToolbarStyle: React.CSSProperties;
@@ -15,7 +15,7 @@ interface ContactsPageProps {
   openNewContactPage: () => void;
   onboardingContent?: React.ReactNode;
   otherContactsLabel: string;
-  renderContactCard: (contact: any) => React.ReactNode;
+  renderContactCard: (contact: unknown) => React.ReactNode;
   setActiveGroup: (value: string | null) => void;
   setContactsSearch: (value: string) => void;
   showGroupFilter: boolean;
@@ -24,8 +24,8 @@ interface ContactsPageProps {
   showFab?: boolean;
   t: (key: string) => string;
   visibleContacts: {
-    conversations: any[];
-    others: any[];
+    conversations: unknown[];
+    others: unknown[];
   };
 }
 

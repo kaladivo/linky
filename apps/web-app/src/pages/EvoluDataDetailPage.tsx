@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import type { EvoluHistoryRow } from "../evolu";
 
 interface EvoluDataDetailPageProps {
   evoluDatabaseBytes: number | null;
@@ -6,8 +7,8 @@ interface EvoluDataDetailPageProps {
   evoluHistoryCount: number | null;
   pendingClearDatabase: boolean;
   requestClearDatabase: () => void;
-  loadHistoryData: () => Promise<any[]>;
-  loadCurrentData: () => Promise<Record<string, any[]>>;
+  loadHistoryData: () => Promise<EvoluHistoryRow[]>;
+  loadCurrentData: () => Promise<Record<string, Record<string, unknown>[]>>;
   t: (key: string) => string;
 }
 
@@ -25,8 +26,10 @@ export function EvoluDataDetailPage({
 }: EvoluDataDetailPageProps): React.ReactElement {
   const [showHistoryData, setShowHistoryData] = useState(false);
   const [showCurrentData, setShowCurrentData] = useState(false);
-  const [historyData, setHistoryData] = useState<any[]>([]);
-  const [currentData, setCurrentData] = useState<Record<string, any[]>>({});
+  const [historyData, setHistoryData] = useState<EvoluHistoryRow[]>([]);
+  const [currentData, setCurrentData] = useState<
+    Record<string, Record<string, unknown>[]>
+  >({});
   const [isLoading, setIsLoading] = useState(false);
 
   const formatBytes = (bytes: number): string => {
@@ -66,7 +69,7 @@ export function EvoluDataDetailPage({
 
   const totalCurrentRows = tableEntries.reduce<number>(
     (sum, [, count]) => sum + (count ?? 0),
-    0
+    0,
   );
   const historyRows = evoluHistoryCount ?? 0;
   const totalRows = totalCurrentRows + historyRows;
@@ -125,12 +128,20 @@ export function EvoluDataDetailPage({
                 style={{
                   width: `${percentage}%`,
                   height: "100%",
-                  backgroundColor: percentage > 90 ? "var(--color-error)" : percentage > 70 ? "var(--color-warning)" : "var(--color-success)",
+                  backgroundColor:
+                    percentage > 90
+                      ? "var(--color-error)"
+                      : percentage > 70
+                        ? "var(--color-warning)"
+                        : "var(--color-success)",
                   transition: "width 0.3s ease",
                 }}
               />
             </div>
-            <div style={{ marginTop: 4, textAlign: "center", fontSize: 12 }} className="muted">
+            <div
+              style={{ marginTop: 4, textAlign: "center", fontSize: 12 }}
+              className="muted"
+            >
               {percentage.toFixed(1)}% z 1 MiB limitu
             </div>
           </div>
@@ -177,14 +188,19 @@ export function EvoluDataDetailPage({
           </div>
 
           {/* Buttons to view data */}
-          <div className="settings-row" style={{ marginTop: 16, gap: 8, display: "flex" }}>
+          <div
+            className="settings-row"
+            style={{ marginTop: 16, gap: 8, display: "flex" }}
+          >
             <button
               type="button"
               className="secondary"
               onClick={handleShowCurrent}
               disabled={isLoading}
             >
-              {showCurrentData ? t("evoluHideCurrentData") : t("evoluShowCurrentData")}
+              {showCurrentData
+                ? t("evoluHideCurrentData")
+                : t("evoluShowCurrentData")}
             </button>
             <button
               type="button"
@@ -192,11 +208,17 @@ export function EvoluDataDetailPage({
               onClick={handleShowHistory}
               disabled={isLoading}
             >
-              {showHistoryData ? t("evoluHideHistoryData") : t("evoluShowHistoryData")}
+              {showHistoryData
+                ? t("evoluHideHistoryData")
+                : t("evoluShowHistoryData")}
             </button>
           </div>
 
-          {isLoading && <p className="muted" style={{ marginTop: 8 }}>{t("loading")}...</p>}
+          {isLoading && (
+            <p className="muted" style={{ marginTop: 8 }}>
+              {t("loading")}...
+            </p>
+          )}
 
           {/* Current Data Table View */}
           {showCurrentData && (
@@ -205,13 +227,32 @@ export function EvoluDataDetailPage({
               <div style={{ maxHeight: 400, overflow: "auto" }}>
                 {Object.entries(currentData).map(([tableName, rows]) => (
                   <div key={tableName} style={{ marginBottom: 16 }}>
-                    <h5 style={{ marginBottom: 8 }}>{tableName} ({rows.length} rows)</h5>
+                    <h5 style={{ marginBottom: 8 }}>
+                      {tableName} ({rows.length} rows)
+                    </h5>
                     {rows.length > 0 ? (
-                      <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
+                      <table
+                        style={{
+                          width: "100%",
+                          fontSize: 11,
+                          borderCollapse: "collapse",
+                        }}
+                      >
                         <thead>
-                          <tr style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
+                          <tr
+                            style={{
+                              backgroundColor: "var(--color-bg-tertiary)",
+                            }}
+                          >
                             {Object.keys(rows[0]).map((key) => (
-                              <th key={key} style={{ padding: 4, textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>
+                              <th
+                                key={key}
+                                style={{
+                                  padding: 4,
+                                  textAlign: "left",
+                                  borderBottom: "1px solid var(--color-border)",
+                                }}
+                              >
                                 {key}
                               </th>
                             ))}
@@ -221,7 +262,14 @@ export function EvoluDataDetailPage({
                           {rows.map((row, idx) => (
                             <tr key={idx}>
                               {Object.values(row).map((val, vidx) => (
-                                <td key={vidx} style={{ padding: 4, borderBottom: "1px solid var(--color-border)" }}>
+                                <td
+                                  key={vidx}
+                                  style={{
+                                    padding: 4,
+                                    borderBottom:
+                                      "1px solid var(--color-border)",
+                                  }}
+                                >
                                   {typeof val === "object" && val !== null
                                     ? JSON.stringify(val).slice(0, 50)
                                     : String(val ?? "").slice(0, 50)}
@@ -246,30 +294,118 @@ export function EvoluDataDetailPage({
               <h4>{t("evoluHistoryDataJson")}</h4>
               <div style={{ maxHeight: 400, overflow: "auto" }}>
                 {historyData.length > 0 ? (
-                  <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      fontSize: 11,
+                      borderCollapse: "collapse",
+                    }}
+                  >
                     <thead>
-                      <tr style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
-                        <th style={{ padding: 4, textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>{t("evoluTable")}</th>
-                        <th style={{ padding: 4, textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>{t("evoluColumn")}</th>
-                        <th style={{ padding: 4, textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>{t("evoluId")}</th>
-                        <th style={{ padding: 4, textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>{t("evoluValue")}</th>
-                        <th style={{ padding: 4, textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>{t("evoluTimestamp")}</th>
+                      <tr
+                        style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+                      >
+                        <th
+                          style={{
+                            padding: 4,
+                            textAlign: "left",
+                            borderBottom: "1px solid var(--color-border)",
+                          }}
+                        >
+                          {t("evoluTable")}
+                        </th>
+                        <th
+                          style={{
+                            padding: 4,
+                            textAlign: "left",
+                            borderBottom: "1px solid var(--color-border)",
+                          }}
+                        >
+                          {t("evoluColumn")}
+                        </th>
+                        <th
+                          style={{
+                            padding: 4,
+                            textAlign: "left",
+                            borderBottom: "1px solid var(--color-border)",
+                          }}
+                        >
+                          {t("evoluId")}
+                        </th>
+                        <th
+                          style={{
+                            padding: 4,
+                            textAlign: "left",
+                            borderBottom: "1px solid var(--color-border)",
+                          }}
+                        >
+                          {t("evoluValue")}
+                        </th>
+                        <th
+                          style={{
+                            padding: 4,
+                            textAlign: "left",
+                            borderBottom: "1px solid var(--color-border)",
+                          }}
+                        >
+                          {t("evoluTimestamp")}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {historyData.map((row, idx) => (
                         <tr key={idx}>
-                          <td style={{ padding: 4, borderBottom: "1px solid var(--color-border)" }}>{row.table}</td>
-                          <td style={{ padding: 4, borderBottom: "1px solid var(--color-border)" }}>{row.column}</td>
-                          <td style={{ padding: 4, borderBottom: "1px solid var(--color-border)", fontSize: 10, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis" }} title={row.id}>
+                          <td
+                            style={{
+                              padding: 4,
+                              borderBottom: "1px solid var(--color-border)",
+                            }}
+                          >
+                            {row.table}
+                          </td>
+                          <td
+                            style={{
+                              padding: 4,
+                              borderBottom: "1px solid var(--color-border)",
+                            }}
+                          >
+                            {row.column}
+                          </td>
+                          <td
+                            style={{
+                              padding: 4,
+                              borderBottom: "1px solid var(--color-border)",
+                              fontSize: 10,
+                              maxWidth: 100,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                            title={row.id}
+                          >
                             {row.id}
                           </td>
-                          <td style={{ padding: 4, borderBottom: "1px solid var(--color-border)", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis" }} title={String(row.value ?? "")}>
+                          <td
+                            style={{
+                              padding: 4,
+                              borderBottom: "1px solid var(--color-border)",
+                              maxWidth: 150,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                            title={String(row.value ?? "")}
+                          >
                             {typeof row.value === "object" && row.value !== null
                               ? JSON.stringify(row.value).slice(0, 40)
                               : String(row.value ?? "").slice(0, 40)}
                           </td>
-                          <td style={{ padding: 4, borderBottom: "1px solid var(--color-border)", fontSize: 10, whiteSpace: "nowrap" }}>
+                          <td
+                            style={{
+                              padding: 4,
+                              borderBottom: "1px solid var(--color-border)",
+                              fontSize: 10,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
                             {row.timestamp}
                           </td>
                         </tr>
@@ -293,9 +429,8 @@ export function EvoluDataDetailPage({
             userTableEntries.map(([tableName, count]) => {
               const rows = count ?? 0;
               const percentage = calculatePercentage(rows);
-              const estimatedTableBytes = totalRows > 0
-                ? Math.round((rows / totalRows) * rawDbBytes)
-                : 0;
+              const estimatedTableBytes =
+                totalRows > 0 ? Math.round((rows / totalRows) * rawDbBytes) : 0;
 
               return (
                 <div key={tableName} className="settings-row">
@@ -306,7 +441,10 @@ export function EvoluDataDetailPage({
                     <span className="muted">
                       {rows} rows ({percentage}%)
                     </span>
-                    <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                    <span
+                      className="muted"
+                      style={{ marginLeft: 8, fontSize: 12 }}
+                    >
                       ~{formatBytes(estimatedTableBytes)}
                     </span>
                   </div>
@@ -323,9 +461,10 @@ export function EvoluDataDetailPage({
               {systemTableEntries.map(([tableName, count]) => {
                 const rows = count ?? 0;
                 const percentage = calculatePercentage(rows);
-                const estimatedTableBytes = totalRows > 0
-                  ? Math.round((rows / totalRows) * rawDbBytes)
-                  : 0;
+                const estimatedTableBytes =
+                  totalRows > 0
+                    ? Math.round((rows / totalRows) * rawDbBytes)
+                    : 0;
 
                 return (
                   <div key={tableName} className="settings-row">
@@ -336,7 +475,10 @@ export function EvoluDataDetailPage({
                       <span className="muted">
                         {rows} rows ({percentage}%)
                       </span>
-                      <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                      <span
+                        className="muted"
+                        style={{ marginLeft: 8, fontSize: 12 }}
+                      >
                         ~{formatBytes(estimatedTableBytes)}
                       </span>
                     </div>

@@ -49,7 +49,7 @@ export function EvoluServersPage({
 
   const totalCurrentRows = Object.values(evoluTableCounts).reduce<number>(
     (sum, count) => sum + (count ?? 0),
-    0
+    0,
   );
   const historyRows = evoluHistoryCount ?? 0;
 
@@ -149,7 +149,10 @@ export function EvoluServersPage({
                 }}
               />
             </div>
-            <div style={{ marginTop: 4, textAlign: "center", fontSize: 12 }} className="muted">
+            <div
+              style={{ marginTop: 4, textAlign: "center", fontSize: 12 }}
+              className="muted"
+            >
               {percentage.toFixed(1)}% {t("evoluOfLimit")}
             </div>
           </div>
@@ -169,8 +172,8 @@ export function EvoluServersPage({
             {t("evoluRowCounts")}
           </h3>
 
-          <div 
-            className="settings-row settings-link" 
+          <div
+            className="settings-row settings-link"
             onClick={() => navigateTo({ route: "evoluCurrentData" })}
             style={{ cursor: "pointer" }}
           >
@@ -179,12 +182,14 @@ export function EvoluServersPage({
             </div>
             <div className="settings-right">
               <span className="muted">{totalCurrentRows} rows</span>
-              <span className="settings-chevron" aria-hidden="true">&gt;</span>
+              <span className="settings-chevron" aria-hidden="true">
+                &gt;
+              </span>
             </div>
           </div>
 
-          <div 
-            className="settings-row settings-link" 
+          <div
+            className="settings-row settings-link"
             onClick={() => navigateTo({ route: "evoluHistoryData" })}
             style={{ cursor: "pointer" }}
           >
@@ -193,7 +198,9 @@ export function EvoluServersPage({
             </div>
             <div className="settings-right">
               <span className="muted">{historyRows} rows</span>
-              <span className="settings-chevron" aria-hidden="true">&gt;</span>
+              <span className="settings-chevron" aria-hidden="true">
+                &gt;
+              </span>
             </div>
           </div>
         </>

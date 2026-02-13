@@ -3,6 +3,24 @@ import { ChatMessage } from "../components/ChatMessage";
 import type { ContactId } from "../evolu";
 import { formatChatDayLabel, formatInteger } from "../utils/formatting";
 
+interface CashuTokenInfo {
+  amount: number | null;
+  isValid: boolean;
+  mintDisplay: string | null;
+  mintUrl: string | null;
+  tokenRaw: string;
+}
+
+interface CredoTokenInfo {
+  amount: number | null;
+  expiresAtSec: number | null;
+  isValid: boolean;
+  issuer: string | null;
+  kind: "promise" | "settlement";
+  recipient: string | null;
+  tokenRaw: string;
+}
+
 interface Contact {
   id: ContactId;
   npub?: string | null;
@@ -15,13 +33,13 @@ interface ChatPageProps {
   cashuIsBusy: boolean;
   chatDraft: string;
   chatMessageElByIdRef: React.MutableRefObject<Map<string, HTMLDivElement>>;
-  chatMessages: any[];
+  chatMessages: Record<string, unknown>[];
   chatMessagesRef: React.RefObject<HTMLDivElement | null>;
   chatSendIsBusy: boolean;
   feedbackContactNpub: string;
-  getCashuTokenMessageInfo: (id: string) => any;
+  getCashuTokenMessageInfo: (id: string) => CashuTokenInfo | null;
   getCredoAvailableForContact: (npub: string) => number;
-  getCredoTokenMessageInfo: (id: string) => any;
+  getCredoTokenMessageInfo: (id: string) => CredoTokenInfo | null;
   getMintIconUrl: (mint: unknown) => {
     origin: string | null;
     url: string | null;

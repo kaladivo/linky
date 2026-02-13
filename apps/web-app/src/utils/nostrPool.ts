@@ -3,17 +3,17 @@ import type { Filter, Event as NostrToolsEvent } from "nostr-tools";
 type NostrPool = {
   publish: (
     relays: string[],
-    event: NostrToolsEvent
+    event: NostrToolsEvent,
   ) => Array<Promise<unknown>>;
   querySync: (
     relays: string[],
     filter: Record<string, unknown>,
-    opts: { maxWait: number }
+    opts: { maxWait: number },
   ) => Promise<unknown>;
   subscribe: (
     relays: string[],
     filters: Filter[],
-    opts: { onevent: (event: NostrToolsEvent) => void }
+    opts: { onevent: (event: NostrToolsEvent) => void },
   ) => { close: (reason?: string) => Promise<void> | void };
 };
 

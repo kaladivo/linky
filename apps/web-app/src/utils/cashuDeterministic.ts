@@ -17,7 +17,7 @@ const normalizeMintUrlLoose = (value: string): string => {
 export const getCashuDeterministicSeedFromStorage =
   (): CashuDeterministicSeed | null => {
     const mnemonic = String(
-      safeLocalStorageGet(INITIAL_MNEMONIC_STORAGE_KEY) ?? ""
+      safeLocalStorageGet(INITIAL_MNEMONIC_STORAGE_KEY) ?? "",
     ).trim();
     if (!mnemonic) return null;
     if (!validateMnemonic(mnemonic, wordlist)) return null;
@@ -42,7 +42,7 @@ export const withCashuDeterministicCounterLock = async <T>(
     unit: string;
     keysetId: string;
   },
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
 ): Promise<T> => {
   const key = makeCounterKey(CASHU_COUNTER_LOCK_PREFIX, args);
   const prev = counterLocks.get(key) ?? Promise.resolve();
@@ -64,13 +64,13 @@ const makeCounterKey = (
     mintUrl: string;
     unit: string;
     keysetId: string;
-  }
+  },
 ): string => {
   const mint = normalizeMintUrlLoose(args.mintUrl);
   const unit = String(args.unit ?? "").trim() || "sat";
   const keysetId = String(args.keysetId ?? "").trim();
   return `${prefix}:${encodeURIComponent(mint)}:${encodeURIComponent(
-    unit
+    unit,
   )}:${encodeURIComponent(keysetId)}`;
 };
 

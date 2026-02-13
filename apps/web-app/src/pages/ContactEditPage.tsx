@@ -137,7 +137,11 @@ export const ContactEditPage: FC<ContactEditPageProps> = ({
                 </button>
               )
             ) : (
-              <button onClick={handleSaveContact} data-guide="contact-save" disabled={isSavingContact}>
+              <button
+                onClick={handleSaveContact}
+                data-guide="contact-save"
+                disabled={isSavingContact}
+              >
                 {isSavingContact ? t("saving") : t("saveContact")}
               </button>
             )}

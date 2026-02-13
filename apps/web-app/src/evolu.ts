@@ -475,10 +475,7 @@ export const useEvoluSyncOwner = (enabled: boolean): Evolu.SyncOwner | null => {
   const [syncOwner, setSyncOwner] = useState<Evolu.SyncOwner | null>(null);
 
   useEffect(() => {
-    if (!enabled) {
-      setSyncOwner(null);
-      return;
-    }
+    if (!enabled) return;
 
     let cancelled = false;
     void getEvolu()
@@ -493,10 +490,11 @@ export const useEvoluSyncOwner = (enabled: boolean): Evolu.SyncOwner | null => {
 
     return () => {
       cancelled = true;
+      setSyncOwner(null);
     };
   }, [enabled]);
 
-  return syncOwner;
+  return enabled ? syncOwner : null;
 };
 
 export const useEvoluLastError = (opts?: {
@@ -525,6 +523,21 @@ export const useEvoluLastError = (opts?: {
   return lastError;
 };
 
+/** Minimal query builder interfaces for Evolu's internal API. */
+interface EvoluSelectBuilder {
+  select(cb: (eb: EvoluEB) => unknown): EvoluSelectBuilder;
+  selectAll(): EvoluSelectBuilder;
+  orderBy(column: string, direction: string): EvoluSelectBuilder;
+  limit(n: number): EvoluSelectBuilder;
+  offset(n: number): EvoluSelectBuilder;
+}
+interface EvoluEB {
+  fn: { countAll(): { as(name: string): unknown } };
+}
+type EvoluUntypedCreateQuery = (
+  cb: (db: { selectFrom(table: string): EvoluSelectBuilder }) => unknown,
+) => Parameters<ReturnType<typeof getEvolu>["loadQuery"]>[0];
+
 export const getEvoluDatabaseInfo = async (): Promise<{
   bytes: number;
   tableCounts: Record<string, number | null>;
@@ -542,6 +555,8 @@ export const getEvoluDatabaseInfo = async (): Promise<{
   ] as const;
 
   const instance = getEvolu();
+  const createUntypedQuery =
+    instance.createQuery as unknown as EvoluUntypedCreateQuery;
 
   // Get SQLite file size from OPFS for current user only
   const dbBytesPromise = (async () => {
@@ -571,16 +586,14 @@ export const getEvoluDatabaseInfo = async (): Promise<{
 
       let totalSize = 0;
       const allDirs: string[] = [];
-      // @ts-ignore
+      // @ts-expect-error OPFS FileSystemDirectoryHandle.entries() not yet in all TS libs
       for await (const [name, handle] of root.entries()) {
         if (handle.kind === "directory") allDirs.push(name);
         if (name === expectedDir && handle.kind === "directory") {
-          // @ts-ignore
           for await (const [sub, subH] of handle.entries()) {
             if (sub === ".opaque" && subH.kind === "directory") {
-              // @ts-ignore
               let maxSize = 0;
-              for await (const [_file, fileH] of subH.entries()) {
+              for await (const [, fileH] of subH.entries()) {
                 if (fileH.kind === "file") {
                   const f = await fileH.getFile();
                   if (f.size > maxSize) maxSize = f.size;
@@ -602,13 +615,13 @@ export const getEvoluDatabaseInfo = async (): Promise<{
     const out: Record<string, number | null> = {};
     for (const table of tables) {
       try {
-        const q = instance.createQuery((db: any) =>
+        const q = createUntypedQuery((db) =>
           db
             .selectFrom(table)
-            .select((eb: any) => eb.fn.countAll().as("count")),
+            .select((eb: EvoluEB) => eb.fn.countAll().as("count")),
         );
-        const rows = await instance.loadQuery(q as any);
-        out[table] = Number((rows?.[0] as any)?.count ?? 0);
+        const rows = await instance.loadQuery(q);
+        out[table] = Number((rows?.[0] as Record<string, unknown>)?.count ?? 0);
       } catch {
         out[table] = null;
       }
@@ -619,13 +632,13 @@ export const getEvoluDatabaseInfo = async (): Promise<{
   // Count history entries (time travel mutations)
   const historyCountPromise = (async () => {
     try {
-      const q = instance.createQuery((db: any) =>
+      const q = createUntypedQuery((db) =>
         db
           .selectFrom("evolu_history")
-          .select((eb: any) => eb.fn.countAll().as("count")),
+          .select((eb: EvoluEB) => eb.fn.countAll().as("count")),
       );
-      const rows = await instance.loadQuery(q as any);
-      return Number((rows?.[0] as any)?.count ?? 0);
+      const rows = await instance.loadQuery(q);
+      return Number((rows?.[0] as Record<string, unknown>)?.count ?? 0);
     } catch {
       return null;
     }
@@ -641,7 +654,7 @@ export const getEvoluDatabaseInfo = async (): Promise<{
 };
 
 // Helper to convert Uint8Array to base64
-const uint8ArrayToBase64 = (bytes: any): string => {
+const uint8ArrayToBase64 = (bytes: unknown): string => {
   if (!bytes || typeof bytes !== "object") return "";
   const arr = Object.values(bytes) as number[];
   if (arr.length === 0) return "";
@@ -657,7 +670,7 @@ const uint8ArrayToBase64 = (bytes: any): string => {
 // Evolu timestamp format: 16 bytes, hybrid logical clock (HLC)
 // First 8 bytes: [millis (48 bits) + counter (16 bits)] in big-endian
 // Reference: https://evolu.dev/docs/how-evolu-works
-const timestampToDate = (timestampBytes: any): string => {
+const timestampToDate = (timestampBytes: unknown): string => {
   if (!timestampBytes || typeof timestampBytes !== "object") return "";
   const arr = Object.values(timestampBytes) as number[];
   if (arr.length < 8) return "";
@@ -677,14 +690,26 @@ const timestampToDate = (timestampBytes: any): string => {
   }
 };
 
+/** Row shape returned by loadEvoluHistoryData. */
+export interface EvoluHistoryRow {
+  table: string;
+  column: string;
+  id: string;
+  value: unknown;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
 // Load history data from evolu_history table with pagination support
 export const loadEvoluHistoryData = async (
   limit = 100,
   offset = 0,
-): Promise<any[]> => {
+): Promise<EvoluHistoryRow[]> => {
   const instance = getEvolu();
+  const createUntypedQuery =
+    instance.createQuery as unknown as EvoluUntypedCreateQuery;
   try {
-    const q = instance.createQuery((db: any) =>
+    const q = createUntypedQuery((db) =>
       db
         .selectFrom("evolu_history")
         .selectAll()
@@ -692,11 +717,15 @@ export const loadEvoluHistoryData = async (
         .limit(limit)
         .offset(offset),
     );
-    const rows = await instance.loadQuery(q as any);
-    const formattedRows = ((rows as any[]) ?? []).map((row) => ({
+    const rows = await instance.loadQuery(q);
+    const rawRows = (rows as Record<string, unknown>[]) ?? [];
+    const formattedRows: EvoluHistoryRow[] = rawRows.map((row) => ({
       ...row,
+      table: String(row.table ?? ""),
+      column: String(row.column ?? ""),
       ownerId: uint8ArrayToBase64(row.ownerId),
       id: uint8ArrayToBase64(row.id),
+      value: row.value,
       timestamp: timestampToDate(row.timestamp),
     }));
     return formattedRows;
@@ -708,7 +737,7 @@ export const loadEvoluHistoryData = async (
 
 // Load current data from all tables
 export const loadEvoluCurrentData = async (): Promise<
-  Record<string, any[]>
+  Record<string, Record<string, unknown>[]>
 > => {
   const tables = [
     "contact",
@@ -722,15 +751,17 @@ export const loadEvoluCurrentData = async (): Promise<
   ] as const;
 
   const instance = getEvolu();
-  const result: Record<string, any[]> = {};
+  const createUntypedQuery =
+    instance.createQuery as unknown as EvoluUntypedCreateQuery;
+  const result: Record<string, Record<string, unknown>[]> = {};
 
   for (const table of tables) {
     try {
-      const q = instance.createQuery((db: any) =>
+      const q = createUntypedQuery((db) =>
         db.selectFrom(table).selectAll().limit(100),
       );
-      const rows = await instance.loadQuery(q as any);
-      result[table] = (rows as any[]) ?? [];
+      const rows = await instance.loadQuery(q);
+      result[table] = (rows as Record<string, unknown>[]) ?? [];
     } catch {
       result[table] = [];
     }
