@@ -1,15 +1,19 @@
+import { generateMnemonic } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english";
 import { expect, test } from "@playwright/test";
+import { generateSecretKey, nip19 } from "nostr-tools";
 
-const NSEC_SENDER =
-  "nsec1ffhtvda6f94gmdna2ephkuhek790vgczcrhh855sz0gscvpe4qysfr9nlh";
-const SEED_SENDER =
-  "happy kitchen noble luggage pioneer input breeze connect genius flame autumn twist";
-const NAME_RECEIVER = "Receiver";
+const NPUB_RECEIVER =
+  "npub12g0qmc3xa4hc9nxca936chppd6zhkr494xyypstcd7wg0gaa2xzswunml3";
 
 test("send token", async ({ page }) => {
-  const readBalanceSat = async () => {
+  const senderNsec = nip19.nsecEncode(generateSecretKey());
+  const senderMnemonic = generateMnemonic(wordlist, 128);
+  const receiverName = `Receiver ${Date.now()}`;
+
+  const readBalanceSat = async (timeoutMs = 5_000) => {
     const balance = page.getByLabel("Available balance");
-    await expect(balance).toBeVisible();
+    await expect(balance).toBeVisible({ timeout: timeoutMs });
     const text = await balance.innerText();
     const digits = text.replace(/[^0-9]/g, "");
     return Number(digits || "0");
@@ -35,11 +39,26 @@ test("send token", async ({ page }) => {
           // ignore
         }
       },
-      [NSEC_SENDER, SEED_SENDER],
+      [senderNsec, senderMnemonic],
     );
 
     await page.goto("/");
 
+    page.on("console", (msg) => {
+      if (
+        msg.text().includes("[linky][pay]") ||
+        msg.text().includes("[linky][debug]")
+      ) {
+        console.log(`APP LOG: ${msg.text()}`);
+      }
+    });
+
+    // Navigate to Wallet first so Evolu initializes (ownerId is set).
+    // Without this, saving mint URL uses "anon" key and the app never reads it back.
+    await page.getByRole("button", { name: "Wallet" }).click();
+    await readBalanceSat();
+
+    // Now configure the test mint URL (Evolu ownerId is ready)
     await page.getByRole("button", { name: "Menu" }).click();
     await page.getByRole("button", { name: "Advanced" }).click();
     await page.getByRole("button", { name: "Mints" }).click();
@@ -64,50 +83,57 @@ test("send token", async ({ page }) => {
     await page.getByRole("button", { name: "Close" }).click();
     await page.getByRole("button", { name: "Close" }).click();
 
+    // Back to Wallet for topup
     await page.getByRole("button", { name: "Wallet" }).click();
-    let balanceSat = await readBalanceSat();
-    if (balanceSat < 50) {
-      await page.getByRole("button", { name: "Receive" }).click();
+    await page.getByRole("button", { name: "Receive" }).click();
 
-      await page.getByRole("button", { name: "1" }).click();
-      await page.getByRole("button", { name: "0" }).click();
-      await page.getByRole("button", { name: "0" }).click();
+    await page.getByRole("button", { name: "1" }).click();
+    await page.getByRole("button", { name: "0" }).click();
+    await page.getByRole("button", { name: "0" }).click();
 
-      await page.getByRole("button", { name: "Show top-up invoice" }).click();
+    await page.getByRole("button", { name: "Show top-up invoice" }).click();
 
-      await page.locator("img.qr").waitFor({ state: "visible", timeout: 5000 });
+    await page.locator("img.qr").waitFor({ state: "visible", timeout: 30_000 });
 
-      await page.waitForURL(/#wallet/, { timeout: 5000 });
-      balanceSat = await readBalanceSat();
-    }
+    const balanceAfterTopup = await readBalanceSat(120_000);
+    expect(balanceAfterTopup).toBeGreaterThan(0);
 
     await page.getByRole("button", { name: "Contacts" }).click();
     await page.waitForURL(/#$/, { timeout: 5000 });
-    const contactSearch = page.getByPlaceholder("Search contacts");
-    await contactSearch.fill(NAME_RECEIVER);
-    const contactCard = page
-      .locator('[data-guide="contact-card"]')
-      .filter({ hasText: NAME_RECEIVER });
-    if (await contactCard.count()) {
-      await contactCard.first().click();
-    } else {
-      await contactSearch.fill("");
-      await page.locator('[data-guide="contact-card"]').first().click();
-    }
+
+    await page.getByRole("button", { name: "Add contact" }).click();
+    const contactFormInputs = page.locator(".form-col input");
+    await expect(contactFormInputs.nth(0)).toBeVisible();
+    await contactFormInputs.nth(0).fill(receiverName);
+    await contactFormInputs.nth(1).fill(NPUB_RECEIVER);
+    await page.getByRole("button", { name: "Save contact" }).click();
+    await page.waitForURL(/#$/, { timeout: 5000 });
+
+    const contactCards = page.locator('[data-guide="contact-card"]');
+    await expect
+      .poll(async () => await contactCards.count(), { timeout: 20_000 })
+      .toBeGreaterThan(0);
+    await contactCards.first().click();
 
     await page.getByRole("button", { name: "Pay" }).click();
 
     await page.getByRole("button", { name: "1" }).click();
     await page.getByRole("button", { name: "0" }).click();
 
+    const chatMessages = page.locator(".chat-message");
+    const messageCountBeforePay = await chatMessages.count();
+
     await page.getByRole("button", { name: "Pay" }).click();
 
-    await page.waitForTimeout(3000);
-    const lastTime = await page
-      .locator(".chat-message")
-      .last()
-      .locator(".chat-time")
-      .innerText();
+    await expect
+      .poll(async () => await chatMessages.count(), { timeout: 120_000 })
+      .toBeGreaterThan(messageCountBeforePay);
+
+    const messageCountAfterPay = await chatMessages.count();
+    const latestMessage = chatMessages.nth(
+      Math.max(0, messageCountAfterPay - 1),
+    );
+    const lastTime = await latestMessage.locator(".chat-time").innerText();
 
     const lastTimeText = lastTime.split("·")[0].trim();
     const match = lastTimeText.match(/(\d{1,2}):(\d{2})(?:\s*([AP]M))?/i);

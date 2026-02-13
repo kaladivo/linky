@@ -8,6 +8,7 @@ import { ProfileQrModal } from "./ProfileQrModal";
 import { ScanModal } from "./ScanModal";
 import { SaveContactPromptModal } from "./SaveContactPromptModal";
 import { PaidOverlay } from "./PaidOverlay";
+import { useAppContext } from "../app/context/AppContext";
 
 interface TopbarButton {
   icon: string;
@@ -26,12 +27,8 @@ interface ContactsGuideStep {
   titleKey: string;
 }
 
-interface AuthenticatedLayoutProps {
+interface LayoutState {
   chatTopbarContact: ChatContact | null;
-  children: React.ReactNode;
-  closeMenu: () => void;
-  closeProfileQr: () => void;
-  closeScan: () => void;
   contactsGuide: { step: number; task: string } | null;
   contactsGuideActiveStep: {
     idx: number;
@@ -44,11 +41,6 @@ interface AuthenticatedLayoutProps {
     top: number;
     width: number;
   } | null;
-  contactsGuideNav: {
-    back: () => void;
-    next: () => void;
-  };
-  copyText: (text: string) => Promise<void>;
   currentNpub: string | null;
   currentNsec: string | null;
   derivedProfile: {
@@ -65,10 +57,6 @@ interface AuthenticatedLayoutProps {
   menuIsOpen: boolean;
   myProfileQr: string | null;
   nostrPictureByNpub: Record<string, string | null>;
-  onPickProfilePhoto: () => void;
-  onProfilePhotoSelected: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  openFeedbackContact: () => void;
-  openProfileQr: () => void;
   paidOverlayIsOpen: boolean;
   paidOverlayTitle: string | null;
   postPaySaveContact: {
@@ -87,9 +75,29 @@ interface AuthenticatedLayoutProps {
   profilePhotoInputRef: React.RefObject<HTMLInputElement | null>;
   profileQrIsOpen: boolean;
   route: Route;
-  saveProfileEdits: () => void;
   scanIsOpen: boolean;
   scanVideoRef: React.RefObject<HTMLVideoElement | null>;
+  t: (key: string) => string;
+  topbar: TopbarButton | null;
+  topbarRight: TopbarButton | null;
+  topbarTitle: string | null;
+  useBitcoinSymbol: boolean;
+}
+
+interface LayoutActions {
+  closeMenu: () => void;
+  closeProfileQr: () => void;
+  closeScan: () => void;
+  contactsGuideNav: {
+    back: () => void;
+    next: () => void;
+  };
+  copyText: (text: string) => Promise<void>;
+  onPickProfilePhoto: () => void;
+  onProfilePhotoSelected: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  openFeedbackContact: () => void;
+  openProfileQr: () => void;
+  saveProfileEdits: () => void;
   setContactNewPrefill: (prefill: {
     lnAddress: string;
     npub: string | null;
@@ -103,166 +111,117 @@ interface AuthenticatedLayoutProps {
   setProfileEditPicture: (value: string) => void;
   setUseBitcoinSymbol: (value: boolean) => void;
   stopContactsGuide: () => void;
-  t: (key: string) => string;
   toggleProfileEditing: () => void;
-  topbar: TopbarButton | null;
-  topbarRight: TopbarButton | null;
-  topbarTitle: string | null;
-  useBitcoinSymbol: boolean;
+}
+
+interface AuthenticatedLayoutProps {
+  children: React.ReactNode;
 }
 
 export function AuthenticatedLayout({
-  chatTopbarContact,
   children,
-  closeMenu,
-  closeProfileQr,
-  closeScan,
-  contactsGuide,
-  contactsGuideActiveStep,
-  contactsGuideHighlightRect,
-  contactsGuideNav,
-  copyText,
-  currentNpub,
-  currentNsec,
-  derivedProfile,
-  displayUnit,
-  effectiveMyLightningAddress,
-  effectiveProfileName,
-  effectiveProfilePicture,
-  isProfileEditing,
-  lang,
-  menuIsOpen,
-  myProfileQr,
-  nostrPictureByNpub,
-  onPickProfilePhoto,
-  onProfilePhotoSelected,
-  openFeedbackContact,
-  openProfileQr,
-  paidOverlayIsOpen,
-  paidOverlayTitle,
-  postPaySaveContact,
-  profileEditInitialRef,
-  profileEditLnAddress,
-  profileEditName,
-  profileEditPicture,
-  profileEditsSavable,
-  profilePhotoInputRef,
-  profileQrIsOpen,
-  route,
-  saveProfileEdits,
-  scanIsOpen,
-  scanVideoRef,
-  setContactNewPrefill,
-  setIsProfileEditing,
-  setLang,
-  setPostPaySaveContact,
-  setProfileEditLnAddress,
-  setProfileEditName,
-  setProfileEditPicture,
-  setUseBitcoinSymbol,
-  stopContactsGuide,
-  t,
-  toggleProfileEditing,
-  topbar,
-  topbarRight,
-  topbarTitle,
-  useBitcoinSymbol,
 }: AuthenticatedLayoutProps): React.ReactElement {
+  const { actions, state } = useAppContext<LayoutState, LayoutActions>();
+
   return (
     <>
       <Topbar
-        chatTopbarContact={chatTopbarContact}
-        currentNpub={currentNpub}
-        effectiveProfileName={effectiveProfileName}
-        effectiveProfilePicture={effectiveProfilePicture}
-        nostrPictureByNpub={nostrPictureByNpub}
-        openProfileQr={openProfileQr}
-        route={route}
-        t={t}
-        topbar={topbar}
-        topbarRight={topbarRight}
-        topbarTitle={topbarTitle}
+        chatTopbarContact={state.chatTopbarContact}
+        currentNpub={state.currentNpub}
+        effectiveProfileName={state.effectiveProfileName}
+        effectiveProfilePicture={state.effectiveProfilePicture}
+        nostrPictureByNpub={state.nostrPictureByNpub}
+        openProfileQr={actions.openProfileQr}
+        route={state.route}
+        t={state.t}
+        topbar={state.topbar}
+        topbarRight={state.topbarRight}
+        topbarTitle={state.topbarTitle}
       />
 
-      {contactsGuide && contactsGuideActiveStep?.step ? (
+      {state.contactsGuide && state.contactsGuideActiveStep?.step ? (
         <ContactsGuideOverlay
-          currentIdx={contactsGuideActiveStep.idx}
-          highlightRect={contactsGuideHighlightRect}
-          onBack={contactsGuideNav.back}
-          onNext={contactsGuideNav.next}
-          onSkip={stopContactsGuide}
-          stepBodyKey={contactsGuideActiveStep.step.bodyKey}
-          stepTitleKey={contactsGuideActiveStep.step.titleKey}
-          t={t}
-          totalSteps={contactsGuideActiveStep.total}
+          currentIdx={state.contactsGuideActiveStep.idx}
+          highlightRect={state.contactsGuideHighlightRect}
+          onBack={actions.contactsGuideNav.back}
+          onNext={actions.contactsGuideNav.next}
+          onSkip={actions.stopContactsGuide}
+          stepBodyKey={state.contactsGuideActiveStep.step.bodyKey}
+          stepTitleKey={state.contactsGuideActiveStep.step.titleKey}
+          t={state.t}
+          totalSteps={state.contactsGuideActiveStep.total}
         />
       ) : null}
 
-      {menuIsOpen ? (
+      {state.menuIsOpen ? (
         <MenuModal
-          closeMenu={closeMenu}
-          lang={lang}
-          openFeedbackContact={openFeedbackContact}
-          setLang={setLang}
-          setUseBitcoinSymbol={setUseBitcoinSymbol}
-          t={t}
-          useBitcoinSymbol={useBitcoinSymbol}
+          closeMenu={actions.closeMenu}
+          lang={state.lang}
+          openFeedbackContact={actions.openFeedbackContact}
+          setLang={actions.setLang}
+          setUseBitcoinSymbol={actions.setUseBitcoinSymbol}
+          t={state.t}
+          useBitcoinSymbol={state.useBitcoinSymbol}
         />
       ) : null}
 
       {children}
 
-      {scanIsOpen && (
-        <ScanModal closeScan={closeScan} scanVideoRef={scanVideoRef} t={t} />
-      )}
-
-      {profileQrIsOpen && (
-        <ProfileQrModal
-          closeProfileQr={closeProfileQr}
-          currentNpub={currentNpub}
-          currentNsec={currentNsec}
-          derivedProfile={derivedProfile}
-          effectiveMyLightningAddress={effectiveMyLightningAddress}
-          effectiveProfileName={effectiveProfileName}
-          effectiveProfilePicture={effectiveProfilePicture}
-          isProfileEditing={isProfileEditing}
-          myProfileQr={myProfileQr}
-          onClose={closeProfileQr}
-          onCopyNpub={() => {
-            if (!currentNpub) return;
-            void copyText(currentNpub);
-          }}
-          onPickProfilePhoto={onPickProfilePhoto}
-          onProfilePhotoSelected={onProfilePhotoSelected}
-          onSaveProfileEdits={saveProfileEdits}
-          profileEditInitialRef={profileEditInitialRef}
-          profileEditLnAddress={profileEditLnAddress}
-          profileEditName={profileEditName}
-          profileEditPicture={profileEditPicture}
-          profileEditsSavable={profileEditsSavable}
-          profilePhotoInputRef={profilePhotoInputRef}
-          setIsProfileEditing={setIsProfileEditing}
-          setProfileEditLnAddress={setProfileEditLnAddress}
-          setProfileEditName={setProfileEditName}
-          setProfileEditPicture={setProfileEditPicture}
-          t={t}
-          toggleProfileEditing={toggleProfileEditing}
+      {state.scanIsOpen && (
+        <ScanModal
+          closeScan={actions.closeScan}
+          scanVideoRef={state.scanVideoRef}
+          t={state.t}
         />
       )}
 
-      {postPaySaveContact && !paidOverlayIsOpen ? (
+      {state.profileQrIsOpen && (
+        <ProfileQrModal
+          closeProfileQr={actions.closeProfileQr}
+          currentNpub={state.currentNpub}
+          currentNsec={state.currentNsec}
+          derivedProfile={state.derivedProfile}
+          effectiveMyLightningAddress={state.effectiveMyLightningAddress}
+          effectiveProfileName={state.effectiveProfileName}
+          effectiveProfilePicture={state.effectiveProfilePicture}
+          isProfileEditing={state.isProfileEditing}
+          myProfileQr={state.myProfileQr}
+          onClose={actions.closeProfileQr}
+          onCopyNpub={() => {
+            if (!state.currentNpub) return;
+            void actions.copyText(state.currentNpub);
+          }}
+          onPickProfilePhoto={actions.onPickProfilePhoto}
+          onProfilePhotoSelected={actions.onProfilePhotoSelected}
+          onSaveProfileEdits={actions.saveProfileEdits}
+          profileEditInitialRef={state.profileEditInitialRef}
+          profileEditLnAddress={state.profileEditLnAddress}
+          profileEditName={state.profileEditName}
+          profileEditPicture={state.profileEditPicture}
+          profileEditsSavable={state.profileEditsSavable}
+          profilePhotoInputRef={state.profilePhotoInputRef}
+          setIsProfileEditing={actions.setIsProfileEditing}
+          setProfileEditLnAddress={actions.setProfileEditLnAddress}
+          setProfileEditName={actions.setProfileEditName}
+          setProfileEditPicture={actions.setProfileEditPicture}
+          t={state.t}
+          toggleProfileEditing={actions.toggleProfileEditing}
+        />
+      )}
+
+      {state.postPaySaveContact && !state.paidOverlayIsOpen ? (
         <SaveContactPromptModal
-          amountSat={postPaySaveContact.amountSat}
-          displayUnit={displayUnit}
-          lnAddress={postPaySaveContact.lnAddress}
-          onClose={() => setPostPaySaveContact(null)}
-          setContactNewPrefill={setContactNewPrefill}
-          t={t}
+          amountSat={state.postPaySaveContact.amountSat}
+          displayUnit={state.displayUnit}
+          lnAddress={state.postPaySaveContact.lnAddress}
+          onClose={() => actions.setPostPaySaveContact(null)}
+          setContactNewPrefill={actions.setContactNewPrefill}
+          t={state.t}
         />
       ) : null}
 
-      {paidOverlayIsOpen ? (
-        <PaidOverlay paidOverlayTitle={paidOverlayTitle} t={t} />
+      {state.paidOverlayIsOpen ? (
+        <PaidOverlay paidOverlayTitle={state.paidOverlayTitle} t={state.t} />
       ) : null}
     </>
   );

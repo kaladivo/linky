@@ -31,6 +31,25 @@ IMPORTANT: Always run `bun run check-code` after making changes. It runs typeche
 - Navigation uses `navigateTo()` from `src/hooks/useRouting.ts` - do NOT use `window.location` directly
 - **Evolu** for all persistent data - local-first SQLite with sync. Schema in `src/evolu.ts`
 - **No backend** - pure client-side PWA with service worker caching
+- `apps/web-app/src/App.tsx` is a thin wrapper that default-exports `app/AppShell`
+- App shell structure lives under `apps/web-app/src/app/`:
+  - `AppShell.tsx` composes app state/actions and provides context
+  - `context/AppContext.tsx` provides `AppProvider`, `useAppState`, `useAppActions`
+  - `hooks/` contains app domain hooks (`useRelayDomain`, `useMintDomain`, `useContactsDomain`, `useMessagesDomain`, `usePaymentsDomain`, `useCashuDomain`, `useProfileAuthDomain`, `useGuideScannerDomain`) plus app-shell extraction hooks (`useAppDataTransfer`, `useContactsNostrPrefetchEffects`, `useMainSwipePageEffects`, `useProfileNpubCashEffects`, `useScannedTextHandler`, `useFeedbackContact`)
+  - `hooks/contacts/` contains contact-editor and contact-list view helpers (`useContactEditor`, `useVisibleContacts`)
+  - `hooks/layout/` contains extracted shell layout/menu/swipe state helpers (`useMainMenuState`, `useMainSwipeNavigation`)
+  - `hooks/profile/` contains extracted profile editor and profile metadata sync flows (`useProfileEditor`, `useProfileMetadataSyncEffect`)
+  - `hooks/messages/` contains extracted message/inbox effects (`useNostrPendingFlush`, `useSendChatMessage`, `useInboxNotificationsSync`, `useChatMessageEffects`)
+  - `hooks/payments/` contains extracted payment orchestration (`usePayContactWithCashuMessage`)
+  - `hooks/cashu/` contains extracted cashu helpers (`useSaveCashuFromText`, `useCashuTokenChecks`, `useRestoreMissingTokens`, `useNpubCashClaim`)
+  - `hooks/topup/` contains extracted topup quote/reset effects (`useTopupInvoiceQuoteEffects`)
+  - `hooks/mint/` contains mint-info store/helpers (`useMintInfoStore`, `mintInfoHelpers`)
+  - `routes/AppRouteContent.tsx` handles route-kind page rendering
+  - `routes/MainSwipeContent.tsx` handles contacts/wallet swipe UI
+  - `routes/useSystemRouteProps.ts` builds shared system/settings route prop groups
+  - `routes/props/` contains grouped route-prop builders (`buildPeopleRouteProps`, `buildMoneyRouteProps`)
+  - `lib/` contains shared app helpers (Nostr pool, token text parsing, topbar config)
+  - `types/appTypes.ts` contains app-local shared types
 
 ## Code Conventions
 

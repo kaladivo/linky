@@ -104,13 +104,31 @@ export const createSendTokenWithTokensAtMint = async (args: {
     );
   };
 
+  let spendableProofs = allProofs;
   try {
     await wallet.loadMint();
 
     const walletUnit = wallet.unit;
     const keysetId = wallet.keysetId;
 
-    const have = getProofAmountSum(allProofs);
+    try {
+      // Ignore already-spent proofs so stale local token rows do not block send.
+      const states = await wallet.checkProofsStates(allProofs);
+      const asArray = Array.isArray(states) ? states : [];
+      const filtered = allProofs.filter((_, idx) => {
+        const state = String(
+          (asArray[idx] as { state?: unknown } | undefined)?.state ?? "",
+        ).trim();
+        return state === "UNSPENT";
+      });
+      if (filtered.length > 0) {
+        spendableProofs = filtered;
+      }
+    } catch {
+      // Keep previous behavior if state checks are unavailable.
+    }
+
+    const have = getProofAmountSum(spendableProofs);
     if (have < sendAmount) {
       return {
         ok: false,
@@ -134,7 +152,7 @@ export const createSendTokenWithTokensAtMint = async (args: {
             });
 
             const swapOnce = async (counter: number) =>
-              await wallet.swap(sendAmount, allProofs, { counter });
+              await wallet.swap(sendAmount, spendableProofs, { counter });
 
             let counter = counter0;
             let swapped: { keep?: unknown[]; send?: unknown[] } | undefined;
@@ -179,7 +197,7 @@ export const createSendTokenWithTokensAtMint = async (args: {
             return swapped as { keep: Proof[]; send: Proof[] };
           },
         )
-      : wallet.swap(sendAmount, allProofs));
+      : wallet.swap(sendAmount, spendableProofs));
 
     // Recovery: if the caller fails after swap, this token should represent
     // the user's full funds (keep + send).
@@ -258,7 +276,7 @@ export const createSendTokenWithTokensAtMint = async (args: {
       mint,
       unit: unit ?? null,
       sendAmount,
-      remainingAmount: getProofAmountSum(allProofs),
+      remainingAmount: getProofAmountSum(spendableProofs),
       remainingToken: null,
       error: String(e ?? "swap failed"),
     };
